@@ -34,7 +34,7 @@ numpy = "^2.1.2"
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.8"
 
-wemake-python-styleguide = "^0.18"
+wemake-python-styleguide = "^1.3"
 flake8-pytest-style = "^1.6"
 nitpick = "^0.34"
 
