@@ -32,7 +32,7 @@ requests = "^2.32.3"
 numpy = "^2.1.2"
 
 [tool.poetry.group.dev.dependencies]
-mypy = "^1.8"
+mypy = "^1.17"
 
 wemake-python-styleguide = "^0.18"
 flake8-pytest-style = "^1.6"
