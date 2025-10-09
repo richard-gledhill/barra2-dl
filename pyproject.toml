@@ -50,7 +50,7 @@ optional = true
 sphinx = "^7.1"
 sphinx-autodoc-typehints = "^1.25"
 m2r2 = "^0.3"
-tomli = "^2.0"
+tomli = "^2.3"
 doc8 = "^1.0"
 
 
