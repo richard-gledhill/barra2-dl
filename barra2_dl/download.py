@@ -20,7 +20,7 @@ __all__ = [
     'download_multithread',
 ]
 
-type URLFilenamePair = tuple[str, str]
+URLFilenamePair = tuple[str, str]
 
 
 def _list_months(

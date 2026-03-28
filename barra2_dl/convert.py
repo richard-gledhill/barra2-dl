@@ -7,7 +7,7 @@ from typing import List
 import numpy as np
 import pandas as pd
 
-from barra2_dl.globals import BARRA2_WIND_VARS
+from barra2_dl.globals import BARRA2_ENV_VARS, BARRA2_WIND_VARS
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
@@ -18,6 +18,11 @@ __all__ = [
     'calculate_wind_direction',
     'wind_components_to_direction',
     'convert_wind_components',
+    'convert_temperature',
+    'convert_humidity',
+    'convert_pressure',
+    'convert_precipitation',
+    'convert_environment_variables',
 ]
 
 
@@ -168,5 +173,166 @@ def convert_wind_components(
     # todo check if df_processed was updated
     # if df_processed == df_merged:
     #     raise ValueError('No ua or va values in the dataframe to convert.')
+
+    return df_processed
+
+
+def convert_temperature(
+    df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Convert temperature columns from Kelvin to degrees Celsius.
+
+    Matches columns starting with 'tas' (tas, tasmax, tasmin) and creates
+    new columns with values converted to degrees Celsius.
+
+    Args:
+        df: Dataframe with temperature data in Kelvin.
+
+    Returns:
+        Dataframe: With additional converted columns.
+    """
+    df_processed = df
+
+    for var_prefix in ['tas', 'tasmax', 'tasmin']:
+        mask = df.columns.str.contains(var_prefix)
+        if np.any(mask):
+            col_name = df.loc[:, mask].columns[0]
+            df_converted = pd.DataFrame(
+                df.loc[:, col_name].values - 273.15,
+                columns=[var_prefix + '_celsius[unit="degrees_C"]'],
+            )
+            df_processed = df_processed.join(df_converted)
+            sys.stdout.write(f'Converted: {col_name} (K -> degC)')
+            sys.stdout.write('\n')
+
+    return df_processed
+
+
+def convert_humidity(
+    df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Convert specific humidity from kg/kg to g/kg.
+
+    Matches columns starting with 'huss' and creates new columns
+    with values converted to g/kg.
+
+    Args:
+        df: Dataframe with humidity data.
+
+    Returns:
+        Dataframe: With additional converted columns.
+    """
+    df_processed = df
+
+    mask = df.columns.str.contains('huss')
+    if np.any(mask):
+        col_name = df.loc[:, mask].columns[0]
+        df_converted = pd.DataFrame(
+            df.loc[:, col_name].values * 1000.0,
+            columns=['huss_gkg[unit="g kg-1"]'],
+        )
+        df_processed = df_processed.join(df_converted)
+        sys.stdout.write(f'Converted: {col_name} (kg/kg -> g/kg)')
+        sys.stdout.write('\n')
+
+    return df_processed
+
+
+def convert_pressure(
+    df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Convert pressure columns from Pa to hPa.
+
+    Matches columns starting with 'psl' or 'ps' and creates new columns
+    with values converted to hPa (divide by 100).
+
+    Args:
+        df: Dataframe with pressure data in Pa.
+
+    Returns:
+        Dataframe: With additional converted columns.
+    """
+    df_processed = df
+
+    for var_prefix in ['psl', 'ps']:
+        mask = df.columns.str.contains(f'^{var_prefix}')
+        if np.any(mask):
+            col_name = df.loc[:, mask].columns[0]
+            df_converted = pd.DataFrame(
+                df.loc[:, col_name].values * 0.01,
+                columns=[var_prefix + '_hPa[unit="hPa"]'],
+            )
+            df_processed = df_processed.join(df_converted)
+            sys.stdout.write(f'Converted: {col_name} (Pa -> hPa)')
+            sys.stdout.write('\n')
+
+    return df_processed
+
+
+def convert_precipitation(
+    df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Convert precipitation rate from kg m-2 s-1 to mm hr-1.
+
+    Matches columns starting with 'pr' (pr, prc, prsn) and creates new columns
+    with values converted to mm/hr (multiply by 3600).
+
+    Args:
+        df: Dataframe with precipitation data.
+
+    Returns:
+        Dataframe: With additional converted columns.
+    """
+    df_processed = df
+
+    for var_prefix in ['prc', 'prsn', 'pr']:
+        mask = df.columns.str.contains(f'^{var_prefix}')
+        if np.any(mask):
+            col_name = df.loc[:, mask].columns[0]
+            df_converted = pd.DataFrame(
+                df.loc[:, col_name].values * 3600.0,
+                columns=[var_prefix + '_mmhr[unit="mm hr-1"]'],
+            )
+            df_processed = df_processed.join(df_converted)
+            sys.stdout.write(f'Converted: {col_name} (kg/m2/s -> mm/hr)')
+            sys.stdout.write('\n')
+
+    return df_processed
+
+
+def convert_environment_variables(
+    df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Convert environment variables to more common units using BARRA2_ENV_VARS descriptors.
+
+    Iterates through BARRA2_ENV_VARS and applies the appropriate conversion
+    for each variable found in the dataframe.
+
+    Args:
+        df: Dataframe with environment variable data.
+
+    Returns:
+        Dataframe: With additional converted columns.
+    """
+    df_processed = df
+
+    for var_prefix, original_unit, converted_unit, factor, suffix in BARRA2_ENV_VARS:
+        mask = df.columns.str.contains(f'^{var_prefix}')
+        if np.any(mask):
+            col_name = df.loc[:, mask].columns[0]
+
+            # temperature uses offset (add factor which is negative), others use multiplier
+            if factor < 0:
+                converted_values = df.loc[:, col_name].values + factor
+            else:
+                converted_values = df.loc[:, col_name].values * factor
+
+            df_converted = pd.DataFrame(
+                converted_values,
+                columns=[var_prefix + f'_{suffix}[unit="{converted_unit}"]'],
+            )
+            df_processed = df_processed.join(df_converted)
+            sys.stdout.write(f'Converted: {col_name} ({original_unit} -> {converted_unit})')
+            sys.stdout.write('\n')
 
     return df_processed

@@ -42,6 +42,45 @@ BARRA2_VAR_WIND_DEFAULT = ['ua50m', 'va50m', 'ua100m', 'va100m', 'ua150m', 'va15
 # optional limited variables to test
 BARRA2_VAR_WIND_50 = ['ua50m', 'va50m', 'ta50m']
 
+# default list of BARRA2 variables for temperature analysis
+# original units: K (kelvin)
+BARRA2_VAR_TEMP_DEFAULT = ['tas', 'tasmax', 'tasmin']
+
+# default list of BARRA2 variables for humidity analysis
+# hurs: relative humidity (%), huss: specific humidity (kg/kg), prw: precipitable water (kg/m2)
+BARRA2_VAR_HUMIDITY_DEFAULT = ['hurs', 'huss', 'prw']
+
+# default list of BARRA2 variables for pressure analysis
+# original units: Pa (pascal)
+BARRA2_VAR_PRESSURE_DEFAULT = ['psl', 'ps']
+
+# default list of BARRA2 variables for precipitation analysis
+# original units: kg m-2 s-1
+BARRA2_VAR_PRECIP_DEFAULT = ['pr', 'prc', 'prsn']
+
+# default list of BARRA2 variables for radiation analysis
+# original units: W m-2 (no conversion needed)
+BARRA2_VAR_RADIATION_DEFAULT = ['rsds', 'rsdsdir', 'rlds', 'rsus']
+
+# environment variable conversion descriptors
+# each tuple: (var_name_prefix, original_unit, converted_unit, conversion_factor, converted_suffix)
+# conversion: converted_value = original_value * factor + offset (offset not used, set to 0)
+BARRA2_ENV_VARS = [
+    # temperature: K -> degC (factor=-1 applied as: value - 273.15)
+    ('tas', 'K', 'degrees_C', -273.15, 'celsius'),
+    ('tasmax', 'K', 'degrees_C', -273.15, 'celsius'),
+    ('tasmin', 'K', 'degrees_C', -273.15, 'celsius'),
+    # humidity: specific humidity kg/kg -> g/kg (factor=1000)
+    ('huss', '1', 'g kg-1', 1000.0, 'gkg'),
+    # pressure: Pa -> hPa (factor=0.01)
+    ('psl', 'Pa', 'hPa', 0.01, 'hPa'),
+    ('ps', 'Pa', 'hPa', 0.01, 'hPa'),
+    # precipitation: kg m-2 s-1 -> mm hr-1 (factor=3600)
+    ('pr', 'kg m-2 s-1', 'mm hr-1', 3600.0, 'mmhr'),
+    ('prc', 'kg m-2 s-1', 'mm hr-1', 3600.0, 'mmhr'),
+    ('prsn', 'kg m-2 s-1', 'mm hr-1', 3600.0, 'mmhr'),
+]
+
 # Base BOM BARRA2 thredds urls for NetCDF Subset Service for Grids As Points
 # Reference url:
 # https://thredds.nci.org.au/thredds/ncss/grid/ob53/output/reanalysis/AUS-11/BOM/ERA5/
