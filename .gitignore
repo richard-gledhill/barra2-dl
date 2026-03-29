@@ -1,4 +1,8 @@
 #### joe made this: http://goel.io/joe
+#### project ####
+cache/
+output/
+.idea/
 #### macos ####
 # General
 *.DS_Store
