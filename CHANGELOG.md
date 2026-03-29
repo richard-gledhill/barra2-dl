@@ -2,6 +2,12 @@
 
 We follow [Semantic Versions](https://semver.org/).
 
+## Version 0.5.0
+
+- Updated project metadata for independent release (author, repository, package name)
+- Added copyright attribution to LICENSE distinguishing upstream and original code
+- Updated CONTRIBUTING.md for fork project workflow
+
 ## Version 0.4.0
 
 - Added multi-threaded download (5 threads) with integrity verification (temp file + atomic rename)

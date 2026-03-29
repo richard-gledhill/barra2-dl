@@ -132,6 +132,12 @@ When using "Download & Convert", the output CSV contains the following columns:
 
 ## Changelog
 
+### v0.5 (2026-03-30)
+- Updated project metadata for independent release (package name, author, repository)
+- Added copyright attribution to LICENSE distinguishing upstream and original code
+- Updated CONTRIBUTING.md for independent fork project workflow
+- Added `.codebuddy/` to `.gitignore`
+
 ### v0.4 (2026-03-29)
 - Added multi-threaded download (5 threads) with integrity verification
 - Added progress bar showing download progress

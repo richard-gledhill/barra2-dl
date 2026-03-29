@@ -1,19 +1,19 @@
 [tool.poetry]
-name = "barra2-dl"
-description = "A tool for downloading BARRA version 2 (BARRA2) atmospheric reanalysis data."
-version = "0.2.0"
+name = "barra2-dl-wr"
+description = "Barra2 downloader with Windows GUI and environmental parameter support"
+version = "0.5.0"
 license = "CC-BY-4.0"
 
-authors = ["akarich73 <rich_gledhill@hotmail.com>",]
+authors = ["atl3b <gshou.yang@gmail.com>",]
 
 readme = "README.md"
 
-repository = "https://github.com/akarich73/barra2-dl"
+repository = "https://github.com/atl3b/barra2-dl-wr"
 
-keywords = ["downloader","barra2","atmospheric","reanlysis","wind"]
+keywords = ["downloader","barra2","atmospheric","reanalysis","wind","gui","weather-data"]
 
 classifiers = [
-  "Development Status :: 1 - Planning",
+  "Development Status :: 4 - Beta",
   "Intended Audience :: Science/Research",
   "License :: Creative Commons Attribution 4.0 International",
   "Natural Language :: English",
