@@ -193,7 +193,7 @@ def convert_temperature(
     """
     df_processed = df
 
-    for var_prefix in ['tas', 'tasmax', 'tasmin']:
+    for var_prefix in ['tas', 'tasmax', 'tasmin', 'ta50m']:
         mask = df.columns.str.contains(var_prefix)
         if np.any(mask):
             col_name = df.loc[:, mask].columns[0]

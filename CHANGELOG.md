@@ -2,6 +2,15 @@
 
 We follow [Semantic Versions](https://semver.org/).
 
+## Version 0.4.0
+
+- Added multi-threaded download (5 threads) with integrity verification (temp file + atomic rename)
+- Added progress bar showing download progress (based on total file count)
+- Fixed ta50m temperature unit conversion (K → °C)
+- Removed duplicate temperature columns (ta50m K) in merged output
+- Reordered output columns: environment variables (including rsds) before wind variables
+- Added mouse wheel scroll support for Variables and Grid Points panels
+
 ## Version 0.3.0
 
 - Added `rsds` (surface shortwave radiation) to environment variables

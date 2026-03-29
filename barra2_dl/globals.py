@@ -66,10 +66,7 @@ BARRA2_VAR_RADIATION_DEFAULT = ['rsds', 'rsdsdir', 'rlds', 'rsus']
 # each tuple: (var_name_prefix, original_unit, converted_unit, conversion_factor, converted_suffix)
 # conversion: converted_value = original_value * factor + offset (offset not used, set to 0)
 BARRA2_ENV_VARS = [
-    # temperature: K -> degC (factor=-1 applied as: value - 273.15)
-    ('tas', 'K', 'degrees_C', -273.15, 'celsius'),
-    ('tasmax', 'K', 'degrees_C', -273.15, 'celsius'),
-    ('tasmin', 'K', 'degrees_C', -273.15, 'celsius'),
+    # Note: temperature variables (tas, tasmax, tasmin, ta50m) are handled by convert_temperature
     # humidity: specific humidity kg/kg -> g/kg (factor=1000)
     ('huss', '1', 'g kg-1', 1000.0, 'gkg'),
     # pressure: Pa -> hPa (factor=0.01)

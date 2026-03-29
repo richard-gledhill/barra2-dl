@@ -162,6 +162,9 @@ class Barra2GUI:
         self.grid_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.grid_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
+        # Bind mouse wheel for grid canvas
+        self.grid_canvas.bind("<MouseWheel>", lambda e: self.grid_canvas.yview_scroll(int(-1 * (e.delta / 120)), "units"))
+
         self.grid_check_vars = {}  # {coord_idx: {grid_label: tk.BooleanVar}}
         self.grid_checkboxes = {}  # {coord_idx: {grid_label: ttk.Checkbutton}}
 
@@ -218,6 +221,9 @@ class Barra2GUI:
 
         self.var_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         var_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Bind mouse wheel for var canvas
+        self.var_canvas.bind("<MouseWheel>", lambda e: self.var_canvas.yview_scroll(int(-1 * (e.delta / 120)), "units"))
 
         self.var_checkboxes = {}
 
@@ -283,6 +289,11 @@ class Barra2GUI:
         self.download_btn = ttk.Button(dl_frame, text="Download", command=self.start_download)
         self.download_btn.pack(fill=tk.X, pady=2)
         ttk.Button(dl_frame, text="Download & Convert", command=self.start_download_with_convert).pack(fill=tk.X, pady=2)
+
+        # Progress bar
+        self.progress_var = tk.DoubleVar(value=0)
+        self.progress_bar = ttk.Progressbar(self.root, variable=self.progress_var, maximum=100, mode='determinate')
+        self.progress_bar.pack(fill=tk.X, side=tk.BOTTOM, padx=5, pady=2)
 
         # Status bar
         self.status_var = tk.StringVar(value="Ready")
@@ -615,14 +626,37 @@ class Barra2GUI:
         convert: bool,
     ):
         """Worker function that runs in background thread."""
-        # Count total grid points to download
+        # Count total grid points and files
         total_grid_points = sum(len(c['selected_grid_points']) for c in coords)
+
+        # First pass: calculate total file count
         total_files = 0
+        for coord in coords:
+            for grid_label in coord['selected_grid_points']:
+                grid_pt = next(gp for gp in coord['grid_points'] if gp['label'] == grid_label)
+                grid_lat = grid_pt['lat']
+                grid_lon = normalize_longitude(grid_pt['lon'])
+                urlfilenames = barra2_dl.download.point_data_urlfilenames(
+                    barra2_url=barra2_url,
+                    barra2_vars=variables,
+                    latitude=grid_lat,
+                    longitude=grid_lon,
+                    start_datetime=start_dt,
+                    end_datetime=end_dt,
+                    fileout_prefix="",  # dummy, just to count files
+                )
+                total_files += len(urlfilenames)
+
         success_files = 0
         failed_files = 0
 
+        # Set progress bar maximum to total file count
+        self.root.after(0, self.progress_bar.config, {'maximum': total_files})
+        self.root.after(0, self.progress_var.set, 0)
+
         try:
             grid_counter = 0
+            completed_files = 0
             for ci, coord in enumerate(coords):
                 selected_grids = coord['selected_grid_points']
                 if not selected_grids:
@@ -636,7 +670,7 @@ class Barra2GUI:
 
                     grid_counter += 1
                     self.root.after(0, self.status_var.set,
-                        f"[{grid_counter}/{total_grid_points}] Downloading {coord['label']}/{grid_coord_str}...")
+                        f"[File {completed_files}/{total_files}] Downloading {coord['label']}/{grid_coord_str}...")
 
                     # Cache subfolder per grid point
                     subfolder_name = f"{coord['label']}_{grid_coord_str}"
@@ -654,30 +688,60 @@ class Barra2GUI:
                         end_datetime=end_dt,
                         fileout_prefix=fileout_prefix,
                     )
-                    total_files += len(urlfilenames)
 
-                    for url, filename in urlfilenames:
+                    # Multi-threaded download with 5 workers
+                    from concurrent.futures import ThreadPoolExecutor, as_completed
+                    import requests
+
+                    def download_single_file(args):
+                        """Download a single file with integrity check."""
+                        url, filename, folder = args
+                        folder_file = folder / filename
+                        
+                        # Skip if already exists
+                        if folder_file.exists() and folder_file.stat().st_size > 0:
+                            return ('skipped', filename)
+                        
+                        # Download to temp file first
+                        temp_file = folder / f"{filename}.tmp"
                         try:
-                            folder_file = subfolder_path / filename
-                            if folder_file.exists():
-                                success_files += 1
-                                continue
-
-                            import requests
-                            response = requests.get(url)
+                            response = requests.get(url, timeout=30)
                             if response.status_code == 200:
-                                folder_file.write_bytes(response.content)
+                                # Verify content is not empty
+                                content = response.content
+                                if len(content) > 0:
+                                    temp_file.write_bytes(content)
+                                    # Rename to final name (atomic operation)
+                                    temp_file.replace(folder_file)
+                                    return ('success', filename)
+                                else:
+                                    return ('failed', f"{filename} (empty)")
+                            else:
+                                return ('failed', f"{filename} (HTTP {response.status_code})")
+                        except Exception as e:
+                            return ('error', f"{filename} ({str(e)[:40]})")
+
+                    # Prepare download tasks
+                    download_tasks = [(url, filename, subfolder_path) for url, filename in urlfilenames]
+                    
+                    # Download with 5 threads
+                    with ThreadPoolExecutor(max_workers=5) as executor:
+                        futures = {executor.submit(download_single_file, task): task for task in download_tasks}
+
+                        for future in as_completed(futures):
+                            result = future.result()
+                            completed_files += 1
+                            if result[0] == 'success':
                                 success_files += 1
-                                self.root.after(0, self.status_var.set,
-                                    f"[{grid_counter}/{total_grid_points}] Downloaded: {filename}")
+                            elif result[0] == 'skipped':
+                                success_files += 1  # Count skipped as success
                             else:
                                 failed_files += 1
-                                self.root.after(0, self.status_var.set,
-                                    f"[{grid_counter}/{total_grid_points}] Failed: {filename} (HTTP {response.status_code})")
-                        except Exception as e:
-                            failed_files += 1
+
+                            # Update progress bar
+                            self.root.after(0, self.progress_var.set, completed_files)
                             self.root.after(0, self.status_var.set,
-                                f"[{grid_counter}/{total_grid_points}] Error: {filename} - {str(e)[:60]}")
+                                f"[{completed_files}/{total_files}] {result[0].capitalize()}: {result[1]}")
 
                     # Pre-process timestamps: shift :30 variables (pr, rsds) by -30min
                     # before merge to avoid duplicate time rows from outer join
@@ -719,29 +783,44 @@ class Barra2GUI:
 
                         if convert:
 
+                            df = barra2_dl.convert.convert_temperature(df)
                             df = barra2_dl.convert.convert_environment_variables(df)
                             df = barra2_dl.convert.convert_wind_components(df)
 
-                            # Keep only: index columns, converted env vars, wind speed/direction, hurs, ta50m
+                            # Keep only: index columns, converted env vars, wind speed/direction, hurs, ta50m_celsius, rsds
+                            # Exclude original ta50m[unit="K"] as it's already converted to ta50m_celsius
                             index_cols = ['time', 'station',
                                 'latitude[unit="degrees_north"]',
                                 'longitude[unit="degrees_east"]']
-                            keep_patterns = [
+
+                            # Define column patterns for different groups
+                            env_patterns = [
                                 '_celsius', '_hPa', '_mmhr', '_gkg',   # converted env vars
+                                'hurs', 'rsds',                        # no conversion needed
+                            ]
+                            wind_patterns = [
                                 'v\\d+m\\[unit="m s-1"\\]',             # wind speed v*h
                                 'phi_met',                               # wind direction
-                                'hurs', 'ta50m', 'rsds',                    # no conversion needed
                             ]
-                            keep_cols = [c for c in df.columns if c in index_cols]
-                            for pat in keep_patterns:
-                                keep_cols.extend([c for c in df.columns if re.search(pat, c)])
-                            # deduplicate while preserving order
-                            seen = set()
-                            final_cols = []
-                            for c in keep_cols:
-                                if c not in seen:
-                                    seen.add(c)
-                                    final_cols.append(c)
+
+                            # Build final column list in specific order: index -> env -> wind
+                            final_cols = list(index_cols)
+
+                            # Add environment columns (including rsds before wind)
+                            for pat in env_patterns:
+                                for c in df.columns:
+                                    if re.search(pat, c) and c not in final_cols:
+                                        final_cols.append(c)
+
+                            # Add wind columns
+                            for pat in wind_patterns:
+                                for c in df.columns:
+                                    if re.search(pat, c) and c not in final_cols:
+                                        final_cols.append(c)
+
+                            # Filter to only keep columns that exist in df
+                            final_cols = [c for c in final_cols if c in df.columns]
+
                             df = df[final_cols]
 
                         output_path = Path(output_dir)
@@ -754,7 +833,7 @@ class Barra2GUI:
                         import traceback
                         traceback.print_exc()
                         self.root.after(0, self.status_var.set,
-                            f"[{grid_counter}/{total_grid_points}] Merge/convert error: {str(e)[:120]}")
+                            f"[File {completed_files}/{total_files}] Merge/convert error: {str(e)[:120]}")
 
             # Summary
             msg = f"Download complete: {success_files} success, {failed_files} failed (total {total_files})"
@@ -769,6 +848,8 @@ class Barra2GUI:
         """Re-enable download button after completion."""
         self.downloading = False
         self.download_btn.config(state='normal')
+        # Ensure progress bar shows full
+        self.progress_var.set(self.progress_bar['maximum'])
 
     # -------------------------------------------------------- Tree
     def _refresh_tree(self):

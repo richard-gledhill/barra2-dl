@@ -5,10 +5,12 @@ Fork of [akarich73/barra2-dl](https://github.com/akarich73/barra2-dl) with a Win
 ## Features
 
 - Windows desktop GUI (tkinter) for coordinate input, grid point selection, and variable download
-- Interactive map (folium + pywebview) for visualizing coordinates and grid points
+- Interactive map (folium) for visualizing coordinates and grid points in browser
 - Automatic grid point finding with 4-point selection per coordinate
+- Multi-threaded batch download (5 threads) with integrity verification
 - Batch download with merge and unit conversion
 - Timestamp alignment for mixed instantaneous/averaged variables
+- Progress bar showing download progress
 
 ## Installation
 
@@ -21,6 +23,25 @@ pip install pandas requests pywebview folium
 ```bash
 python scripts/barra2_gui.py
 ```
+
+### GUI Operations
+
+1. **Add Coordinates**: Enter a label, latitude, and longitude, then click "Add Coordinate"
+2. **Select Grid Points**: After coordinates are added, select the desired grid points from the list
+3. **Select Variables**: Choose which variables to download (environment variables, wind variables, or specific heights)
+4. **Set Date Range**: Choose start and end dates for the download period
+5. **Set Output Folder**: Choose where to save the downloaded and merged data
+6. **Download**: Click "Download" for raw data, or "Download & Convert" for processed data with unit conversions
+
+### Download Options
+
+- **Download**: Downloads raw CSV files from BARRA2 server (no unit conversion)
+- **Download & Convert**: Downloads and merges files with the following unit conversions:
+  - Temperature: K → °C (tas, tasmax, tasmin, ta50m)
+  - Pressure: Pa → hPa (psl, ps)
+  - Precipitation: kg m⁻² s⁻¹ → mm hr⁻¹ (pr, prc, prsn)
+  - Specific humidity: kg kg⁻¹ → g kg⁻¹ (huss)
+  - Wind components (ua/va) → wind speed (v) and direction (phi_met)
 
 ## Available Variables
 
@@ -60,6 +81,47 @@ When merging multiple variables into a single CSV, this causes `pd.merge(outer)`
 
 This timestamp shift is applied in `barra2_gui.py` and does not modify the upstream `barra2_dl/` source code.
 
+## Merged Output Data
+
+When using "Download & Convert", the output CSV contains the following columns:
+
+### Index Columns
+
+| Column | Description | Unit |
+|--------|-------------|------|
+| `time` | Timestamp | ISO 8601 (UTC) |
+| `station` | Station identifier | - |
+| `latitude[unit="degrees_north"]` | Latitude | degrees_north |
+| `longitude[unit="degrees_east"]` | Longitude | degrees_east |
+
+### Environment Variables (Converted)
+
+| Column | Original Variable | Converted Unit |
+|--------|------------------|----------------|
+| `tas_celsius[unit="degrees_C"]` | tas | °C |
+| `ta50m_celsius[unit="degrees_C"]` | ta50m | °C |
+| `ps_hPa[unit="hPa"]` | ps | hPa |
+| `pr_mmhr[unit="mm hr-1"]` | pr | mm hr⁻¹ |
+| `hurs[unit="%"]` | hurs | % |
+| `rsds[unit="W m-2"]` | rsds | W m⁻² |
+
+### Wind Variables (Converted)
+
+| Column | Description | Unit |
+|--------|-------------|------|
+| `v50m[unit="m s-1"]` | Wind speed at 50m | m s⁻¹ |
+| `v100m[unit="m s-1"]` | Wind speed at 100m | m s⁻¹ |
+| `v150m[unit="m s-1"]` | Wind speed at 150m | m s⁻¹ |
+| `v200m[unit="m s-1"]` | Wind speed at 200m | m s⁻¹ |
+| `v250m[unit="m s-1"]` | Wind speed at 250m | m s⁻¹ |
+| `v50m_phi_met[unit="degrees"]` | Wind direction at 50m | degrees |
+| `v100m_phi_met[unit="degrees"]` | Wind direction at 100m | degrees |
+| `v150m_phi_met[unit="degrees"]` | Wind direction at 150m | degrees |
+| `v200m_phi_met[unit="degrees"]` | Wind direction at 200m | degrees |
+| `v250m_phi_met[unit="degrees"]` | Wind direction at 250m | degrees |
+
+> Note: Wind direction is meteorological convention (direction wind is coming from, 0° = North)
+
 ## Data Source
 
 - **Provider**: Bureau of Meteorology, Australia
@@ -67,6 +129,30 @@ This timestamp shift is applied in `barra2_gui.py` and does not modify the upstr
 - **Period**: 1979-present
 - **THREDDS Server**: https://thredds.nci.org.au/thredds/fileServer/ob53/BARRA2/README.txt
 - **License**: [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+
+## Changelog
+
+### v0.4 (2026-03-29)
+- Added multi-threaded download (5 threads) with integrity verification
+- Added progress bar showing download progress
+- Fixed ta50m temperature unit conversion (K → °C)
+- Removed duplicate temperature columns in merged output
+- Reordered output columns: environment variables (including rsds) before wind variables
+- Added mouse wheel scroll support for Variables and Grid Points panels
+
+### v0.3 (2026-03-??)
+- Added interactive map in browser for coordinate visualization
+- Added grid point selection with 4 nearest points per coordinate
+- Added batch download with merge functionality
+- Added timestamp alignment for mixed instantaneous/averaged variables
+
+### v0.2 (2026-03-??)
+- Added Windows GUI (tkinter)
+- Added variable selection
+
+### v0.1 (2026-03-??)
+- Initial fork from akarich73/barra2-dl
+- Basic CLI functionality
 
 ## Acknowledgements
 
