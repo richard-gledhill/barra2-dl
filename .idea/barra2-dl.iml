@@ -12,7 +12,7 @@
       <excludeFolder url="file://$MODULE_DIR$/scripts/output" />
       <excludeFolder url="file://$MODULE_DIR$/tests/test_output" />
     </content>
-    <orderEntry type="jdk" jdkName="Python 3.12 (barra2-dl)" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="~\Local\GitHub\barra2-dl\.venv (2)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
   <component name="PyDocumentationSettings">
