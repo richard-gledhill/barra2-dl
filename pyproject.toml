@@ -30,6 +30,7 @@ pandas = "^2.2.3"
 pathlib = "^1.0.1"
 requests = "^2.32.3"
 numpy = "^2.1.2"
+pytest = "==9.1.1"
 
 [tool.poetry.group.dev.dependencies]
 mypy = ">=1.8,<3.0"
