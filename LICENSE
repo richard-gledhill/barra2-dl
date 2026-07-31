@@ -1,3 +1,20 @@
+Copyright and License Notice
+===========================
+
+barra2-dl core package: Copyright (c) 2024 akarich73
+  https://github.com/akarich73/barra2-dl
+  - barra2_dl/download.py, merge.py, mapping.py, __init__.py: original upstream code
+  - barra2_dl/globals.py, convert.py: upstream base with additions by atl3b
+
+Additional code: Copyright (c) 2026 atl3b
+  https://github.com/atl3b/barra2-dl-wr
+  - scripts/barra2_gui.py, scripts/grid_finder.py, scripts/map_viewer.py
+  - environment variable conversions and GUI integration in barra2_dl/
+
+Licensed under CC-BY-4.0. See below for full license text.
+
+---
+
 Attribution 4.0 International
 
 =======================================================================
