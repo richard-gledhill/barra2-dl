@@ -37,7 +37,7 @@ pandas-stubs = "~=2.3.3"
 [tool.poetry.group.dev.dependencies]
 mypy = ">=1.8,<3.0"
 
-wemake-python-styleguide = "^0.18"
+wemake-python-styleguide = ">=0.18,<1.8"
 flake8-pytest-style = "^1.6"
 nitpick = ">=0.34,<0.39"
 
