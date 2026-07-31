@@ -3,19 +3,19 @@ updates:
 - package-ecosystem: pip
   directory: "/"
   schedule:
-    interval: daily
+    interval: monthly
     time: "02:00"
   open-pull-requests-limit: 10
 - package-ecosystem: pip
   directory: "/docs"
   schedule:
-    interval: daily
+    interval: monthly
     time: "02:00"
   open-pull-requests-limit: 10
 
 - package-ecosystem: github-actions
   directory: "/"
   schedule:
-    interval: daily
+    interval: monthly
     time: "02:00"
   open-pull-requests-limit: 10
