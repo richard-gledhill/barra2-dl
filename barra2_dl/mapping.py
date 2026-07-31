@@ -63,10 +63,14 @@ class LatLonPoint:
     lat: Latitude
     lon: Longitude
 
-    def __post_init__(self):
-        """Set self attributes."""
-        for field_name, field in self.__dataclass_fields__.items():
-            setattr(self, field_name, field.type(getattr(self, field_name)))
+    def __init__(
+        self,
+        lat: Latitude | float | int,
+        lon: Longitude | float | int,
+    ) -> None:
+        """Set latitude and longitude."""
+        self.lat = Latitude(lat)
+        self.lon = Longitude(lon)
 
 
 @dataclass
