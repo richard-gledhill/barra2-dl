@@ -10,7 +10,7 @@ BARRA2_INDEX = [
     'longitude[unit="degrees_east"]',
 ]
 
-# BARRA2 wind speed variable pairs
+# BARRA2 wind speed variable pairs (<var>,<var>,<unit>
 BARRA2_WIND_VARS = [
     ('uas', 'vas', '10m[unit="m s-1"]'),
     ('ua10m', 'va10m', '10m[unit="m s-1"]'),
