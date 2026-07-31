@@ -12,6 +12,7 @@ BARRA2_INDEX = [
 
 # BARRA2 wind speed variable pairs
 BARRA2_WIND_VARS = [
+    ('uas', 'vas', '10m[unit="m s-1"]'),
     ('ua10m', 'va10m', '10m[unit="m s-1"]'),
     ('ua20m', 'va20m', '20m[unit="m s-1"]'),
     ('ua30m', 'va30m', '30m[unit="m s-1"]'),
@@ -37,9 +38,9 @@ BARRA2_WIND_VARS = [
 # Todo BARRA2_AUS11_GRID_SPACING = 0.11
 
 # default list of BARRA2 variables for wind analysis
-BARRA2_VAR_WIND_DEFAULT = ['ua50m', 'va50m', 'ua100m', 'va100m', 'ua150m', 'va150m', 'ta50m']
+BARRA2_VAR_WIND_DEFAULT = ['uas','vas','ua50m', 'va50m', 'ua100m', 'va100m', 'ua150m', 'va150m', 'ta50m']
 
-# optional limited variables to test
+# optional limited variables used in pytest
 BARRA2_VAR_WIND_50 = ['ua50m', 'va50m', 'ta50m']
 
 # Base BOM BARRA2 thredds urls for NetCDF Subset Service for Grids As Points
