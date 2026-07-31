@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "barra2-dl"
 description = "A tool for downloading BARRA version 2 (BARRA2) atmospheric reanalysis data."
-version = "0.2.0"
+version = "0.3.0"
 license = "CC-BY-4.0"
 
 authors = ["akarich73 <rich_gledhill@hotmail.com>",]
