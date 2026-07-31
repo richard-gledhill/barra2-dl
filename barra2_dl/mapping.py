@@ -8,6 +8,7 @@ Todo:
     Implement _format_lat_lon for converting lat lon for file naming
 """
 from dataclasses import dataclass
+from typing import Self
 
 import numpy as np
 import pandas as pd
@@ -27,7 +28,7 @@ class _Geodetic(float):
     max = 0.0
     name = "Geodetic"
 
-    def __new__(cls, value):
+    def __new__(cls, value: float | int) -> Self:
         instance = super().__new__(cls, value)
         instance._check_limits()
         return instance
@@ -91,17 +92,25 @@ class LatLonBBox:
     east: Longitude
     west: Longitude
 
-    def __post_init__(self):
-        """Set self attributes."""
-        for field_name, field in self.__dataclass_fields__.items():
-            setattr(self, field_name, field.type(getattr(self, field_name)))
+    def __init__(
+        self,
+        north: Latitude | float | int,
+        south: Latitude | float | int,
+        east: Longitude | float | int,
+        west: Longitude | float | int,
+    ) -> None:
+        """Set north, south, east, and west attributes."""
+        self.north = Latitude(north)
+        self.south = Latitude(south)
+        self.east = Longitude(east)
+        self.west = Longitude(west)
 
 
 def _generate_point_grid(
-    lat_lon_bbox: dict | tuple,
+    lat_lon_bbox: dict,
     lat_res: float,
-    lon_res: float,
-    offset:bool = None,
+    lon_res: float| None = None,
+    offset:bool | None = None,
 ) -> pd.DataFrame:
     """Create a grid of longitude and latitude points between specified minimum and maximum values.
 
@@ -157,8 +166,8 @@ def _generate_point_grid(
 
 def _find_nearest_point(
     df_point_grid: pd.DataFrame,
-    target_lat: float,
-    target_lon: float,
+    target_lat: float | int,
+    target_lon: float | int,
 ) -> pd.Series:
     """Find the nearest point in a DataFrame of latitude, longitude points to a target point (target_lat, target_lon).
 

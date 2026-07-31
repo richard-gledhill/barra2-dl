@@ -62,7 +62,7 @@ def _list_months(
 def _list_timestamp_range(
     dataframe: pd.DataFrame,
     timestamp_column: str,
-) -> list:
+) -> list[pd.Timestamp]:
     """Get a list containing the range between the first and last timestamp in the specified column of the DataFrame.
 
     Args:
@@ -102,7 +102,7 @@ def point_data_urlfilenames(
     longitude: float | int,
     start_datetime: str | datetime,
     end_datetime: str | datetime,
-    fileout_prefix: str = None,
+    fileout_prefix: str | None  = None,
     fileout_type: str = 'csv_file',
 ) -> list[URLFilenamePair]:
     """Generate a list of URLs and Filenames for downloading barra2 point data.

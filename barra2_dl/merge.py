@@ -48,7 +48,7 @@ def _merge_suffix_columns(
 def merge_csvs_to_df(
     filein_folder: str,
     filename_pattern: str = '*.csv',
-    index_for_join: str | list[str] = None,
+    index_for_join: str | list[str] | None = None,
 ) -> pd.DataFrame:
     """Function to merge csv files iteratively from a folder based on filename wildcard.
 

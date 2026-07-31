@@ -65,6 +65,9 @@ build-backend = "poetry.core.masonry.api"
 [tool.nitpick]
 style = "https://raw.githubusercontent.com/wemake-services/wemake-python-styleguide/master/styles/nitpick-style-wemake.toml"
 
+[tool.mypy]
+disallow_untyped_defs = false
+check_untyped_defs = true
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.
