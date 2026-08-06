@@ -130,7 +130,7 @@ Or if you are so inclined or use this for commercial work you can
 
 ## Authors and acknowledgment
 
-[akarich73](https://github.com/akarich73)
+[richard-gledhill](https://github.com/richard-gledhill)
 
 This project was generated with [`wemake-python-package`](https://github.com/wemake-services/wemake-python-package). Current template version is: [326622187bdef4596c6fe0901e481bc6e7ebc93a](https://github.com/wemake-services/wemake-python-package/tree/326622187bdef4596c6fe0901e481bc6e7ebc93a). See what is [updated](https://github.com/wemake-services/wemake-python-package/compare/326622187bdef4596c6fe0901e481bc6e7ebc93a...master) since then.
 
