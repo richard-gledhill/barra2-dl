@@ -216,3 +216,5 @@ fabric.properties
 
 # pyenv
 .python-version
+/scripts/cache/
+/scripts/output/
