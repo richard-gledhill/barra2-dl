@@ -2,7 +2,7 @@
 
 import logging
 import sys
-from typing import List
+from typing import List, overload
 
 import numpy as np
 import pandas as pd
@@ -39,6 +39,10 @@ def calculate_wind_speed(
     return np.sqrt(u ** 2 + v ** 2)
 
 
+@overload
+def wind_components_to_speed(ua: float | int, va: float | int) -> float: ...
+@overload
+def wind_components_to_speed(ua: list[float | int], va: list[float | int]) -> list[float]: ...
 def wind_components_to_speed(
     ua: float | int | list[float | int],
     va: float | int | list[float | int],
@@ -64,7 +68,7 @@ def wind_components_to_speed(
             raise ValueError('All elements in both lists must be either float or int.')
         if len(ua) != len(va):
             raise ValueError('Both lists must be of the same length.')
-        return [calculate_wind_speed(u, v) for u, v in zip(ua, va)]
+        return [calculate_wind_speed(u, v) for u, v in zip(ua, va, strict=True)]
     else:
         raise ValueError('Both arguments must be either both float/int or both lists of float/int.')
 
@@ -87,6 +91,10 @@ def calculate_wind_direction(
     return np.mod(180 + np.rad2deg(np.arctan2(u, v)), 360)
 
 
+@overload
+def wind_components_to_direction(ua: float | int, va: float | int) -> float: ...
+@overload
+def wind_components_to_direction(ua: List[float | int], va: List[float | int]) -> List[float]: ...
 def wind_components_to_direction(
     ua: float | int | List[float | int],
     va: float | int | List[float | int],
@@ -110,7 +118,7 @@ def wind_components_to_direction(
             raise ValueError('All elements in both lists must be either float or int.')
         if len(ua) != len(va):
             raise ValueError('Both lists must be of the same length.')
-        return [calculate_wind_direction(u, v) for u, v in zip(ua, va)]
+        return [calculate_wind_direction(u, v) for u, v in zip(ua, va, strict=True)]
     else:
         raise ValueError('Both arguments must be either both float/int or both lists of float/int.')
 
@@ -141,7 +149,7 @@ def convert_wind_components(
         mask_ua = df_merged.columns.str.contains(tup[0])  # select the ua column header
         mask_va = df_merged.columns.str.contains(tup[1])  # select the va column header
 
-        if np.any(mask_ua == True) and np.any(mask_va == True):
+        if np.any(mask_ua) and np.any(mask_va):
             # create temporary dataframe for ua and va using the mask
             df_merged_ua = df_merged.loc[:, mask_ua]
             df_merged_va = df_merged.loc[:, mask_va]

@@ -1,65 +1,68 @@
-[tool.poetry]
+[project]
 name = "barra2-dl"
-description = "A tool for downloading BARRA version 2 (BARRA2) atmospheric reanalysis data."
 version = "0.3.0"
-license = "CC-BY-4.0"
-
-authors = ["akarich73 <rich_gledhill@hotmail.com>",]
-
+description = "A tool for downloading BARRA version 2 (BARRA2) atmospheric reanalysis data."
+authors = [{ name = "akarich73", email = "rich_gledhill@hotmail.com" }]
+requires-python = ">=3.12,<4"
 readme = "README.md"
-
-repository = "https://github.com/akarich73/barra2-dl"
-
-keywords = ["downloader","barra2","atmospheric","reanlysis","wind"]
-
+license = "CC-BY-4.0"
+keywords = [
+    "downloader",
+    "barra2",
+    "atmospheric",
+    "reanlysis",
+    "wind",
+]
 classifiers = [
-  "Development Status :: 1 - Planning",
-  "Intended Audience :: Science/Research",
-  "License :: Creative Commons Attribution 4.0 International",
-  "Natural Language :: English",
-  "Programming Language :: Python :: 3.12",
-  "Topic :: Scientific/Engineering",
-  "Topic :: Scientific/Engineering :: Atmospheric Science",
-  "Topic :: Software Development :: Libraries :: Python Modules",
-  "Operating System :: OS Independent",
+    "Development Status :: 1 - Planning",
+    "Intended Audience :: Science/Research",
+    "License :: Creative Commons Attribution 4.0 International",
+    "Natural Language :: English",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Atmospheric Science",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "pandas>=2.2.3,<3",
+    "requests>=2.32.3,<3",
+    "numpy>=2.1.2,<3",
+    "ipykernel>=7.3.0,<8",
+    "pandas-stubs~=2.3.3",
 ]
 
-[tool.poetry.dependencies]
-python = "^3.10"
-pandas = "^2.2.3"
-pathlib = "^1.0.1"
-requests = "^2.32.3"
-numpy = "^2.1.2"
-pytest = "==9.1.1"
-ipykernel = "^7.3.0"
-pandas-stubs = "~=2.3.3"
+[project.urls]
+Repository = "https://github.com/akarich73/barra2-dl"
 
-[tool.poetry.group.dev.dependencies]
-mypy = ">=1.8,<3.0"
+[dependency-groups]
+dev = [
+    "mypy>=1.8,<3.0",
+    "wemake-python-styleguide>=0.18,<1.8",
+    "flake8-pytest-style>=1.6,<2",
+    "nitpick>=0.34,<0.39",
+    "pytest>=8,<10",
+    "pytest-cov>=4.1,<8.0",
+    "pytest-randomly>=3.15,<4",
+    "ruff>=0.9.10,<0.17.0",
+]
+docs = [
+    "sphinx>=7.1,<8",
+    "sphinx-autodoc-typehints>=1.25,<2",
+    "m2r2>=0.3,<0.4",
+    "tomli>=2.0,<3",
+    "doc8>=2.0,<3",
+]
 
-wemake-python-styleguide = ">=0.18,<1.8"
-flake8-pytest-style = "^1.6"
-nitpick = ">=0.34,<0.39"
+[tool.uv]
+default-groups = ["dev"]
 
-pytest = ">=8,<10"
-pytest-cov = ">=4.1,<8.0"
-pytest-randomly = "^3.15"
-ruff = ">=0.9.10,<0.17.0"
-
-[tool.poetry.group.docs]
-optional = true
-
-[tool.poetry.group.docs.dependencies]
-sphinx = "^7.1"
-sphinx-autodoc-typehints = "^1.25"
-m2r2 = "^0.3"
-tomli = "^2.0"
-doc8 = "^2.0"
-
+[tool.uv.build-backend]
+module-root = ""
 
 [build-system]
-requires = ["poetry-core>=1.9.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["uv_build>=0.11.32,<0.12.0"]
+build-backend = "uv_build"
 
 
 [tool.nitpick]

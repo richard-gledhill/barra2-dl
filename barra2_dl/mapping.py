@@ -8,7 +8,7 @@ Todo:
     Implement _format_lat_lon for converting lat lon for file naming
 """
 from dataclasses import dataclass
-from typing import Self
+from typing import Self, cast
 
 import numpy as np
 import pandas as pd
@@ -189,9 +189,9 @@ def _find_nearest_point(
     if not (min_lat <= target_lat <= max_lat) or not (min_lon <= target_lon <= max_lon):
         raise ValueError("Target latitude and/or longitude are out of the range of the DataFrame's coordinates.")
 
-    distances = np.sqrt((df_point_grid['latitude'] - target_lat) ** 2 + (df_point_grid['longitude'] - target_lon) ** 2)
+    distances = ((df_point_grid['latitude'] - target_lat) ** 2 + (df_point_grid['longitude'] - target_lon) ** 2) ** 0.5
     nearest_index = distances.idxmin()
-    return df_point_grid.loc[nearest_index]
+    return cast(pd.Series, df_point_grid.loc[nearest_index])
 
 
 def _format_lat_lon(

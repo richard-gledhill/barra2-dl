@@ -36,7 +36,7 @@ output_dir = r'scripts\output'
 # pre-configured LatLonPoint class in barra2_dl.mapping module. Point data is downloaded to the nearest node.
 #%%
 # centre of Australia used for demo
-lat_lon_point = {'lat': -23.5527472, 'lon': 133.3961111}
+# lat_lon_point = {'lat': -23.5527472, 'lon': 133.3961111}  # dict alternative shown for reference only
 
 # or use custom class from mapping
 lat_lon_point = LatLonPoint(-23.5527472, 133.3961111)
