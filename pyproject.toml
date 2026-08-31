@@ -3,7 +3,7 @@ name = "barra2-dl"
 version = "0.3.0"
 description = "A tool for downloading BARRA version 2 (BARRA2) atmospheric reanalysis data."
 authors = [{ name = "akarich73", email = "rich_gledhill@hotmail.com" }]
-requires-python = ">=3.10,<4"
+requires-python = ">=3.12,<4"
 readme = "README.md"
 license = "CC-BY-4.0"
 keywords = [

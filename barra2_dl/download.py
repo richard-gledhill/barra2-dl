@@ -24,8 +24,8 @@ type URLFilenamePair = tuple[str, str]
 
 
 def _list_months(
-    start_datetime: str,
-    end_datetime: str,
+    start_datetime: str | datetime,
+    end_datetime: str | datetime,
     freq: str = 'MS',
 ) -> list:
     """Generate a list of months between the given start and end datetime.
