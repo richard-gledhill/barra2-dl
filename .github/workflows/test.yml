@@ -32,29 +32,24 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
-    - name: Install poetry
-      run: |
-        curl -sSL "https://install.python-poetry.org" | python
-
-        # Adding `poetry` to `$PATH`:
-        echo "$HOME/.poetry/bin" >> "$GITHUB_PATH"
+    - name: Install uv
+      uses: astral-sh/setup-uv@v7
+      with:
+        python-version: ${{ matrix.python-version }}
 
     - name: Install dependencies
-      run: |
-        poetry config virtualenvs.in-project true
-        poetry run pip install -U pip
-        poetry install
+      run: uv sync --all-groups
 
     - name: Run checks
       run: |
-        poetry run ruff check --exit-non-zero-on-fix
-        poetry run ruff format --check --diff
-        poetry run flake8 .
-        poetry run mypy .
-        poetry run pytest
-        poetry run poetry check
-        poetry run pip check
+        uv run ruff check --exit-non-zero-on-fix
+        uv run ruff format --check --diff
+        uv run flake8 .
+        uv run mypy .
+        uv run pytest
+        uv lock --check
+        uv pip check
 
     - name: Run integration test
       run: |
-        poetry run sh tests/test_integration.sh
+        uv run sh tests/test_integration.sh
