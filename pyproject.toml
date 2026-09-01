@@ -47,7 +47,7 @@ dev = [
     "ruff>=0.9.10,<0.17.0",
 ]
 docs = [
-    "sphinx>=7.1,<8",
+    "sphinx>=7.1,<10",
     "sphinx-autodoc-typehints>=1.25,<2",
     "m2r2>=0.3,<0.4",
     "tomli>=2.0,<3",
