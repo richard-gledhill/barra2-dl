@@ -48,7 +48,7 @@ dev = [
 ]
 docs = [
     "sphinx>=7.1,<8",
-    "sphinx-autodoc-typehints>=1.25,<2",
+    "sphinx-autodoc-typehints>=1.25,<4",
     "m2r2>=0.3,<0.4",
     "tomli>=2.0,<3",
     "doc8>=2.0,<3",
