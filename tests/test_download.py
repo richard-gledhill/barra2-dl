@@ -196,8 +196,3 @@ def test_download_multithread(
     for item in [item[1] for item in urlfilenames]:
         filename = download_folder / os.path.basename(item)
         assert filename.exists()
-
-
-
-
-

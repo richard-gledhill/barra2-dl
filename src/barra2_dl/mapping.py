@@ -216,4 +216,3 @@ def _format_lat_lon(
     formatted_lon = '{:.2f}'.format(abs(longitude))
 
     return [formatted_lat, formatted_lon]
-

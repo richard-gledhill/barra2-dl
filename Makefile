@@ -1,5 +1,10 @@
 SHELL:=/usr/bin/env bash
 
+.PHONY: install
+install:
+	uv sync --all-groups
+	uv run pre-commit install
+
 .PHONY: lint
 lint:
 	uv run mypy src/barra2_dl tests
