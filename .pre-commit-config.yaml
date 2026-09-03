@@ -12,5 +12,9 @@ repos:
       - id: end-of-file-fixer
       - id: trailing-whitespace
 
-  # ruff-pre-commit hooks land in Phase 3 of the module structure refactor,
-  # once flake8/wemake-python-styleguide/nitpick are replaced by ruff.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: "v0.16.5"
+    hooks:
+      - id: ruff-check
+        args: [--exit-non-zero-on-fix]
+      - id: ruff-format

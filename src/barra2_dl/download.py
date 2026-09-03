@@ -1,4 +1,5 @@
 """This module contains the barra2 download function(s)."""
+
 import calendar
 import logging
 import sys
@@ -15,9 +16,9 @@ logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
 __all__ = [
-    'point_data_urlfilenames',
-    'download_serial',
     'download_multithread',
+    'download_serial',
+    'point_data_urlfilenames',
 ]
 
 type URLFilenamePair = tuple[str, str]
@@ -102,7 +103,7 @@ def point_data_urlfilenames(
     longitude: float | int,
     start_datetime: str | datetime,
     end_datetime: str | datetime,
-    fileout_prefix: str | None  = None,
+    fileout_prefix: str | None = None,
     fileout_type: str = 'csv_file',
 ) -> list[URLFilenamePair]:
     """Generate a list of URLs and Filenames for downloading barra2 point data.
@@ -160,21 +161,20 @@ def point_data_urlfilenames(
             time_end_str = time_end.isoformat() + 'Z'
 
             # update thredds_base_url and set as url for request
-            url = barra2_url.format(var=var,
-                                  year=year,
-                                  month=month,
-                                  latitude=latitude,
-                                  longitude=longitude,
-                                  time_start_str=time_start_str,
-                                  time_end_str=time_end_str,
-                                  fileout_type=fileout_type)
+            url = barra2_url.format(
+                var=var,
+                year=year,
+                month=month,
+                latitude=latitude,
+                longitude=longitude,
+                time_start_str=time_start_str,
+                time_end_str=time_end_str,
+                fileout_type=fileout_type,
+            )
 
             # set fileout_name
             fileout_name = (
-                f'{fileout_prefix}_'
-                f'{var}_'
-                f"{time_start.strftime('%Y%m%d')}_{time_end.strftime('%Y%m%d')}"
-                f'.{fileout_ext}'
+                f'{fileout_prefix}_{var}_{time_start.strftime("%Y%m%d")}_{time_end.strftime("%Y%m%d")}.{fileout_ext}'
             )
             # append url and filename as tuple
             point_data_urlfilenamepair.append((url, fileout_name))
@@ -216,7 +216,7 @@ def _download_file(
         sys.stdout.write(f'<{file_name}> already exists in the folder <{folder_path}>. File not downloaded.')
         sys.stdout.write('\n')
     else:
-        response = requests.get(url) #, timeout=20
+        response = requests.get(url, timeout=20)
         # check file is not empty or contains server error 'FileNotFound: No such file or directory'
         # Check if the request was successful
         if response.status_code == 200:

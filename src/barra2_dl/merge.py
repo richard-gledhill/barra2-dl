@@ -35,7 +35,7 @@ def _merge_suffix_columns(
     """
     for column in df.columns:
         if column.endswith(suffix_x):
-            base_column = column[:-len(suffix_x)]
+            base_column = column[: -len(suffix_x)]
             column_y = base_column + suffix_y
             if column_y in df.columns:
                 # Create a new column without suffix and merge the values

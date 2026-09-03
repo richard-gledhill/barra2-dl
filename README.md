@@ -89,9 +89,9 @@ urlfilenames = barra2_dl.download.point_data_urlfilenames(
     barra2_vars=BARRA2_VAR_WIND_DEFAULT,
     latitude=-23.5527472,
     longitude=133.3961111,
-    start_datetime=datetime.strptime("2023-01-01T00:00:00Z", "%Y-%m-%dT%H:%M:%SZ"),
-    end_datetime=datetime.strptime("2023-03-31T23:00:00Z", "%Y-%m-%dT%H:%M:%SZ"),
-    fileout_prefix="Demo",
+    start_datetime=datetime.strptime('2023-01-01T00:00:00Z', '%Y-%m-%dT%H:%M:%SZ'),
+    end_datetime=datetime.strptime('2023-03-31T23:00:00Z', '%Y-%m-%dT%H:%M:%SZ'),
+    fileout_prefix='Demo',
 )
 
 cache_dir = r'scripts\cache'

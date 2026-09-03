@@ -7,8 +7,9 @@ install:
 
 .PHONY: lint
 lint:
+	uv run pre-commit run -a
 	uv run mypy src/barra2_dl tests
-	uv run flake8 .
+	uv run deptry src
 	if uv run command -v doc8 > /dev/null 2>&1; then uv run doc8 -q docs; fi
 
 .PHONY: unit
