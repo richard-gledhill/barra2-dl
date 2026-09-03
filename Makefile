@@ -2,7 +2,7 @@ SHELL:=/usr/bin/env bash
 
 .PHONY: lint
 lint:
-	uv run mypy barra2_dl tests
+	uv run mypy src/barra2_dl tests
 	uv run flake8 .
 	if uv run command -v doc8 > /dev/null 2>&1; then uv run doc8 -q docs; fi
 

@@ -43,7 +43,7 @@ We use `mypy` to run type checks on our code.
 To use it:
 
 ```bash
-mypy barra2_dl tests/**/*.py
+mypy src/barra2_dl tests/**/*.py
 ```
 
 This step is mandatory during the CI.
