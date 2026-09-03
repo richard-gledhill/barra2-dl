@@ -128,8 +128,8 @@ instance/
 # Scrapy stuff:
 .scrapy
 
-# Sphinx documentation
-docs/_build/
+# MkDocs documentation
+site/
 
 # PyBuilder
 target/

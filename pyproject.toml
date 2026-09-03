@@ -46,11 +46,9 @@ dev = [
     "ruff>=0.9.10,<0.17.0",
 ]
 docs = [
-    "sphinx>=7.1,<8",
-    "sphinx-autodoc-typehints>=1.25,<2",
-    "m2r2>=0.3,<0.4",
-    "tomli>=2.0,<3",
-    "doc8>=2.0,<3",
+    "mkdocs>=1.6,<2",
+    "mkdocs-material>=9.7,<10",
+    "mkdocstrings[python]>=1.0,<2",
 ]
 
 [tool.uv]

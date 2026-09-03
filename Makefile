@@ -10,7 +10,6 @@ lint:
 	uv run pre-commit run -a
 	uv run mypy src/barra2_dl tests
 	uv run deptry src
-	if uv run command -v doc8 > /dev/null 2>&1; then uv run doc8 -q docs; fi
 
 .PHONY: unit
 unit:
@@ -23,3 +22,11 @@ package:
 
 .PHONY: test
 test: lint package unit
+
+.PHONY: docs-test
+docs-test: ## Test if documentation can be built without warnings or errors
+	uv run mkdocs build -s
+
+.PHONY: docs
+docs: ## Build and serve the documentation
+	uv run mkdocs serve
