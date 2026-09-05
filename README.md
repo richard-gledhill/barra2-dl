@@ -1,7 +1,6 @@
 # barra2-dl
 
 [![Build Status](https://img.shields.io/github/actions/workflow/status/richard-gledhill/barra2-dl/main.yml?branch=main)](https://github.com/richard-gledhill/barra2-dl/actions/workflows/main.yml?query=branch%3Amain)
-[![codecov](https://codecov.io/gh/akarich73/barra2-dl/branch/master/graph/badge.svg)](https://codecov.io/gh/akarich73/barra2-dl)
 [![Python Version](https://img.shields.io/pypi/pyversions/barra2-dl.svg)](https://pypi.org/project/barra2-dl/)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
