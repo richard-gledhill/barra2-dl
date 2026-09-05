@@ -33,7 +33,7 @@ dependencies = [
 ]
 
 [project.urls]
-Repository = "https://github.com/akarich73/barra2-dl"
+Repository = "https://github.com/richard-gledhill/barra2-dl"
 
 [dependency-groups]
 dev = [

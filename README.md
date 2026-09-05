@@ -1,9 +1,9 @@
 # barra2-dl
 
-[![Build Status](https://github.com/akarich73/barra2-dl/workflows/test/badge.svg?branch=master&event=push)](https://github.com/akarich73/barra2-dl/actions?query=workflow%3Atest)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/richard-gledhill/barra2-dl/main.yml?branch=main)](https://github.com/richard-gledhill/barra2-dl/actions/workflows/main.yml?query=branch%3Amain)
 [![codecov](https://codecov.io/gh/akarich73/barra2-dl/branch/master/graph/badge.svg)](https://codecov.io/gh/akarich73/barra2-dl)
 [![Python Version](https://img.shields.io/pypi/pyversions/barra2-dl.svg)](https://pypi.org/project/barra2-dl/)
-[![wemake-python-styleguide](https://img.shields.io/badge/style-wemake-000000.svg)](https://github.com/wemake-services/wemake-python-styleguide)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
 A tool for downloading BARRA version 2 (BARRA2) atmospheric reanalysis data.
 
@@ -102,7 +102,7 @@ Also refer to the example Jupyter Notebook and script
 
 ## License
 
-[CC-BY-4.0](https://github.com/akarich73/barra2-dl/blob/master/LICENSE)
+[CC-BY-4.0](https://github.com/richard-gledhill/barra2-dl/blob/main/LICENSE)
 
 
 ## Roadmap
@@ -114,7 +114,7 @@ Also refer to the example Jupyter Notebook and script
 6) CLI interface
 
 ## Contributing
-Refer to [Contributing.md](https://github.com/akarich73/barra2-dl/blob/cddf58cb8224bcab8c5311b4f10501281bec84f7/CONTRIBUTING.md)
+Refer to [Contributing.md](https://github.com/richard-gledhill/barra2-dl/blob/main/CONTRIBUTING.md)
 
 Or if you are so inclined or use this for commercial work you can
 [!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://www.buymeacoffee.com/richardgledhill)
