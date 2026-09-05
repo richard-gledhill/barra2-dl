@@ -1,16 +1,15 @@
 # barra2-dl
 
-[![Build Status](https://github.com/akarich73/barra2-dl/workflows/test/badge.svg?branch=master&event=push)](https://github.com/akarich73/barra2-dl/actions?query=workflow%3Atest)
-[![codecov](https://codecov.io/gh/akarich73/barra2-dl/branch/master/graph/badge.svg)](https://codecov.io/gh/akarich73/barra2-dl)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/richard-gledhill/barra2-dl/main.yml?branch=main)](https://github.com/richard-gledhill/barra2-dl/actions/workflows/main.yml?query=branch%3Amain)
 [![Python Version](https://img.shields.io/pypi/pyversions/barra2-dl.svg)](https://pypi.org/project/barra2-dl/)
-[![wemake-python-styleguide](https://img.shields.io/badge/style-wemake-000000.svg)](https://github.com/wemake-services/wemake-python-styleguide)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
 A tool for downloading BARRA version 2 (BARRA2) atmospheric reanalysis data.
 
 ## Background
 
 barra2-dl is a Python package to bulk download data from
-BARRA2 reanalysis data for a specific latitude and longitude. It is for use in 
+BARRA2 reanalysis data for a specific latitude and longitude. It is for use in
 wind resource and energy assessments, but can be used to download other data from BARRA2.
 
 > BARRA2 provides the Bureau's higher resolution regional atmospheric reanalysis
@@ -36,15 +35,15 @@ wind resource and energy assessments, but can be used to download other data fro
 
 Source: https://thredds.nci.org.au/thredds/fileServer/ob53/BARRA2/README.txt
 
-Data from BARRA2 can be downloaded in netCDF or CSV format from the NCI THREDDS server 
+Data from BARRA2 can be downloaded in netCDF or CSV format from the NCI THREDDS server
 using the NetCDF Subset Service for Grids / Grids As Points.
 
-However, BARRA2 is structured with data for each variable saved in separate folders with separate files for each month. 
-Therefore, for the purpose of downloading a subset of variables for a specific location, 
+However, BARRA2 is structured with data for each variable saved in separate folders with separate files for each month.
+Therefore, for the purpose of downloading a subset of variables for a specific location,
 a recursive web request is required using the NetcdfSubset Data Access to get subsetted data.
 
 This package and example scripts provides examples to recursively download data in csv (for point data) relevant to wind farm resource analysis for
-specific locations and time periods. 
+specific locations and time periods.
 
 The following links provide an example of the urls:
 
@@ -54,7 +53,7 @@ The following links provide an example of the urls:
 >Or as grid points to get CSV files for ua50m wind speed:
 >https://thredds.nci.org.au/thredds/ncss/grid/ob53/output/reanalysis/AUS-11/BOM/ERA5/historical/hres/BARRA-R2/v1/1hr/ua50m/latest/ua50m_AUS-11_ERA5_historical_hres_BOM_BARRA-R2_v1_1hr_197901-197901.nc?var=ua50m&latitude=-36&longitude=140&time_start=1979-01-01T00%3A00%3A00Z&time_end=1979-01-31T23%3A00%3A00Z&timeStride=&vertCoord=&accept=csv
 
-Reference for downloading from thredds is provided here: 
+Reference for downloading from thredds is provided here:
 https://opus.nci.org.au/display/DAE/examples-thredds
 
 For a full list of BARRA2 variables refer to the BARRA2 FAQ:
@@ -66,7 +65,7 @@ https://opus.nci.org.au/pages/viewpage.action?pageId=264241166
 
 ## Features
 
-- Point data download to closest node from BARRA2 AUS-11 Reanalysis data 
+- Point data download to closest node from BARRA2 AUS-11 Reanalysis data
 - Fully typed with annotations and checked with mypy, [PEP561 compatible](https://www.python.org/dev/peps/pep-0561/)
 
 ## Installation
@@ -89,34 +88,34 @@ urlfilenames = barra2_dl.download.point_data_urlfilenames(
     barra2_vars=BARRA2_VAR_WIND_DEFAULT,
     latitude=-23.5527472,
     longitude=133.3961111,
-    start_datetime=datetime.strptime("2023-01-01T00:00:00Z", "%Y-%m-%dT%H:%M:%SZ"),
-    end_datetime=datetime.strptime("2023-03-31T23:00:00Z", "%Y-%m-%dT%H:%M:%SZ"),
-    fileout_prefix="Demo",
+    start_datetime=datetime.strptime('2023-01-01T00:00:00Z', '%Y-%m-%dT%H:%M:%SZ'),
+    end_datetime=datetime.strptime('2023-03-31T23:00:00Z', '%Y-%m-%dT%H:%M:%SZ'),
+    fileout_prefix='Demo',
 )
 
 cache_dir = r'scripts\cache'
 
 barra2_dl.download.download_multithread(urlfilenames, cache_dir)
 ```
-Also refer to the example Jupyter Notebook and script 
+Also refer to the example Jupyter Notebook and script
 
 ## License
 
-[CC-BY-4.0](https://github.com/akarich73/barra2-dl/blob/master/LICENSE)
+[CC-BY-4.0](https://github.com/richard-gledhill/barra2-dl/blob/main/LICENSE)
 
 
 ## Roadmap
-1) Currently, AUS-11 and AUST-04 1hr is implemented. 
+1) Currently, AUS-11 and AUST-04 1hr is implemented.
 2) Add option for AUS-22
-3) Implement bulk download for netCDF (for gridded data) 
+3) Implement bulk download for netCDF (for gridded data)
 4) Add download progress bar
 5) Multi-location download
 6) CLI interface
 
 ## Contributing
-Refer to [Contributing.md](https://github.com/akarich73/barra2-dl/blob/cddf58cb8224bcab8c5311b4f10501281bec84f7/CONTRIBUTING.md)
+Refer to [Contributing.md](https://github.com/richard-gledhill/barra2-dl/blob/main/CONTRIBUTING.md)
 
-Or if you are so inclined or use this for commercial work you can 
+Or if you are so inclined or use this for commercial work you can
 [!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://www.buymeacoffee.com/richardgledhill)
 
 ## Authors and acknowledgment
@@ -124,5 +123,3 @@ Or if you are so inclined or use this for commercial work you can
 [richard-gledhill](https://github.com/richard-gledhill)
 
 This project was generated with [`wemake-python-package`](https://github.com/wemake-services/wemake-python-package). Current template version is: [326622187bdef4596c6fe0901e481bc6e7ebc93a](https://github.com/wemake-services/wemake-python-package/tree/326622187bdef4596c6fe0901e481bc6e7ebc93a). See what is [updated](https://github.com/wemake-services/wemake-python-package/compare/326622187bdef4596c6fe0901e481bc6e7ebc93a...master) since then.
-
-

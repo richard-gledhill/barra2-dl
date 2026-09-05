@@ -112,6 +112,7 @@ coverage.xml
 *.cover
 .hypothesis/
 .ruff_cache/
+.pytest_cache/
 
 # Translations
 *.mo
@@ -128,8 +129,8 @@ instance/
 # Scrapy stuff:
 .scrapy
 
-# Sphinx documentation
-docs/_build/
+# MkDocs documentation
+site/
 
 # PyBuilder
 target/

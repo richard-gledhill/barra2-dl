@@ -7,6 +7,7 @@ Todo:
     Draft functions to set grid for mapping support.
     Implement _format_lat_lon for converting lat lon for file naming
 """
+
 from dataclasses import dataclass
 from typing import Self, cast
 
@@ -24,9 +25,10 @@ class _Geodetic(float):
         max (float): Maximum allowable value.
         name (str): Name
     """
+
     min = 0.0
     max = 0.0
-    name = "Geodetic"
+    name = 'Geodetic'
 
     def __new__(cls, value: float | int) -> Self:
         instance = super().__new__(cls, value)
@@ -36,21 +38,23 @@ class _Geodetic(float):
     def _check_limits(self):
         """We _ARE_ a float, so "self"  can be used directly for the value."""
         if not self.min <= self <= self.max:
-            raise ValueError(f"{self.name} must be from {self.min} to {self.max}")
+            raise ValueError(f'{self.name} must be from {self.min} to {self.max}')
 
 
 class Latitude(_Geodetic):
     """Specialization base class for Latitude and Longitude."""
+
     min = -90
     max = 90
-    name = "Lat"
+    name = 'Lat'
 
 
 class Longitude(_Geodetic):
     """Specialization base class for Latitude and Longitude."""
+
     min = -180
     max = 180
-    name = "Lon"
+    name = 'Lon'
 
 
 @dataclass
@@ -61,6 +65,7 @@ class LatLonPoint:
         lat (Latitude): Custom Geodetic
         lon (Longitude): Custom Geodetic
     """
+
     lat: Latitude
     lon: Longitude
 
@@ -87,6 +92,7 @@ class LatLonBBox:
     Todo:
         Add checks to make sure co-ordinates are correct with respect to each other.
     """
+
     north: Latitude
     south: Latitude
     east: Longitude
@@ -109,8 +115,8 @@ class LatLonBBox:
 def _generate_point_grid(
     lat_lon_bbox: dict,
     lat_res: float,
-    lon_res: float| None = None,
-    offset:bool | None = None,
+    lon_res: float | None = None,
+    offset: bool | None = None,
 ) -> pd.DataFrame:
     """Create a grid of longitude and latitude points between specified minimum and maximum values.
 
@@ -137,29 +143,26 @@ def _generate_point_grid(
             raise ValueError("Dictionary must contain 'north', 'south', 'east', and 'west' keys.")
     elif isinstance(lat_lon_bbox, tuple):
         if len(lat_lon_bbox) != 4:
-            raise ValueError("Tuple must contain exactly 4 values: (north, south, east, west).")
+            raise ValueError('Tuple must contain exactly 4 values: (north, south, east, west).')
     else:
-        raise ValueError("Bounds must be a dictionary or tuple.")
+        raise ValueError('Bounds must be a dictionary or tuple.')
 
     if lon_res is None:
         lon_res = lat_res
 
     if offset:
         lat_lon_bbox = {
-            'north': lat_lon_bbox['north'] - lat_res/2,
-            'south': lat_lon_bbox['south'] + lat_res/2,
-            'east': lat_lon_bbox['east'] - lon_res/2,
-            'west': lat_lon_bbox['west'] + lon_res/2
+            'north': lat_lon_bbox['north'] - lat_res / 2,
+            'south': lat_lon_bbox['south'] + lat_res / 2,
+            'east': lat_lon_bbox['east'] - lon_res / 2,
+            'west': lat_lon_bbox['west'] + lon_res / 2,
         }
 
     longitudes = np.arange(lat_lon_bbox['west'], lat_lon_bbox['east'] + lon_res, lon_res)
     latitudes = np.arange(lat_lon_bbox['south'], lat_lon_bbox['north'] + lat_res, lat_res)
     long_grid, lat_grid = np.meshgrid(longitudes, latitudes)
 
-    df_point_grid = pd.DataFrame({
-        'latitude': lat_grid.flatten(),
-        'longitude': long_grid.flatten()
-    })
+    df_point_grid = pd.DataFrame({'latitude': lat_grid.flatten(), 'longitude': long_grid.flatten()})
 
     return df_point_grid
 
@@ -212,8 +215,7 @@ def _format_lat_lon(
     Todo:
         Draft function and not yet implemented
     """
-    formatted_lat = ('S' if latitude < 0 else '') + '{:.2f}'.format(abs(latitude))
-    formatted_lon = '{:.2f}'.format(abs(longitude))
+    formatted_lat = ('S' if latitude < 0 else '') + f'{abs(latitude):.2f}'
+    formatted_lon = f'{abs(longitude):.2f}'
 
     return [formatted_lat, formatted_lon]
-
