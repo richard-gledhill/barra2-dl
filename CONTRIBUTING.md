@@ -14,7 +14,7 @@ To run a command inside the `virtualenv` prefix it with `uv run`, e.g. `uv run p
 
 ## One magic command
 
-Run `make test` to run everything we have!
+Run `make check` and `make test` to run everything we have!
 
 ## Tests
 

@@ -17,13 +17,15 @@ Dependency management is via uv.
 ```bash
 uv sync --all-groups     # install deps (run with `uv run <cmd>`)
 make install              # uv sync --all-groups; uv run pre-commit install
-make test                 # lint + package check + unit tests (what CI runs first)
 make lint                 # pre-commit run -a (incl. ruff check + ruff format); mypy src/barra2_dl tests; deptry src
-make unit                 # uv run pytest
-make package               # uv lock --check; uv pip check
+make check                 # lockfile check; lint; uv pip check (what CI's `quality` job runs)
+make test                 # uv run python -m pytest --doctest-modules
 make docs                  # uv run mkdocs serve
 make docs-test             # uv run mkdocs build -s
 ```
+
+`make check` and `make test` together are "everything" — CI runs them as separate jobs
+(`quality` and `tests-and-type-check`) rather than one combined target.
 
 Running things individually:
 

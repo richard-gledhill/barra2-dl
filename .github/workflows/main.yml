@@ -32,9 +32,7 @@ jobs:
         uses: ./.github/actions/setup-python-env
 
       - name: Run checks
-        run: |
-          make lint
-          make package
+        run: make check
 
   tests-and-type-check:
     runs-on: ubuntu-latest
