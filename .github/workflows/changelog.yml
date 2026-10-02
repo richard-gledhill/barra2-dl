@@ -13,7 +13,7 @@ jobs:
       contents: write # Allows the workflow to commit the file back to the repo
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Generate Changelog
         uses: smichard/conventional_changelog@2.0.0
