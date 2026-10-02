@@ -1,6 +1,6 @@
 [project]
 name = "barra2-dl"
-version = "0.3.0"
+version = "0.3.1"
 description = "A tool for downloading BARRA version 2 (BARRA2) atmospheric reanalysis data."
 authors = [{ name = "akarich73", email = "rich_gledhill@hotmail.com" }]
 requires-python = ">=3.12,<4"
