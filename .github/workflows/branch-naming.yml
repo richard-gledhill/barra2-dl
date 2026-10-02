@@ -1,0 +1,26 @@
+name: Branch naming
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  check-branch-name:
+    # Dependabot branches are always prefixed "dependabot/" (not configurable via
+    # dependabot.yml), so they can never match the pattern below - exempt them.
+    if: github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate branch name against Conventional Commits prefixes
+        env:
+          BRANCH_NAME: ${{ github.head_ref }}
+        run: |
+          PATTERN='^(feat|feature|fix|chore|docs|style|refactor|perf|test|build|ci|revert)/[a-z0-9._-]+$'
+          if [[ ! "$BRANCH_NAME" =~ $PATTERN ]]; then
+            echo "::error::Branch name '$BRANCH_NAME' doesn't match the required pattern."
+            echo "Expected: <type>/<short-description>, where <type> is one of:"
+            echo "  feat (or feature), fix, chore, docs, style, refactor, perf, test, build, ci, revert"
+            echo "Example: feature/config-command, chore/update-gitignore"
+            exit 1
+          fi
+          echo "Branch name '$BRANCH_NAME' is valid."
