@@ -2,7 +2,7 @@
 
 import logging
 import sys
-from typing import List, overload
+from typing import overload
 
 import numpy as np
 import pandas as pd
@@ -13,11 +13,11 @@ logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
 __all__ = [
-    'calculate_wind_speed',
-    'wind_components_to_speed',
     'calculate_wind_direction',
-    'wind_components_to_direction',
+    'calculate_wind_speed',
     'convert_wind_components',
+    'wind_components_to_direction',
+    'wind_components_to_speed',
 ]
 
 
@@ -36,7 +36,7 @@ def calculate_wind_speed(
     """
     if u == 0 and v == 0:
         return 0.0
-    return np.sqrt(u ** 2 + v ** 2)
+    return np.sqrt(u**2 + v**2)
 
 
 @overload
@@ -94,11 +94,11 @@ def calculate_wind_direction(
 @overload
 def wind_components_to_direction(ua: float | int, va: float | int) -> float: ...
 @overload
-def wind_components_to_direction(ua: List[float | int], va: List[float | int]) -> List[float]: ...
+def wind_components_to_direction(ua: list[float | int], va: list[float | int]) -> list[float]: ...
 def wind_components_to_direction(
-    ua: float | int | List[float | int],
-    va: float | int | List[float | int],
-) -> float | List[float]:
+    ua: float | int | list[float | int],
+    va: float | int | list[float | int],
+) -> float | list[float]:
     """Convert wind components ua and va to wind direction phi.
 
     Args:
@@ -153,7 +153,6 @@ def convert_wind_components(
             # create temporary dataframe for ua and va using the mask
             df_merged_ua = df_merged.loc[:, mask_ua]
             df_merged_va = df_merged.loc[:, mask_va]
-
 
             df_processed_v = pd.DataFrame(
                 wind_components_to_speed(df_merged_ua.iloc[:, 0].tolist(), df_merged_va.iloc[:, 0].tolist()),

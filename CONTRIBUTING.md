@@ -14,12 +14,12 @@ To run a command inside the `virtualenv` prefix it with `uv run`, e.g. `uv run p
 
 ## One magic command
 
-Run `make test` to run everything we have!
+Run `make check` and `make test` to run everything we have!
 
 ## Tests
 
-We use `pytest` and `flake8` for quality control.
-We also use [wemake_python_styleguide](https://github.com/wemake-services/wemake-python-styleguide) to enforce the code quality.
+We use `pytest` for tests and [`ruff`](https://github.com/astral-sh/ruff) (lint + format) for
+code style, plus [`deptry`](https://github.com/fpgmaas/deptry) to catch unused/missing dependencies.
 
 To run all tests:
 
@@ -30,12 +30,13 @@ pytest
 To run linting:
 
 ```bash
-flake8 .
+ruff check .
+ruff format --check --diff .
 ```
 
-Keep in mind: default virtual environment folder excluded by flake8 style checking is `.venv`.
-If you want to customize this parameter, you should do this in `setup.cfg`.
-These steps are mandatory during the CI.
+Directories excluded from `ruff` (`.venv`, `.git`, `build`, etc.) are configured in
+`pyproject.toml`'s `[tool.ruff]` section. These steps are mandatory during the CI, and
+`make lint` / `make check` run them all together (see [Makefile](Makefile)).
 
 ## Type checks
 
@@ -43,30 +44,29 @@ We use `mypy` to run type checks on our code.
 To use it:
 
 ```bash
-mypy barra2_dl tests/**/*.py
+mypy src/barra2_dl tests/**/*.py
 ```
 
 This step is mandatory during the CI.
 
 ## Submitting your code
 
-We use [trunk based](https://trunkbaseddevelopment.com/)
-development (we also sometimes call it `wemake-git-flow`).
+We use [trunk based](https://trunkbaseddevelopment.com/) development.
 
 What the point of this method?
 
-1. We use protected `master` branch,
+1. We use protected `main` branch,
    so the only way to push your code is via pull request
 2. We use issue branches: to implement a new feature or to fix a bug
    create a new branch named `issue-$TASKNUMBER`
-3. Then create a pull request to `master` branch
+3. Then create a pull request to `main` branch
 4. We use `git tag`s to make releases, so we can track what has changed
    since the latest release
 
 So, this way we achieve an easy and scalable development process
 which frees us from merging hell and long-living branches.
 
-In this method, the latest version of the app is always in the `master` branch.
+In this method, the latest version of the app is always in the `main` branch.
 
 ### Before submitting
 
@@ -79,8 +79,10 @@ Before submitting your code please do the following steps:
 5. Update `CHANGELOG.md` with a quick summary of your changes
 6. Run `pytest` again to make sure it is still working
 7. Run `mypy` to ensure that types are correct
-8. Run `flake8` to ensure that style is correct
-9. Run `doc8` to ensure that docs are correct
+8. Run `ruff check` and `ruff format --check` to ensure that style is correct
+9. Run `mkdocs build -s` (`make docs-test`) to ensure that docs build cleanly
+
+Or just run `make check` and `make test`, which cover all of the above.
 
 ## Other help
 

@@ -29,8 +29,8 @@ print('BARRA2_VAR_WIND_DEFAULT: ' + BARRA2_VAR_WIND_DEFAULT.__str__())
 # ## Set variables
 # Set the cache and output folders.
 #%%
-cache_dir = r'scripts\cache'
-output_dir = r'scripts\output'
+cache_dir = 'scripts/cache'
+output_dir = 'scripts/output'
 #%% md
 # Set the location point for downloading. This can either be set explicitly as a Dictionary, or using the
 # pre-configured LatLonPoint class in barra2_dl.mapping module. Point data is downloaded to the nearest node.

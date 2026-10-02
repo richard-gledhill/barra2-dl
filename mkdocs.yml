@@ -1,0 +1,57 @@
+site_name: barra2-dl
+repo_url: https://github.com/richard-gledhill/barra2-dl
+site_url: https://richard-gledhill.github.io/barra2-dl
+site_description: A tool for downloading BARRA version 2 (BARRA2) atmospheric reanalysis data.
+site_author: akarich73
+edit_uri: edit/main/docs/
+repo_name: richard-gledhill/barra2-dl
+copyright: Maintained by akarich73.
+
+nav:
+  - Home: index.md
+  - Modules: modules.md
+  - Changelog: changelog.md
+  - Contributing: contributing.md
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: ["src/barra2_dl"]
+
+theme:
+  name: material
+  feature:
+    tabs: true
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: white
+      accent: deep orange
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: deep orange
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  icon:
+    repo: fontawesome/brands/github
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/richard-gledhill/barra2-dl
+  # No PyPI social link: pyproject.toml's classifiers still say
+  # "Development Status :: 1 - Planning", so the package isn't published yet.
+
+markdown_extensions:
+  - toc:
+      permalink: true
+  - pymdownx.snippets:
+      base_path: ["."]
+      check_paths: true

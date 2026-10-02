@@ -16,35 +16,44 @@ Dependency management is via uv.
 
 ```bash
 uv sync --all-groups     # install deps (run with `uv run <cmd>`)
-make test                # lint + package check + unit tests (what CI runs first)
-make lint                 # mypy barra2_dl tests; flake8 .; doc8 on docs (if installed)
-make unit                 # uv run pytest
-make package               # uv lock --check; uv pip check
+make install              # uv sync --all-groups; uv run pre-commit install
+make lint                 # pre-commit run -a (incl. ruff check + ruff format); mypy src/barra2_dl tests; deptry src
+make check                 # lockfile check; lint; uv pip check (what CI's `quality` job runs)
+make test                 # uv run python -m pytest --doctest-modules
+make docs                  # uv run mkdocs serve
+make docs-test             # uv run mkdocs build -s
 ```
+
+`make check` and `make test` together are "everything" — CI runs them as separate jobs
+(`quality` and `tests-and-type-check`) rather than one combined target.
 
 Running things individually:
 
 ```bash
 uv run pytest tests/test_download.py            # single test file
 uv run pytest tests/test_download.py::test_name  # single test
-uv run mypy barra2_dl tests                      # type check
-uv run flake8 .                                  # wemake-python-styleguide + darglint lint
-uv run ruff check --exit-non-zero-on-fix          # ruff lint (also run in CI, not in Makefile)
-uv run ruff format --check --diff                 # ruff format check (also run in CI, not in Makefile)
+uv run mypy src/barra2_dl tests                  # type check
+uv run ruff check --exit-non-zero-on-fix          # ruff lint
+uv run ruff format --check --diff                 # ruff format check
+uv run deptry src                                 # unused/missing dependency check
+uv run pre-commit run -a                          # all pre-commit hooks (ruff + generic file checks)
 ```
 
-Notes on test config (`setup.cfg` `[tool:pytest]`):
-- `--doctest-modules` is enabled, so docstring doctests in `barra2_dl/*.py` are collected and run as tests too.
-- Coverage flags are present but commented out — coverage is not enforced locally.
-- `pytest-randomly` and `pytest-cov` are dev dependencies but not wired into default `addopts`.
+Notes on test config (`pyproject.toml` `[tool.pytest.ini_options]`):
+- `--doctest-modules` is enabled, so docstring doctests in `src/barra2_dl/*.py` are collected and run as tests too.
+- Coverage flags are commented out in a leftover `setup.cfg`-era style — coverage is not enforced locally.
+- `pytest-cov` is a dev dependency but not wired into `addopts` (dormant). `pytest-randomly` *is* active — it's an autoloading pytest plugin, so test order is randomized every run even without an explicit `addopts` entry (seed is printed at the top of each run).
 
-CI (`.github/workflows/test.yml`) runs on Python 3.12–3.14 and additionally runs
-`ruff check`, `ruff format --check`, and a `tests/test_integration.sh` script that
-does not currently exist in the repo — expect that step to fail if triggered.
+CI (`.github/workflows/main.yml`) runs three jobs: `quality` (pre-commit incl.
+ruff, mypy, deptry, lockfile/pip checks), `tests-and-type-check` (pytest + mypy,
+matrixed over Python 3.12–3.14), and `check-docs` (`mkdocs build -s`).
+`.github/workflows/on-release-main.yml` deploys the MkDocs site to GitHub Pages
+on a published GitHub release (requires Pages enabled via Settings → Pages →
+Source: GitHub Actions).
 
 ## Architecture
 
-The package (`barra2_dl/`) is a thin, functional pipeline of independent modules
+The package (`src/barra2_dl/`) is a thin, functional pipeline of independent modules
 tied together only by `__init__.py` (`from . import convert, download, mapping, merge`).
 There is no class-based orchestrator — callers (see `scripts/example_barra2_dl.py`
 and the README example) chain these modules manually:
@@ -91,10 +100,14 @@ build URLs → `download_multithread` into a cache dir → `merge_csvs_to_df` �
 
 - Requires Python ≥3.12; `download.py` uses 3.12+ `type` alias syntax
   (`type URLFilenamePair = tuple[str, str]`) and `match`/`case`.
-- Style is enforced by `wemake-python-styleguide` (via flake8) plus `ruff` and
-  `mypy --strict` (`setup.cfg`, `pyproject.toml`). Docstrings are Google-convention
-  and checked by `darglint`; `--doctest-modules` means example code in docstrings
-  must actually run.
+- Style is enforced by `ruff` alone (lint + format, config in `pyproject.toml`'s
+  `[tool.ruff]`; wemake-python-styleguide/flake8/nitpick were removed) plus `mypy`
+  (`[tool.mypy]`, *not* strict mode — `disallow_untyped_defs = false`). Docstrings
+  are Google-convention, checked by ruff's `D`/pydocstyle rules for presence and
+  format only — there's no darglint equivalent checking a docstring's `Args`/
+  `Returns` actually match the real signature. `--doctest-modules` means example
+  code in docstrings must actually run. `ruff format` uses `quote-style = "single"`
+  to match the existing codebase convention (ruff's own default is double quotes).
 - Private/internal helpers are prefixed `_` (e.g. `_download_file`,
   `_list_months`) and generally excluded from a module's `__all__`; public API
   surface of each module is declared explicitly via `__all__`.
