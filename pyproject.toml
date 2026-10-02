@@ -69,6 +69,7 @@ disallow_untyped_defs = false
 check_untyped_defs = true
 
 [tool.pytest.ini_options]
+testpaths = ["tests"]
 # `scripts` is jupytext notebook-style example code with unguarded top-level side
 # effects (network downloads, file I/O) - `--doctest-modules` must never import it.
 norecursedirs = ["*.egg", ".eggs", "dist", "build", "docs", "scripts", ".tox", ".git", "__pycache__"]
