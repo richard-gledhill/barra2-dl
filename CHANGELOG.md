@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - exclude bot-generated CHANGELOG.md from whitespace hooks [`07f370a`](https://github.com/richard-gledhill/barra2-dl/commit/07f370a)
 
 ### Documentation
+- :robot: changelog file generated [`71b3269`](https://github.com/richard-gledhill/barra2-dl/commit/71b3269)
 - :robot: changelog file generated [`45cf605`](https://github.com/richard-gledhill/barra2-dl/commit/45cf605)
 - :robot: changelog file generated [`e2c9f3b`](https://github.com/richard-gledhill/barra2-dl/commit/e2c9f3b)
 - align CONTRIBUTING with branch naming, releases and changelog automation [`15c79d5`](https://github.com/richard-gledhill/barra2-dl/commit/15c79d5)
@@ -21,9 +22,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - resolve leftover merge-conflict markers in README example [`0d0ea80`](https://github.com/richard-gledhill/barra2-dl/commit/0d0ea80)
 
 ### Chore
+- release 0.3.1 [`2fc77b3`](https://github.com/richard-gledhill/barra2-dl/commit/2fc77b3)
 - update pyproject classifiers and fix keyword typo [`2021803`](https://github.com/richard-gledhill/barra2-dl/commit/2021803)
 
 ### Other
+- Merge pull request #106 from richard-gledhill/chore/release-0.3.1 [`95634c9`](https://github.com/richard-gledhill/barra2-dl/commit/95634c9)
 - Merge pull request #100 from richard-gledhill/dependabot/github_actions/github-actions-dependencies-4cc89beca2 [`1b77086`](https://github.com/richard-gledhill/barra2-dl/commit/1b77086)
 - Merge pull request #105 from richard-gledhill/docs/contributing-branch-naming [`1862df1`](https://github.com/richard-gledhill/barra2-dl/commit/1862df1)
 - Merge pull request #104 from richard-gledhill/chore/pyproject-metadata [`6572dc4`](https://github.com/richard-gledhill/barra2-dl/commit/6572dc4)
