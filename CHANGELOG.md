@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - exclude bot-generated CHANGELOG.md from whitespace hooks [`07f370a`](https://github.com/richard-gledhill/barra2-dl/commit/07f370a)
 
 ### Documentation
+- :robot: changelog file generated [`45cf605`](https://github.com/richard-gledhill/barra2-dl/commit/45cf605)
 - :robot: changelog file generated [`e2c9f3b`](https://github.com/richard-gledhill/barra2-dl/commit/e2c9f3b)
 - align CONTRIBUTING with branch naming, releases and changelog automation [`15c79d5`](https://github.com/richard-gledhill/barra2-dl/commit/15c79d5)
 - fix README example, installation and feature list [`ca6d86d`](https://github.com/richard-gledhill/barra2-dl/commit/ca6d86d)
@@ -23,10 +24,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - update pyproject classifiers and fix keyword typo [`2021803`](https://github.com/richard-gledhill/barra2-dl/commit/2021803)
 
 ### Other
+- Merge pull request #100 from richard-gledhill/dependabot/github_actions/github-actions-dependencies-4cc89beca2 [`1b77086`](https://github.com/richard-gledhill/barra2-dl/commit/1b77086)
 - Merge pull request #105 from richard-gledhill/docs/contributing-branch-naming [`1862df1`](https://github.com/richard-gledhill/barra2-dl/commit/1862df1)
 - Merge pull request #104 from richard-gledhill/chore/pyproject-metadata [`6572dc4`](https://github.com/richard-gledhill/barra2-dl/commit/6572dc4)
 - Merge pull request #103 from richard-gledhill/fix/download-edge-cases [`35cd4b6`](https://github.com/richard-gledhill/barra2-dl/commit/35cd4b6)
 - Merge pull request #102 from richard-gledhill/fix/readme [`03a48a0`](https://github.com/richard-gledhill/barra2-dl/commit/03a48a0)
+- Bump smichard/conventional_changelog [`92c955a`](https://github.com/richard-gledhill/barra2-dl/commit/92c955a)
 - Merge branch 'main' into docs/contributing-branch-naming [`4cb6653`](https://github.com/richard-gledhill/barra2-dl/commit/4cb6653)
 - Merge branch 'main' into chore/pyproject-metadata [`6fdf006`](https://github.com/richard-gledhill/barra2-dl/commit/6fdf006)
 - Merge branch 'main' into fix/download-edge-cases [`bc5bfa3`](https://github.com/richard-gledhill/barra2-dl/commit/bc5bfa3)
