@@ -6,14 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## Unreleased changes
 
+### Bug Fixes
+- keep the start month for mid-month starts and allow single-cpu downloads [`bdf5a2d`](https://github.com/richard-gledhill/barra2-dl/commit/bdf5a2d)
+
 ### Continuous Integration
 - exclude bot-generated CHANGELOG.md from whitespace hooks [`07f370a`](https://github.com/richard-gledhill/barra2-dl/commit/07f370a)
 
 ### Documentation
+- :robot: changelog file generated [`e2c9f3b`](https://github.com/richard-gledhill/barra2-dl/commit/e2c9f3b)
+- align CONTRIBUTING with branch naming, releases and changelog automation [`15c79d5`](https://github.com/richard-gledhill/barra2-dl/commit/15c79d5)
+- fix README example, installation and feature list [`ca6d86d`](https://github.com/richard-gledhill/barra2-dl/commit/ca6d86d)
 - :robot: changelog file generated [`bda85aa`](https://github.com/richard-gledhill/barra2-dl/commit/bda85aa)
 - resolve leftover merge-conflict markers in README example [`0d0ea80`](https://github.com/richard-gledhill/barra2-dl/commit/0d0ea80)
 
+### Chore
+- update pyproject classifiers and fix keyword typo [`2021803`](https://github.com/richard-gledhill/barra2-dl/commit/2021803)
+
 ### Other
+- Merge pull request #105 from richard-gledhill/docs/contributing-branch-naming [`1862df1`](https://github.com/richard-gledhill/barra2-dl/commit/1862df1)
+- Merge pull request #104 from richard-gledhill/chore/pyproject-metadata [`6572dc4`](https://github.com/richard-gledhill/barra2-dl/commit/6572dc4)
+- Merge pull request #103 from richard-gledhill/fix/download-edge-cases [`35cd4b6`](https://github.com/richard-gledhill/barra2-dl/commit/35cd4b6)
+- Merge pull request #102 from richard-gledhill/fix/readme [`03a48a0`](https://github.com/richard-gledhill/barra2-dl/commit/03a48a0)
+- Merge branch 'main' into docs/contributing-branch-naming [`4cb6653`](https://github.com/richard-gledhill/barra2-dl/commit/4cb6653)
+- Merge branch 'main' into chore/pyproject-metadata [`6fdf006`](https://github.com/richard-gledhill/barra2-dl/commit/6fdf006)
+- Merge branch 'main' into fix/download-edge-cases [`bc5bfa3`](https://github.com/richard-gledhill/barra2-dl/commit/bc5bfa3)
+- Merge branch 'main' into fix/readme [`ad0c925`](https://github.com/richard-gledhill/barra2-dl/commit/ad0c925)
 - Merge pull request #101 from richard-gledhill/fix/changelog-precommit [`245bd76`](https://github.com/richard-gledhill/barra2-dl/commit/245bd76)
 - Merge pull request #99 from richard-gledhill/chore/automate-changelog [`9626386`](https://github.com/richard-gledhill/barra2-dl/commit/9626386)
 - Bump actions/checkout to v7 in changelog.yml [`153ed23`](https://github.com/richard-gledhill/barra2-dl/commit/153ed23)
