@@ -44,7 +44,7 @@ We use `mypy` to run type checks on our code.
 To use it:
 
 ```bash
-mypy src/barra2_dl tests/**/*.py
+mypy src/barra2_dl tests
 ```
 
 This step is mandatory during the CI.
@@ -57,11 +57,15 @@ What the point of this method?
 
 1. We use protected `main` branch,
    so the only way to push your code is via pull request
-2. We use issue branches: to implement a new feature or to fix a bug
-   create a new branch named `issue-$TASKNUMBER`
+2. We use short-lived topic branches: to implement a new feature or to fix a bug
+   create a new branch named `<type>/<short-description>`, where `<type>` is a
+   [Conventional Commits](https://www.conventionalcommits.org/) type (`feat`/`feature`, `fix`,
+   `chore`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `revert`),
+   e.g. `fix/readme-example` or `chore/update-gitignore`.
+   The `Branch naming` workflow checks this on every pull request (Dependabot branches are exempt)
 3. Then create a pull request to `main` branch
-4. We use `git tag`s to make releases, so we can track what has changed
-   since the latest release
+4. We use `git tag`s and GitHub releases to make releases, so we can track what has changed
+   since the latest release. Publishing a release also deploys the documentation site
 
 So, this way we achieve an easy and scalable development process
 which frees us from merging hell and long-living branches.
@@ -76,7 +80,9 @@ Before submitting your code please do the following steps:
 2. Add any changes you want
 3. Add tests for the new changes
 4. Edit documentation if you have changed something significant
-5. Update `CHANGELOG.md` with a quick summary of your changes
+5. Write [Conventional Commits](https://www.conventionalcommits.org/) messages
+   (e.g. `fix: ...`, `feat: ...`, `docs: ...`). Do not edit `CHANGELOG.md` by hand:
+   it is regenerated from the commit history on every push to `main`
 6. Run `pytest` again to make sure it is still working
 7. Run `mypy` to ensure that types are correct
 8. Run `ruff check` and `ruff format --check` to ensure that style is correct
