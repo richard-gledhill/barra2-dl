@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## Unreleased changes
 
+### Continuous Integration
+- allow manual docs deploy via workflow_dispatch [`93eb277`](https://github.com/richard-gledhill/barra2-dl/commit/93eb277)
+
+### Other
+- Merge pull request #107 from richard-gledhill/ci/docs-deploy-dispatch [`680eff1`](https://github.com/richard-gledhill/barra2-dl/commit/680eff1)
+
+## v0.3.1 (2026-10-02)
+
 ### Bug Fixes
 - keep the start month for mid-month starts and allow single-cpu downloads [`bdf5a2d`](https://github.com/richard-gledhill/barra2-dl/commit/bdf5a2d)
 
@@ -13,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - exclude bot-generated CHANGELOG.md from whitespace hooks [`07f370a`](https://github.com/richard-gledhill/barra2-dl/commit/07f370a)
 
 ### Documentation
+- :robot: changelog file generated [`a47f558`](https://github.com/richard-gledhill/barra2-dl/commit/a47f558)
 - :robot: changelog file generated [`71b3269`](https://github.com/richard-gledhill/barra2-dl/commit/71b3269)
 - :robot: changelog file generated [`45cf605`](https://github.com/richard-gledhill/barra2-dl/commit/45cf605)
 - :robot: changelog file generated [`e2c9f3b`](https://github.com/richard-gledhill/barra2-dl/commit/e2c9f3b)
