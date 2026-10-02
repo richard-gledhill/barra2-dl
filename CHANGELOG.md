@@ -6,10 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## Unreleased changes
 
+### Continuous Integration
+- exclude bot-generated CHANGELOG.md from whitespace hooks [`07f370a`](https://github.com/richard-gledhill/barra2-dl/commit/07f370a)
+
 ### Documentation
+- :robot: changelog file generated [`bda85aa`](https://github.com/richard-gledhill/barra2-dl/commit/bda85aa)
 - resolve leftover merge-conflict markers in README example [`0d0ea80`](https://github.com/richard-gledhill/barra2-dl/commit/0d0ea80)
 
 ### Other
+- Merge pull request #101 from richard-gledhill/fix/changelog-precommit [`245bd76`](https://github.com/richard-gledhill/barra2-dl/commit/245bd76)
 - Merge pull request #99 from richard-gledhill/chore/automate-changelog [`9626386`](https://github.com/richard-gledhill/barra2-dl/commit/9626386)
 - Bump actions/checkout to v7 in changelog.yml [`153ed23`](https://github.com/richard-gledhill/barra2-dl/commit/153ed23)
 - Rename CLAUDE.md to AGENTS.md, add changelog automation, document branch naming [`c9ae771`](https://github.com/richard-gledhill/barra2-dl/commit/c9ae771)
