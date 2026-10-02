@@ -1,7 +1,7 @@
 # barra2-dl
 
 [![Build Status](https://img.shields.io/github/actions/workflow/status/richard-gledhill/barra2-dl/main.yml?branch=main)](https://github.com/richard-gledhill/barra2-dl/actions/workflows/main.yml?query=branch%3Amain)
-[![Python Version](https://img.shields.io/pypi/pyversions/barra2-dl.svg)](https://pypi.org/project/barra2-dl/)
+[![Python Version](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2Frichard-gledhill%2Fbarra2-dl%2Fmain%2Fpyproject.toml)](https://github.com/richard-gledhill/barra2-dl/blob/main/pyproject.toml)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
 A tool for downloading BARRA version 2 (BARRA2) atmospheric reanalysis data.
@@ -65,13 +65,25 @@ https://opus.nci.org.au/pages/viewpage.action?pageId=264241166
 
 ## Features
 
-- Point data download to closest node from BARRA2 AUS-11 Reanalysis data
+- Point data download to closest node from BARRA2 AUS-11 (BARRA-R2) and AUST-04 (BARRA-C2) 1-hourly reanalysis data
+- Parallel, resumable download: files already in the cache folder are skipped
+- Merge the downloaded csv files into one DataFrame, and derive wind speed and direction from the u/v components
 - Fully typed with annotations and checked with mypy, [PEP561 compatible](https://www.python.org/dev/peps/pep-0561/)
 
 ## Installation
 
+barra2-dl is not published on PyPI. Install it from GitHub (Python 3.12 or later):
+
 ```bash
-# Clone or download repo
+pip install git+https://github.com/richard-gledhill/barra2-dl.git
+```
+
+Or clone the repository for development (uses [uv](https://docs.astral.sh/uv/)):
+
+```bash
+git clone https://github.com/richard-gledhill/barra2-dl.git
+cd barra2-dl
+uv sync
 ```
 
 ## Example
@@ -81,23 +93,37 @@ from datetime import datetime
 from pathlib import Path
 
 import barra2_dl
+from barra2_dl.globals import BARRA2_INDEX, BARRA2_URL_AUS11_1HR, BARRA2_VAR_WIND_DEFAULT
 
-from barra2_dl.globals import BARRA2_VAR_WIND_50, BARRA2_VAR_WIND_DEFAULT, BARRA2_INDEX
+cache_dir = Path('cache')
+cache_dir.mkdir(exist_ok=True)  # the download folder must already exist
 
+# 1. Build one (url, filename) pair per variable per month
 urlfilenames = barra2_dl.download.point_data_urlfilenames(
+    barra2_url=BARRA2_URL_AUS11_1HR,  # or BARRA2_URL_AUST04_1HR
     barra2_vars=BARRA2_VAR_WIND_DEFAULT,
     latitude=-23.5527472,
     longitude=133.3961111,
-    start_datetime=datetime.strptime('2023-01-01T00:00:00Z', '%Y-%m-%dT%H:%M:%SZ'),
-    end_datetime=datetime.strptime('2023-03-31T23:00:00Z', '%Y-%m-%dT%H:%M:%SZ'),
+    start_datetime=datetime(2023, 1, 1),
+    end_datetime=datetime(2023, 3, 31),
     fileout_prefix='Demo',
 )
 
-cache_dir = r'scripts\cache'
-
+# 2. Download the csv files into the cache folder (files already there are skipped)
 barra2_dl.download.download_multithread(urlfilenames, cache_dir)
+
+# 3. Merge the csv files into one DataFrame
+df_merged = barra2_dl.merge.merge_csvs_to_df(
+    filein_folder=str(cache_dir),
+    filename_pattern='Demo*.csv',
+    index_for_join=BARRA2_INDEX,
+)
+
+# 4. Add wind speed (v*) and meteorological direction (v*_phi_met) columns from ua*/va*
+df_converted = barra2_dl.convert.convert_wind_components(df_merged)
 ```
-Also refer to the example Jupyter Notebook and script
+
+Also refer to the example Jupyter Notebook and script in `scripts/`.
 
 ## License
 
