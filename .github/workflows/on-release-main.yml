@@ -3,6 +3,8 @@ name: release-main
 on:
   release:
     types: [published]
+  # Manual redeploy of the docs from the chosen branch (the github-pages environment allows main and v* tags)
+  workflow_dispatch:
 
 jobs:
 
