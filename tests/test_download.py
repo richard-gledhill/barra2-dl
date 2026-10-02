@@ -46,6 +46,43 @@ def test_list_months(start_datetime: str, end_datetime: str, expected: list) -> 
 
 
 @pytest.mark.parametrize(
+    ('start_datetime', 'end_datetime', 'expected'),
+    [
+        # a mid-month start still includes the month it falls in
+        ('2023-01-15', '2023-03-10', [Timestamp('2023-01-01'), Timestamp('2023-02-01'), Timestamp('2023-03-01')]),
+        ('2023-01-31', '2023-02-01', [Timestamp('2023-01-01'), Timestamp('2023-02-01')]),
+        (datetime(2023, 1, 15, 13, 30), datetime(2023, 1, 20), [Timestamp('2023-01-01')]),
+        # start and end within the same month give that month only
+        ('2023-06-10', '2023-06-20', [Timestamp('2023-06-01')]),
+        # end at the very start of the next month includes it
+        ('2023-12-31', '2024-01-01', [Timestamp('2023-12-01'), Timestamp('2024-01-01')]),
+    ],
+)
+def test_list_months_mid_month_start(
+    start_datetime: str | datetime, end_datetime: str | datetime, expected: list
+) -> None:
+    """The start month is never dropped when the start date is not the first of the month."""
+    assert barra2_dl.download._list_months(start_datetime, end_datetime) == expected
+
+
+def test_point_data_urlfilenames_mid_month_start() -> None:
+    """A mid-month start date still downloads the file for the start month."""
+    urlfilenames = barra2_dl.download.point_data_urlfilenames(
+        BARRA2_URL_AUS11_1HR,
+        ['ua50m'],
+        -23.5527472,
+        133.3961111,
+        datetime(2023, 1, 15),
+        datetime(2023, 2, 10),
+        'demo',
+    )
+    assert [filename for _, filename in urlfilenames] == [
+        'demo_ua50m_20230101_20230131.csv',
+        'demo_ua50m_20230201_20230228.csv',
+    ]
+
+
+@pytest.mark.parametrize(
     (
         'barra2_url',
         'barra2_vars',
@@ -230,3 +267,20 @@ def test_download_multithread(
     for item in [item[1] for item in urlfilenames]:
         filename = download_folder / os.path.basename(item)
         assert filename.exists()
+
+
+@pytest.mark.parametrize('cpus', [1, 2, 8])
+def test_download_multithread_pool_size(cpus: int, monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    """Downloads every file whatever the cpu count, including a single-cpu machine."""
+    downloaded: list[tuple[str, str, str]] = []
+
+    def fake_download_file(url: str, file_name: str, folder_path) -> None:
+        downloaded.append((url, file_name, str(folder_path)))
+
+    monkeypatch.setattr(barra2_dl.download, 'cpu_count', lambda: cpus)
+    monkeypatch.setattr(barra2_dl.download, '_download_file', fake_download_file)
+    urlfilenames = [(f'https://example.test/{i}', f'file_{i}.csv') for i in range(5)]
+
+    barra2_dl.download.download_multithread(urlfilenames, tmp_path)
+
+    assert sorted(downloaded) == sorted((url, name, str(tmp_path)) for url, name in urlfilenames)
