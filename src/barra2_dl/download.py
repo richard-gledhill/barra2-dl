@@ -33,7 +33,8 @@ def _list_months(
 
     This function converts the provided start and end datetime to datetime objects,
     validates them, and then generates a list of dates at the specified frequency
-    between the start and end datetime.
+    between the start and end datetime. The month containing start_datetime is always
+    included, so the range begins on the first day of that month.
 
     Args:
         start_datetime (str or datetime-like): The start datetime for generating dates.
@@ -57,7 +58,9 @@ def _list_months(
     except ValueError as error:
         raise ValueError(f'Invalid end_datetime provided: {error}') from None
 
-    return pd.date_range(start=start_datetime, end=end_datetime, freq=freq).tolist()
+    # date_range with a month-start freq skips the start month when start is mid-month, so begin on its first day
+    first_of_start_month = pd.Timestamp(start_datetime).normalize().replace(day=1)
+    return pd.date_range(start=first_of_start_month, end=end_datetime, freq=freq).tolist()
 
 
 def _list_timestamp_range(
@@ -277,9 +280,9 @@ def download_multithread(
         https://medium.com/towards-data-science/use-python-to-download-multiple-files-or-urls-in-parallel-1759da9d6535
     """
     # download multiple files in parallel
-    cpus = cpu_count()
+    workers = max(1, cpu_count() - 1)
     t0 = time.time()
-    with ThreadPool(cpus - 1) as pool:
+    with ThreadPool(workers) as pool:
         pool.starmap(_download_file, [(url, filename, folder_path) for url, filename in urlfilenames])
     logger.info(f'Download time <{time.time() - t0}>')
     sys.stdout.write(f'Download time: <{time.time() - t0}>')
