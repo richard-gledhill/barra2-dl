@@ -7,6 +7,10 @@ edit_uri: edit/main/docs/
 repo_name: richard-gledhill/barra2-dl
 copyright: Maintained by akarich73.
 
+# docs/development/ holds internal docs
+exclude_docs: |
+  development/
+
 nav:
   - Home: index.md
   - Modules: modules.md
