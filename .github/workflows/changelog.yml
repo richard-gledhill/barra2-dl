@@ -1,16 +1,20 @@
 name: Generate Changelog
 
+# Run on demand before cutting a release (Actions tab -> Generate Changelog -> Run workflow).
+# It pushes a docs/changelog branch rather than committing to main, because main requires the ci-ok check.
+# Open the PR from the link in the job summary; a PR you open yourself runs CI as normal.
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   changelog:
     runs-on: ubuntu-latest
-    name: Generate and Commit Changelog
+    name: Generate Changelog and push branch
     permissions:
-      contents: write # Allows the workflow to commit the file back to the repo
+      contents: write # push the docs/changelog branch
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v7
@@ -20,13 +24,18 @@ jobs:
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set Git User Info
+      - name: Push the changelog branch
+        env:
+          BRANCH: docs/changelog
         run: |
+          if git diff --quiet -- CHANGELOG.md; then
+            echo "No changelog changes." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           git config user.name 'GitHub Actions Bot'
           git config user.email 'actions@github.com'
-
-      - name: Commit Changelog
-        run: |
+          git checkout -B "$BRANCH"
           git add CHANGELOG.md
-          git commit -m "docs: :robot: changelog file generated" || echo "No changes to commit"
-          git push
+          git commit -m "docs: :robot: changelog file generated"
+          git push --force origin "$BRANCH"
+          echo "Changelog pushed. [Open the PR](https://github.com/${GITHUB_REPOSITORY}/compare/main...${BRANCH}?expand=1)" >> "$GITHUB_STEP_SUMMARY"
