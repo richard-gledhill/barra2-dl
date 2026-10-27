@@ -1,0 +1,164 @@
+"""This module contains the barra2.mapping test function(s)."""
+
+from typing import Any
+
+import pandas as pd
+import pytest
+
+from barra2_dl.mapping import (
+    Latitude,
+    LatLonBBox,
+    LatLonPoint,
+    Longitude,
+    _find_nearest_point,
+    _format_lat_lon,
+    _generate_point_grid,
+)
+
+
+@pytest.mark.parametrize('value', [-90, 0, 45.5, 90])
+def test_latitude_valid(value: float) -> None:
+    """Latitude accepts values from -90 to 90 inclusive, and is a float."""
+    lat = Latitude(value)
+    assert isinstance(lat, float)
+    assert lat == value
+
+
+@pytest.mark.parametrize('value', [-90.0001, 90.0001, 200])
+def test_latitude_out_of_range(value: float) -> None:
+    """Latitude rejects values outside -90 to 90."""
+    with pytest.raises(ValueError, match='Lat must be from'):
+        Latitude(value)
+
+
+@pytest.mark.parametrize('value', [-180, 0, 133.39, 180])
+def test_longitude_valid(value: float) -> None:
+    """Longitude accepts values from -180 to 180 inclusive, and is a float."""
+    lon = Longitude(value)
+    assert isinstance(lon, float)
+    assert lon == value
+
+
+@pytest.mark.parametrize('value', [-180.0001, 180.0001, 360])
+def test_longitude_out_of_range(value: float) -> None:
+    """Longitude rejects values outside -180 to 180."""
+    with pytest.raises(ValueError, match='Lon must be from'):
+        Longitude(value)
+
+
+def test_lat_lon_point_coerces_to_geodetic_types() -> None:
+    """Plain numbers become Latitude and Longitude."""
+    point = LatLonPoint(-23.55, 133.39)
+    assert isinstance(point.lat, Latitude)
+    assert isinstance(point.lon, Longitude)
+    assert (point.lat, point.lon) == (-23.55, 133.39)
+
+
+def test_lat_lon_point_equality() -> None:
+    """Points with the same coordinates are equal."""
+    assert LatLonPoint(-23.55, 133.39) == LatLonPoint(-23.55, 133.39)
+    assert LatLonPoint(-23.55, 133.39) != LatLonPoint(-23.55, 133.4)
+
+
+@pytest.mark.parametrize(('lat', 'lon'), [(91, 0), (0, 181), (-91, 0), (0, -181)])
+def test_lat_lon_point_invalid(lat: float, lon: float) -> None:
+    """Out of range coordinates are rejected."""
+    with pytest.raises(ValueError):
+        LatLonPoint(lat, lon)
+
+
+def test_lat_lon_bbox_coerces_to_geodetic_types() -> None:
+    """Bounding box edges become Latitude and Longitude."""
+    bbox = LatLonBBox(north=-10, south=-40, east=150, west=110)
+    assert isinstance(bbox.north, Latitude)
+    assert isinstance(bbox.south, Latitude)
+    assert isinstance(bbox.east, Longitude)
+    assert isinstance(bbox.west, Longitude)
+    assert (bbox.north, bbox.south, bbox.east, bbox.west) == (-10, -40, 150, 110)
+
+
+@pytest.mark.parametrize(
+    'kwargs',
+    [
+        {'north': 91, 'south': 0, 'east': 0, 'west': 0},
+        {'north': 0, 'south': -91, 'east': 0, 'west': 0},
+        {'north': 0, 'south': 0, 'east': 181, 'west': 0},
+        {'north': 0, 'south': 0, 'east': 0, 'west': -181},
+    ],
+)
+def test_lat_lon_bbox_invalid(kwargs: dict) -> None:
+    """Out of range bounding box edges are rejected."""
+    with pytest.raises(ValueError):
+        LatLonBBox(**kwargs)
+
+
+@pytest.mark.parametrize(
+    ('latitude', 'longitude', 'expected'),
+    [
+        (-23.5527472, 133.3961111, ['S23.55', '133.40']),
+        (23.5527472, 133.3961111, ['23.55', '133.40']),
+        (0, 0, ['0.00', '0.00']),
+    ],
+)
+def test_format_lat_lon(latitude: float, longitude: float, expected: list[str]) -> None:
+    """Latitudes are formatted to two decimals, with an S prefix when negative."""
+    assert _format_lat_lon(latitude, longitude) == expected
+
+
+def test_generate_point_grid_dict() -> None:
+    """A dict bounding box gives a lat/lon grid including both edges."""
+    grid = _generate_point_grid({'north': 1, 'south': 0, 'east': 1, 'west': 0}, lat_res=1)
+
+    assert list(grid.columns) == ['latitude', 'longitude']
+    assert len(grid) == 4
+    assert set(zip(grid['latitude'], grid['longitude'], strict=True)) == {(0, 0), (0, 1), (1, 0), (1, 1)}
+
+
+def test_generate_point_grid_separate_lon_resolution() -> None:
+    """lon_res overrides lat_res for longitudes only."""
+    grid = _generate_point_grid({'north': 1, 'south': 0, 'east': 1, 'west': 0}, lat_res=1, lon_res=0.5)
+
+    assert len(grid) == 2 * 3
+    assert sorted(grid['longitude'].unique()) == [0, 0.5, 1]
+
+
+def test_generate_point_grid_offset_gives_cell_centres() -> None:
+    """With offset the points sit at the centre of each cell."""
+    grid = _generate_point_grid({'north': 1, 'south': 0, 'east': 1, 'west': 0}, lat_res=1, offset=True)
+
+    assert grid['latitude'].tolist() == [0.5]
+    assert grid['longitude'].tolist() == [0.5]
+
+
+@pytest.mark.parametrize('bbox', [{'north': 1, 'south': 0, 'east': 1}, (1, 0, 1), 'bbox', None])
+def test_generate_point_grid_invalid_bounds(bbox) -> None:
+    """Incomplete dicts, wrong length tuples and other types are rejected."""
+    with pytest.raises(ValueError):
+        _generate_point_grid(bbox, lat_res=1)
+
+
+@pytest.mark.xfail(strict=True, raises=TypeError, reason='tuple bounds pass validation but are then indexed by key')
+def test_generate_point_grid_tuple() -> None:
+    """The docstring promises tuple input (north, south, east, west)."""
+    bbox: Any = (1, 0, 1, 0)
+    grid = _generate_point_grid(bbox, lat_res=1)
+    assert len(grid) == 4
+
+
+def test_find_nearest_point() -> None:
+    """The closest grid row is returned."""
+    grid = _generate_point_grid({'north': 10, 'south': 0, 'east': 10, 'west': 0}, lat_res=1)
+
+    nearest = _find_nearest_point(grid, 3.2, 6.9)
+
+    assert isinstance(nearest, pd.Series)
+    assert (nearest['latitude'], nearest['longitude']) == (3, 7)
+
+
+@pytest.mark.parametrize(('lat', 'lon'), [(-1, 5), (11, 5), (5, -1), (5, 11)])
+def test_find_nearest_point_outside_grid(lat: float, lon: float) -> None:
+    """A target outside the grid extent is rejected."""
+    grid = _generate_point_grid({'north': 10, 'south': 0, 'east': 10, 'west': 0}, lat_res=1)
+
+    with pytest.raises(ValueError, match='out of the range'):
+        _find_nearest_point(grid, lat, lon)
