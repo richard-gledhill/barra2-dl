@@ -9,7 +9,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Continuous Integration
 - allow manual docs deploy via workflow_dispatch [`93eb277`](https://github.com/richard-gledhill/barra2-dl/commit/93eb277)
 
+### Documentation
+- :robot: changelog file generated [`c1722a2`](https://github.com/richard-gledhill/barra2-dl/commit/c1722a2)
+
+### Chore
+- bump virtualenv [`8dca171`](https://github.com/richard-gledhill/barra2-dl/commit/8dca171)
+
 ### Other
+- Merge pull request #108 from richard-gledhill/dependabot/uv/uv-ab8f96959b [`c1a22f7`](https://github.com/richard-gledhill/barra2-dl/commit/c1a22f7)
 - Merge pull request #107 from richard-gledhill/ci/docs-deploy-dispatch [`680eff1`](https://github.com/richard-gledhill/barra2-dl/commit/680eff1)
 
 ## v0.3.1 (2026-10-02)
