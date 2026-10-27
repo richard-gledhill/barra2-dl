@@ -1,21 +1,57 @@
 name: Main
 
+# Runs on every change, so `ci-ok`, the ruleset's only required check, always reports (a
+# workflow skipped by a path filter reports nothing). Docs-only PRs (root Markdown or docs/)
+# skip the test matrix.
 on:
   push:
     branches:
       - main
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
+# A new push to a PR cancels its run still in progress; runs on main always finish.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
 jobs:
+  changes:
+    # Draft PRs are skipped; marking one ready for review runs it.
+    if: github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Detect non-docs changes
+        id: diff
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        # code=false only for a PR whose changed files are all docs. A push to main, a manual
+        # run, an empty diff or a failed diff counts as a code change.
+        run: |
+          if [ -n "$BASE" ] && files=$(git diff --name-only "$BASE...$HEAD" 2>/dev/null) && [ -n "$files" ] \
+            && ! printf '%s\n' "$files" | grep -qvE '^(docs/|[^/]+\.md$)'; then
+            code=false
+          else
+            code=true
+          fi
+          printf '%s\n' "$files"
+          echo "code=$code" | tee -a "$GITHUB_OUTPUT"
+
   quality:
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     steps:
       - name: Check out
@@ -30,11 +66,15 @@ jobs:
 
       - name: Set up the environment
         uses: ./.github/actions/setup-python-env
+        with:
+          no-group: docs
 
       - name: Run checks
         run: make check
 
   tests-and-type-check:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -50,6 +90,7 @@ jobs:
         uses: ./.github/actions/setup-python-env
         with:
           python-version: ${{ matrix.python-version }}
+          no-group: docs
 
       - name: Run tests
         run: uv run pytest
@@ -58,6 +99,7 @@ jobs:
         run: uv run mypy src/barra2_dl tests
 
   check-docs:
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     steps:
       - name: Check out
@@ -67,6 +109,27 @@ jobs:
 
       - name: Set up the environment
         uses: ./.github/actions/setup-python-env
+        with:
+          no-group: dev
 
       - name: Check if documentation can be built
         run: uv run mkdocs build -s
+
+  ci-ok:
+    # The ruleset's only required check, so renaming a job or changing the matrix never
+    # blocks merging. It runs even when a job it needs fails, and passes only if `changes`
+    # succeeded and every other job passed or was skipped.
+    if: always() && github.event.pull_request.draft != true
+    needs: [changes, quality, tests-and-type-check, check-docs]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check every job passed or was skipped
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Results: $RESULTS"
+          if [ "$CHANGES" != success ]; then echo "::error::changes ended $CHANGES"; exit 1; fi
+          for r in $RESULTS; do
+            case "$r" in success|skipped) ;; *) echo "::error::a job ended $r"; exit 1 ;; esac
+          done
