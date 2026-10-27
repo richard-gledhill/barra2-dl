@@ -108,6 +108,12 @@ def test_wind_components_to_direction_list_values():
     assert np.allclose(result, [0.0, 270.0, 180.0])
 
 
+def test_calculate_wind_returns_builtin_float():
+    """Speed and direction are built-in floats, not numpy scalars."""
+    assert type(barra2_dl.convert.calculate_wind_speed(3, 4)) is float
+    assert type(barra2_dl.convert.calculate_wind_direction(3, 4)) is float
+
+
 def test_wind_components_numpy_float_scalars():
     """Scalars of the numpy float type (a float subclass) are accepted."""
     assert np.isclose(barra2_dl.convert.wind_components_to_speed(np.float64(3), np.float64(4)), 5.0)
