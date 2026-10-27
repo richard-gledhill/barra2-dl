@@ -1,23 +1,30 @@
 version: 2
 updates:
-- package-ecosystem: pip
-  directory: "/"
-  schedule:
-    interval: monthly
-    time: "02:00"
-  open-pull-requests-limit: 3
-  groups:
-    python-dependencies:
-      patterns:
-        - "*"
+  # Workflows plus the local composite action (Dependabot skips .github/actions/* by default).
+  # Grouped into one PR, so the limit is rarely reached.
+  - package-ecosystem: github-actions
+    directories:
+      - "/"
+      - "/.github/actions/*"
+    schedule:
+      interval: monthly
+      time: "02:00"
+    open-pull-requests-limit: 3
+    cooldown:
+      default-days: 7
+    groups:
+      github-actions-dependencies:
+        patterns:
+          - "*"
 
-- package-ecosystem: github-actions
-  directory: "/"
-  schedule:
-    interval: monthly
-    time: "02:00"
-  open-pull-requests-limit: 3
-  groups:
-    github-actions-dependencies:
-      patterns:
-        - "*"
+  # uv, not pip: only the uv ecosystem updates uv.lock. Deliberately not grouped:
+  # grouped uv workspace updates have open upstream bugs (dependabot-core #15558, #15786).
+  # Limit is 10 because ungrouped updates arrive in one monthly burst.
+  - package-ecosystem: uv
+    directory: "/"
+    schedule:
+      interval: monthly
+      time: "02:00"
+    open-pull-requests-limit: 10
+    cooldown:
+      default-days: 7
