@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - allow manual docs deploy via workflow_dispatch [`93eb277`](https://github.com/richard-gledhill/barra2-dl/commit/93eb277)
 
 ### Documentation
+- :robot: changelog file generated [`e382d3c`](https://github.com/richard-gledhill/barra2-dl/commit/e382d3c)
 - :robot: changelog file generated [`a54808a`](https://github.com/richard-gledhill/barra2-dl/commit/a54808a)
 - :robot: changelog file generated [`c1722a2`](https://github.com/richard-gledhill/barra2-dl/commit/c1722a2)
 
@@ -17,9 +18,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - raise coverage to 100% with offline tests [`810f963`](https://github.com/richard-gledhill/barra2-dl/commit/810f963)
 
 ### Chore
+- bump the uv group across 1 directory with 2 updates [`f3a3f7f`](https://github.com/richard-gledhill/barra2-dl/commit/f3a3f7f)
 - bump virtualenv [`8dca171`](https://github.com/richard-gledhill/barra2-dl/commit/8dca171)
 
 ### Other
+- Merge pull request #110 from richard-gledhill/dependabot/uv/uv-2398c78694 [`7ce62c9`](https://github.com/richard-gledhill/barra2-dl/commit/7ce62c9)
 - Merge pull request #109 from richard-gledhill/test/improve-coverage [`1bfed34`](https://github.com/richard-gledhill/barra2-dl/commit/1bfed34)
 - Merge pull request #108 from richard-gledhill/dependabot/uv/uv-ab8f96959b [`c1a22f7`](https://github.com/richard-gledhill/barra2-dl/commit/c1a22f7)
 - Merge pull request #107 from richard-gledhill/ci/docs-deploy-dispatch [`680eff1`](https://github.com/richard-gledhill/barra2-dl/commit/680eff1)
