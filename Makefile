@@ -31,7 +31,17 @@ check: ## Run all quality checks: lockfile consistency, lint, and installed-pack
 .PHONY: test
 test: ## Test the code with pytest
 	@echo "🚀 Testing code: Running pytest"
-	@uv run python -m pytest --doctest-modules
+	@uv run python -m pytest --doctest-modules --cov --cov-report=term-missing
+
+.PHONY: build
+build: clean-build ## Build the sdist and wheel into dist/
+	@echo "🚀 Creating sdist and wheel"
+	@uv build
+
+.PHONY: clean-build
+clean-build: ## Clean build artifacts
+	@echo "🚀 Removing build artifacts"
+	@uv run python -c "import shutil; import os; shutil.rmtree('dist') if os.path.exists('dist') else None"
 
 .PHONY: docs-test
 docs-test: ## Test if documentation can be built without warnings or errors

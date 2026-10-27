@@ -36,7 +36,7 @@ def calculate_wind_speed(
     """
     if u == 0 and v == 0:
         return 0.0
-    return np.sqrt(u**2 + v**2)
+    return float(np.sqrt(u**2 + v**2))
 
 
 @overload
@@ -88,7 +88,7 @@ def calculate_wind_direction(
     """
     if u == 0 and v == 0:
         return 0
-    return np.mod(180 + np.rad2deg(np.arctan2(u, v)), 360)
+    return float(np.mod(180 + np.rad2deg(np.arctan2(u, v)), 360))
 
 
 @overload
