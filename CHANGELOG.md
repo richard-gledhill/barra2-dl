@@ -11,6 +11,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - allow manual docs deploy via workflow_dispatch [`93eb277`](https://github.com/richard-gledhill/barra2-dl/commit/93eb277)
 
 ### Documentation
+- :robot: changelog file generated [`46781cc`](https://github.com/richard-gledhill/barra2-dl/commit/46781cc)
+- add development docs, CLAUDE.md, CONTEXT.md and backlog [`61a9120`](https://github.com/richard-gledhill/barra2-dl/commit/61a9120)
 - :robot: changelog file generated [`22a023f`](https://github.com/richard-gledhill/barra2-dl/commit/22a023f)
 - :robot: changelog file generated [`e382d3c`](https://github.com/richard-gledhill/barra2-dl/commit/e382d3c)
 - :robot: changelog file generated [`a54808a`](https://github.com/richard-gledhill/barra2-dl/commit/a54808a)
@@ -26,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - bump virtualenv [`8dca171`](https://github.com/richard-gledhill/barra2-dl/commit/8dca171)
 
 ### Other
+- Merge pull request #114 from richard-gledhill/docs/dev-docs-and-agents [`2775645`](https://github.com/richard-gledhill/barra2-dl/commit/2775645)
 - Merge pull request #113 from richard-gledhill/chore/coverage-mypy-build [`f66c8c7`](https://github.com/richard-gledhill/barra2-dl/commit/f66c8c7)
 - Merge pull request #112 from richard-gledhill/ci/gate-and-env [`7c877b1`](https://github.com/richard-gledhill/barra2-dl/commit/7c877b1)
 - Merge pull request #111 from richard-gledhill/chore/deps-hygiene [`d0d95f1`](https://github.com/richard-gledhill/barra2-dl/commit/d0d95f1)
