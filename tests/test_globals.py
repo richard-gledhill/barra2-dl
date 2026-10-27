@@ -13,17 +13,19 @@ from barra2_dl.globals import (
     BARRA2_WIND_VARS,
 )
 
+
+# region BARRA2_INDEX
+def test_index_columns() -> None:
+    """The join key starts with time and has no duplicates."""
+    assert BARRA2_INDEX[0] == 'time'
+    assert len(BARRA2_INDEX) == len(set(BARRA2_INDEX))
+
+
+# endregion
+
+
+# region BARRA2_WIND_VARS
 UNIT = '[unit="m s-1"]'
-TEMPLATE_FIELDS = {
-    'var': 'ua50m',
-    'year': 2023,
-    'month': 1,
-    'latitude': -23.55,
-    'longitude': 133.39,
-    'time_start_str': '2023-01-01T00:00:00Z',
-    'time_end_str': '2023-01-31T23:00:00Z',
-    'fileout_type': 'csv_file',
-}
 
 
 def _wind_var_params() -> list:
@@ -56,6 +58,10 @@ def test_wind_vars_are_unique() -> None:
     assert len(names) == len(set(names))
 
 
+# endregion
+
+
+# region BARRA2_VAR_WIND_DEFAULT and BARRA2_VAR_WIND_50
 @pytest.mark.parametrize('variables', [BARRA2_VAR_WIND_DEFAULT, BARRA2_VAR_WIND_50])
 def test_default_variable_lists_are_known(variables: list[str]) -> None:
     """Wind components in the default lists are covered by BARRA2_WIND_VARS, and come in u/v pairs."""
@@ -66,6 +72,22 @@ def test_default_variable_lists_are_known(variables: list[str]) -> None:
         assert any(var in pair for pair in pairs)
     for ua, va, *_ in BARRA2_WIND_VARS:
         assert (ua in variables) == (va in variables)
+
+
+# endregion
+
+
+# region BARRA2_URL_AUS11_1HR and BARRA2_URL_AUST04_1HR
+TEMPLATE_FIELDS = {
+    'var': 'ua50m',
+    'year': 2023,
+    'month': 1,
+    'latitude': -23.55,
+    'longitude': 133.39,
+    'time_start_str': '2023-01-01T00:00:00Z',
+    'time_end_str': '2023-01-31T23:00:00Z',
+    'fileout_type': 'csv_file',
+}
 
 
 @pytest.mark.parametrize('url', [BARRA2_URL_AUS11_1HR, BARRA2_URL_AUST04_1HR])
@@ -84,7 +106,4 @@ def test_url_templates_use_only_supplied_fields() -> None:
         assert set(re.findall(r'{(\w+)', url)) <= set(TEMPLATE_FIELDS)
 
 
-def test_index_columns() -> None:
-    """The join key starts with time and has no duplicates."""
-    assert BARRA2_INDEX[0] == 'time'
-    assert len(BARRA2_INDEX) == len(set(BARRA2_INDEX))
+# endregion

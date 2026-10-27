@@ -21,84 +21,13 @@ __all__ = [
     'point_data_urlfilenames',
 ]
 
+
+# region Constants and types
 type URLFilenamePair = tuple[str, str]
+# endregion
 
 
-def _list_months(
-    start_datetime: str | datetime,
-    end_datetime: str | datetime,
-    freq: str = 'MS',
-) -> list:
-    """Generate a list of months between the given start and end datetime.
-
-    This function converts the provided start and end datetime to datetime objects,
-    validates them, and then generates a list of dates at the specified frequency
-    between the start and end datetime. The month containing start_datetime is always
-    included, so the range begins on the first day of that month.
-
-    Args:
-        start_datetime (str or datetime-like): The start datetime for generating dates.
-        end_datetime (str or datetime-like): The end datetime for generating dates.
-        freq (str): The frequency string representing the interval between dates.
-                    Default is 'MS' (Month Start).
-
-    Returns:
-        list: A list of dates from start to end at the given frequency.
-
-    Raises:
-        ValueError: If the provided start_datetime or end_datetime are not valid datetime-like objects.
-    """
-    try:
-        pd.to_datetime(start_datetime)
-    except ValueError as error:
-        raise ValueError(f'Invalid start_datetime provided: {error}') from None
-
-    try:
-        pd.to_datetime(end_datetime)
-    except ValueError as error:
-        raise ValueError(f'Invalid end_datetime provided: {error}') from None
-
-    # date_range with a month-start freq skips the start month when start is mid-month, so begin on its first day
-    first_of_start_month = pd.Timestamp(start_datetime).normalize().replace(day=1)
-    return pd.date_range(start=first_of_start_month, end=end_datetime, freq=freq).tolist()
-
-
-def _list_timestamp_range(
-    dataframe: pd.DataFrame,
-    timestamp_column: str,
-) -> list[pd.Timestamp]:
-    """Get a list containing the range between the first and last timestamp in the specified column of the DataFrame.
-
-    Args:
-        dataframe (pd.DataFrame): The DataFrame containing the timestamp column.
-        timestamp_column (str): The name of the timestamp column in the DataFrame.
-
-    Returns:
-        list: A list containing the first and last timestamp.
-
-    Raises:
-        ValueError: if timestamp_column does not exist.
-
-    Todo:
-        Not implemented function for only downloading new data based on existing time range.
-        Add valid csv file check for downloading files from last 3 months
-    """
-    if timestamp_column not in dataframe.columns:
-        raise ValueError(f'Column <{timestamp_column}> does not exist in the DataFrame.')
-
-    # Ensure the column is of datetime type
-    dataframe[timestamp_column] = pd.to_datetime(dataframe[timestamp_column])
-
-    # Sort the DataFrame by the timestamp column
-    dataframe = dataframe.sort_values(by=timestamp_column)
-
-    # Get the first and last timestamp
-    first_timestamp = dataframe[timestamp_column].iloc[0]
-    last_timestamp = dataframe[timestamp_column].iloc[-1]
-
-    return [first_timestamp, last_timestamp]
-
-
+# region Public API
 def point_data_urlfilenames(
     barra2_url: str,
     barra2_vars: list,
@@ -185,55 +114,6 @@ def point_data_urlfilenames(
     return point_data_urlfilenamepair
 
 
-def _download_file(
-    url: str,
-    file_name: str,
-    folder_path: str | Path,
-) -> None:
-    """Download the file from the url and save it as folder_path/filename.
-
-    If the downloads folder does not exist, it will be created due to the
-    create_folder argument.
-
-    Args:
-        url (str): The URL of the file to be downloaded.
-        file_name (str): The name to save the downloaded file.
-        folder_path (str | Path): The path where the file should be saved.
-
-    Returns: None
-
-    Raises:
-        FileNotFoundError: If folder does not exist.
-    """
-    folder = Path(folder_path)
-    folder_file = folder / file_name
-
-    # Check if the folder exists
-    if not folder.exists():
-        logger.error(f'{folder_path} does not exist.')
-        raise FileNotFoundError(f'The folder {folder_path} does not exist. Create folder first.')
-
-    # Check if the file already exists else download the url to the file
-    if folder_file.exists():
-        logger.info(f'<{file_name}> already exists in the <{folder_path}>. File not downloaded.')
-        sys.stdout.write(f'<{file_name}> already exists in the folder <{folder_path}>. File not downloaded.')
-        sys.stdout.write('\n')
-    else:
-        response = requests.get(url, timeout=20)
-        # check file is not empty or contains server error 'FileNotFound: No such file or directory'
-        # Check if the request was successful
-        if response.status_code == 200:
-            # write content to folder_file
-            folder_file.write_bytes(response.content)
-            logger.info(f'<{file_name}> downloaded to <{folder_path}>')
-            sys.stdout.write(f'<{file_name}> downloaded to <{folder_path}>')
-            sys.stdout.write('\n')
-        else:
-            logger.info(f'<{file_name}> Failed to download. Status code: {response.status_code}')
-            sys.stdout.write(f'<{file_name}> Failed to download. Status code: {response.status_code}')
-            sys.stdout.write('\n')
-
-
 def download_serial(
     urlfilenames: list[URLFilenamePair],
     folder_path: str | Path,
@@ -287,3 +167,134 @@ def download_multithread(
     logger.info(f'Download time <{time.time() - t0}>')
     sys.stdout.write(f'Download time: <{time.time() - t0}>')
     sys.stdout.write('\n')
+
+
+# endregion
+
+
+# region Helpers
+def _list_months(
+    start_datetime: str | datetime,
+    end_datetime: str | datetime,
+    freq: str = 'MS',
+) -> list:
+    """Generate a list of months between the given start and end datetime.
+
+    This function converts the provided start and end datetime to datetime objects,
+    validates them, and then generates a list of dates at the specified frequency
+    between the start and end datetime. The month containing start_datetime is always
+    included, so the range begins on the first day of that month.
+
+    Args:
+        start_datetime (str or datetime-like): The start datetime for generating dates.
+        end_datetime (str or datetime-like): The end datetime for generating dates.
+        freq (str): The frequency string representing the interval between dates.
+                    Default is 'MS' (Month Start).
+
+    Returns:
+        list: A list of dates from start to end at the given frequency.
+
+    Raises:
+        ValueError: If the provided start_datetime or end_datetime are not valid datetime-like objects.
+    """
+    try:
+        pd.to_datetime(start_datetime)
+    except ValueError as error:
+        raise ValueError(f'Invalid start_datetime provided: {error}') from None
+
+    try:
+        pd.to_datetime(end_datetime)
+    except ValueError as error:
+        raise ValueError(f'Invalid end_datetime provided: {error}') from None
+
+    # date_range with a month-start freq skips the start month when start is mid-month, so begin on its first day
+    first_of_start_month = pd.Timestamp(start_datetime).normalize().replace(day=1)
+    return pd.date_range(start=first_of_start_month, end=end_datetime, freq=freq).tolist()
+
+
+def _list_timestamp_range(
+    dataframe: pd.DataFrame,
+    timestamp_column: str,
+) -> list[pd.Timestamp]:
+    """Get a list containing the range between the first and last timestamp in the specified column of the DataFrame.
+
+    Args:
+        dataframe (pd.DataFrame): The DataFrame containing the timestamp column.
+        timestamp_column (str): The name of the timestamp column in the DataFrame.
+
+    Returns:
+        list: A list containing the first and last timestamp.
+
+    Raises:
+        ValueError: if timestamp_column does not exist.
+
+    Todo:
+        Not implemented function for only downloading new data based on existing time range.
+        Add valid csv file check for downloading files from last 3 months
+    """
+    if timestamp_column not in dataframe.columns:
+        raise ValueError(f'Column <{timestamp_column}> does not exist in the DataFrame.')
+
+    # Ensure the column is of datetime type
+    dataframe[timestamp_column] = pd.to_datetime(dataframe[timestamp_column])
+
+    # Sort the DataFrame by the timestamp column
+    dataframe = dataframe.sort_values(by=timestamp_column)
+
+    # Get the first and last timestamp
+    first_timestamp = dataframe[timestamp_column].iloc[0]
+    last_timestamp = dataframe[timestamp_column].iloc[-1]
+
+    return [first_timestamp, last_timestamp]
+
+
+def _download_file(
+    url: str,
+    file_name: str,
+    folder_path: str | Path,
+) -> None:
+    """Download the file from the url and save it as folder_path/filename.
+
+    If the downloads folder does not exist, it will be created due to the
+    create_folder argument.
+
+    Args:
+        url (str): The URL of the file to be downloaded.
+        file_name (str): The name to save the downloaded file.
+        folder_path (str | Path): The path where the file should be saved.
+
+    Returns: None
+
+    Raises:
+        FileNotFoundError: If folder does not exist.
+    """
+    folder = Path(folder_path)
+    folder_file = folder / file_name
+
+    # Check if the folder exists
+    if not folder.exists():
+        logger.error(f'{folder_path} does not exist.')
+        raise FileNotFoundError(f'The folder {folder_path} does not exist. Create folder first.')
+
+    # Check if the file already exists else download the url to the file
+    if folder_file.exists():
+        logger.info(f'<{file_name}> already exists in the <{folder_path}>. File not downloaded.')
+        sys.stdout.write(f'<{file_name}> already exists in the folder <{folder_path}>. File not downloaded.')
+        sys.stdout.write('\n')
+    else:
+        response = requests.get(url, timeout=20)
+        # check file is not empty or contains server error 'FileNotFound: No such file or directory'
+        # Check if the request was successful
+        if response.status_code == 200:
+            # write content to folder_file
+            folder_file.write_bytes(response.content)
+            logger.info(f'<{file_name}> downloaded to <{folder_path}>')
+            sys.stdout.write(f'<{file_name}> downloaded to <{folder_path}>')
+            sys.stdout.write('\n')
+        else:
+            logger.info(f'<{file_name}> Failed to download. Status code: {response.status_code}')
+            sys.stdout.write(f'<{file_name}> Failed to download. Status code: {response.status_code}')
+            sys.stdout.write('\n')
+
+
+# endregion
