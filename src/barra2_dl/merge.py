@@ -14,37 +14,6 @@ __all__ = [
 ]
 
 
-def _merge_suffix_columns(
-    df: pd.DataFrame,
-    suffix_x: str = '_x',
-    suffix_y: str = '_y',
-) -> pd.DataFrame:
-    """Function to merge DataFrame columns with '_x' and '_y' suffixes.
-
-    Args:
-        df: The DataFrame that contains columns with suffixes to be merged.
-        suffix_x: The suffix used in the first set of columns (default is '_x').
-        suffix_y: The suffix used in the second set of columns (default is '_y').
-
-    Returns:
-        DataFrame: A DataFrame with the merged columns.
-        If no suffix_x returns the original DataFrame.
-
-    Todo:
-        Add checks for multiple and mismatched suffixed columns
-    """
-    for column in df.columns:
-        if column.endswith(suffix_x):
-            base_column = column[: -len(suffix_x)]
-            column_y = base_column + suffix_y
-            if column_y in df.columns:
-                # Create a new column without suffix and merge the values
-                df[base_column] = df[column].combine_first(df[column_y])
-                # Drop the old suffix columns
-                df.drop([column, column_y], axis=1, inplace=True)
-    return df
-
-
 def merge_csvs_to_df(
     filein_folder: str,
     filename_pattern: str = '*.csv',
@@ -83,3 +52,34 @@ def merge_csvs_to_df(
             sys.stdout.write('\n')
 
     return df_merged
+
+
+def _merge_suffix_columns(
+    df: pd.DataFrame,
+    suffix_x: str = '_x',
+    suffix_y: str = '_y',
+) -> pd.DataFrame:
+    """Function to merge DataFrame columns with '_x' and '_y' suffixes.
+
+    Args:
+        df: The DataFrame that contains columns with suffixes to be merged.
+        suffix_x: The suffix used in the first set of columns (default is '_x').
+        suffix_y: The suffix used in the second set of columns (default is '_y').
+
+    Returns:
+        DataFrame: A DataFrame with the merged columns.
+        If no suffix_x returns the original DataFrame.
+
+    Todo:
+        Add checks for multiple and mismatched suffixed columns
+    """
+    for column in df.columns:
+        if column.endswith(suffix_x):
+            base_column = column[: -len(suffix_x)]
+            column_y = base_column + suffix_y
+            if column_y in df.columns:
+                # Create a new column without suffix and merge the values
+                df[base_column] = df[column].combine_first(df[column_y])
+                # Drop the old suffix columns
+                df.drop([column, column_y], axis=1, inplace=True)
+    return df

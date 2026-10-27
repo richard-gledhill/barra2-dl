@@ -6,11 +6,8 @@ import pytest
 
 import barra2_dl.convert
 
-"""
-helpers_wind.calculate_wind_speed
-"""
 
-
+# region calculate_wind_speed
 @pytest.mark.parametrize(
     ('u', 'v', 'expected'),
     [
@@ -27,11 +24,16 @@ def test_calculate_wind_speed(u: float, v: float, expected: float) -> None:
     assert barra2_dl.convert.calculate_wind_speed(u, v) == expected
 
 
-"""
-helpers_wind.wind_components_to_speed
-"""
+def test_calculate_wind_returns_builtin_float():
+    """Speed and direction are built-in floats, not numpy scalars."""
+    assert type(barra2_dl.convert.calculate_wind_speed(3, 4)) is float
+    assert type(barra2_dl.convert.calculate_wind_direction(3, 4)) is float
 
 
+# endregion
+
+
+# region wind_components_to_speed
 @pytest.mark.parametrize('ua,va,expected', [([3, 0], [4, 0], [5, 0]), ([0, 0], [0, 0], [0, 0]), (0, 0, 0), (3, 4, 5)])
 def test_wind_components_to_speed(ua, va, expected):
     """Test with parametrization."""
@@ -48,11 +50,10 @@ def test_wind_components_to_speed_exception(ua, va):
         barra2_dl.convert.wind_components_to_speed(ua, va)
 
 
-"""
-helpers_wind.calculate_wind_direction
-"""
+# endregion
 
 
+# region calculate_wind_direction
 @pytest.mark.parametrize(
     'u, v, expected',
     [
@@ -70,11 +71,10 @@ def test_calculate_wind_direction(u, v, expected):
     assert np.isclose(barra2_dl.convert.calculate_wind_direction(u, v), expected)
 
 
-"""
-helpers_wind.wind_components_to_direction
-"""
+# endregion
 
 
+# region wind_components_to_direction
 @pytest.mark.parametrize('ua,va', [(2.5, 3), (7, 4)])
 def test_wind_components_to_direction_float_int_input(ua, va):
     """Test the function with float and integer inputs."""
@@ -108,22 +108,16 @@ def test_wind_components_to_direction_list_values():
     assert np.allclose(result, [0.0, 270.0, 180.0])
 
 
-def test_calculate_wind_returns_builtin_float():
-    """Speed and direction are built-in floats, not numpy scalars."""
-    assert type(barra2_dl.convert.calculate_wind_speed(3, 4)) is float
-    assert type(barra2_dl.convert.calculate_wind_direction(3, 4)) is float
-
-
 def test_wind_components_numpy_float_scalars():
     """Scalars of the numpy float type (a float subclass) are accepted."""
     assert np.isclose(barra2_dl.convert.wind_components_to_speed(np.float64(3), np.float64(4)), 5.0)
     assert np.isclose(barra2_dl.convert.wind_components_to_direction(np.float64(1), np.float64(0)), 270.0)
 
 
-"""
-convert.convert_wind_components
-"""
+# endregion
 
+
+# region convert_wind_components
 UA50 = 'ua50m[unit="m s-1"]'
 VA50 = 'va50m[unit="m s-1"]'
 V50 = 'v50m[unit="m s-1"]'
@@ -193,3 +187,6 @@ def test_convert_wind_components_does_not_modify_input():
     barra2_dl.convert.convert_wind_components(df)
 
     assert list(df.columns) == [UA50, VA50]
+
+
+# endregion

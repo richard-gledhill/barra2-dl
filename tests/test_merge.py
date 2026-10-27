@@ -7,10 +7,15 @@ import pandas as pd
 from barra2_dl.merge import _merge_suffix_columns, merge_csvs_to_df
 
 
+# region Test helpers
 def _write_csv(folder: Path, name: str, data: dict) -> None:
     pd.DataFrame(data).to_csv(folder / name, index=False)
 
 
+# endregion
+
+
+# region merge_csvs_to_df
 def test_merge_csvs_to_df_outer_join(tmp_path: Path) -> None:
     """Two files sharing a time column are joined into one wide frame."""
     _write_csv(tmp_path, 'a.csv', {'time': [1, 2], 'ua50m': [1.0, 2.0]})
@@ -83,6 +88,10 @@ def test_merge_csvs_to_df_multiple_index_columns(tmp_path: Path) -> None:
     assert sorted(df.columns) == ['station', 'time', 'ua50m', 'va50m']
 
 
+# endregion
+
+
+# region _merge_suffix_columns
 def test_merge_suffix_columns_prefers_x_then_fills_from_y() -> None:
     """Suffixed pairs collapse to the base column, taking _x first and _y where _x is missing."""
     df = pd.DataFrame({'time': [1, 2, 3], 'a_x': [1.0, None, 3.0], 'a_y': [9.0, 2.0, 9.0]})
@@ -110,3 +119,6 @@ def test_merge_suffix_columns_custom_suffixes() -> None:
 
     assert result.columns.tolist() == ['a']
     assert result['a'].tolist() == [1.0, 2.0]
+
+
+# endregion

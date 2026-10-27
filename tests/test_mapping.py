@@ -16,6 +16,7 @@ from barra2_dl.mapping import (
 )
 
 
+# region Latitude
 @pytest.mark.parametrize('value', [-90, 0, 45.5, 90])
 def test_latitude_valid(value: float) -> None:
     """Latitude accepts values from -90 to 90 inclusive, and is a float."""
@@ -31,6 +32,10 @@ def test_latitude_out_of_range(value: float) -> None:
         Latitude(value)
 
 
+# endregion
+
+
+# region Longitude
 @pytest.mark.parametrize('value', [-180, 0, 133.39, 180])
 def test_longitude_valid(value: float) -> None:
     """Longitude accepts values from -180 to 180 inclusive, and is a float."""
@@ -46,6 +51,10 @@ def test_longitude_out_of_range(value: float) -> None:
         Longitude(value)
 
 
+# endregion
+
+
+# region LatLonPoint
 def test_lat_lon_point_coerces_to_geodetic_types() -> None:
     """Plain numbers become Latitude and Longitude."""
     point = LatLonPoint(-23.55, 133.39)
@@ -67,6 +76,10 @@ def test_lat_lon_point_invalid(lat: float, lon: float) -> None:
         LatLonPoint(lat, lon)
 
 
+# endregion
+
+
+# region LatLonBBox
 def test_lat_lon_bbox_coerces_to_geodetic_types() -> None:
     """Bounding box edges become Latitude and Longitude."""
     bbox = LatLonBBox(north=-10, south=-40, east=150, west=110)
@@ -92,19 +105,10 @@ def test_lat_lon_bbox_invalid(kwargs: dict) -> None:
         LatLonBBox(**kwargs)
 
 
-@pytest.mark.parametrize(
-    ('latitude', 'longitude', 'expected'),
-    [
-        (-23.5527472, 133.3961111, ['S23.55', '133.40']),
-        (23.5527472, 133.3961111, ['23.55', '133.40']),
-        (0, 0, ['0.00', '0.00']),
-    ],
-)
-def test_format_lat_lon(latitude: float, longitude: float, expected: list[str]) -> None:
-    """Latitudes are formatted to two decimals, with an S prefix when negative."""
-    assert _format_lat_lon(latitude, longitude) == expected
+# endregion
 
 
+# region _generate_point_grid
 def test_generate_point_grid_dict() -> None:
     """A dict bounding box gives a lat/lon grid including both edges."""
     grid = _generate_point_grid({'north': 1, 'south': 0, 'east': 1, 'west': 0}, lat_res=1)
@@ -145,6 +149,10 @@ def test_generate_point_grid_tuple() -> None:
     assert len(grid) == 4
 
 
+# endregion
+
+
+# region _find_nearest_point
 def test_find_nearest_point() -> None:
     """The closest grid row is returned."""
     grid = _generate_point_grid({'north': 10, 'south': 0, 'east': 10, 'west': 0}, lat_res=1)
@@ -162,3 +170,23 @@ def test_find_nearest_point_outside_grid(lat: float, lon: float) -> None:
 
     with pytest.raises(ValueError, match='out of the range'):
         _find_nearest_point(grid, lat, lon)
+
+
+# endregion
+
+
+# region _format_lat_lon
+@pytest.mark.parametrize(
+    ('latitude', 'longitude', 'expected'),
+    [
+        (-23.5527472, 133.3961111, ['S23.55', '133.40']),
+        (23.5527472, 133.3961111, ['23.55', '133.40']),
+        (0, 0, ['0.00', '0.00']),
+    ],
+)
+def test_format_lat_lon(latitude: float, longitude: float, expected: list[str]) -> None:
+    """Latitudes are formatted to two decimals, with an S prefix when negative."""
+    assert _format_lat_lon(latitude, longitude) == expected
+
+
+# endregion
