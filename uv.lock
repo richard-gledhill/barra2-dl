@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.12, <4"
 resolution-markers = [
     "python_full_version >= '3.15'",
@@ -115,17 +115,17 @@ name = "barra2-dl"
 version = "0.3.1"
 source = { editable = "." }
 dependencies = [
-    { name = "ipykernel" },
     { name = "numpy" },
     { name = "pandas" },
-    { name = "pandas-stubs" },
     { name = "requests" },
 ]
 
 [package.dev-dependencies]
 dev = [
     { name = "deptry" },
+    { name = "ipykernel" },
     { name = "mypy" },
+    { name = "pandas-stubs" },
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "pytest-cov" },
@@ -140,17 +140,17 @@ docs = [
 
 [package.metadata]
 requires-dist = [
-    { name = "ipykernel", specifier = ">=7.3.0,<8" },
     { name = "numpy", specifier = ">=2.1.2,<3" },
     { name = "pandas", specifier = ">=2.2.3,<4" },
-    { name = "pandas-stubs", specifier = ">=2.3.3,<3.1.0" },
     { name = "requests", specifier = ">=2.32.3,<3" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "deptry", specifier = ">=0.23,<1" },
+    { name = "ipykernel", specifier = ">=7.3.0,<8" },
     { name = "mypy", specifier = ">=1.8,<3.0" },
+    { name = "pandas-stubs", specifier = ">=2.3.3,<3.1.0" },
     { name = "pre-commit", specifier = ">=4.5,<5" },
     { name = "pytest", specifier = ">=8,<10" },
     { name = "pytest-cov", specifier = ">=4.1,<8.0" },

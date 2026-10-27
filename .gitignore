@@ -215,7 +215,5 @@ crashlytics.properties
 crashlytics-build.properties
 fabric.properties
 
-# pyenv
-.python-version
 /scripts/cache/
 /scripts/output/
