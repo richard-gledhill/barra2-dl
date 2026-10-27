@@ -1,6 +1,7 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to AI agents and Claude Code (claude.ai/code) when working with code in this repository.
+`CLAUDE.md` imports it, together with `docs/development/conventions.md`.
 
 ## What this is
 
@@ -9,17 +10,43 @@ point data (wind, temperature, etc.) from the Bureau of Meteorology's NCI THREDD
 server, then merging and converting it for wind resource / energy assessment use.
 It's a data-download-and-transform pipeline, not a service: build URLs → download
 CSVs in parallel → merge them → derive wind speed/direction from u/v components.
+Domain language (BARRA2, AUS-11, AUST-04, `ua`/`va`, `phi_met`) is defined in [CONTEXT.md](CONTEXT.md) — use those terms.
+
+**Before assuming a described feature is fully wired, check
+[docs/development/backlog.md](docs/development/backlog.md)** — it lists the known bugs and deferred work. See
+[docs/development/README.md](docs/development/README.md) for the full doc index.
+
+## Development docs location
+
+All development documentation lives under `docs/development/`, which is excluded from the MkDocs site. These paths
+override any default paths in skills or commands:
+
+- Constraints: `docs/development/constraints.md` — the tool-enforced quality bar; read before writing code, never
+  weaken it to make a change pass
+- Conventions: `docs/development/conventions.md` — the judgement-based style guide. Don't change `conventions.md` or
+  `constraints.md` without asking, and never to make them match code you just wrote; describe the change you want in
+  your summary and let the user make or approve it
+- Backlog: `docs/development/backlog.md` — deferred work and known bugs
+- Requirements: `docs/development/requirements/`. Don't edit an existing requirements doc without asking.
+- Spec: `docs/development/plan/SPEC.md`; plan: `docs/development/plan/plan.md`; task list:
+  `docs/development/plan/todo.md`. When work ships, move all three into
+  `docs/development/plan/archive/<YYYY-MM-feature>/`. If `plan/` already holds an unfinished plan for different work,
+  stop and ask.
+- ADRs: `docs/development/adr/`, format `ADR-NNN-title.md`; continue the existing sequence
+- Never write development docs into the MkDocs content under `docs/` outside `development/`. You may edit and add
+  MkDocs pages and `mkdocs.yml` when a change needs it; add new pages to `nav:` and run `make docs-test`.
 
 ## Commands
 
 Dependency management is via uv.
 
 ```bash
-uv sync --all-groups     # install deps (run with `uv run <cmd>`)
-make install              # uv sync --all-groups; uv run pre-commit install
+uv sync                  # install deps, dev and docs groups (run with `uv run <cmd>`)
+make install              # uv sync; uv run pre-commit install
 make lint                 # pre-commit run -a (incl. ruff check + ruff format); mypy src/barra2_dl tests; deptry src
 make check                 # lockfile check; lint; uv pip check (what CI's `quality` job runs)
-make test                 # uv run python -m pytest --doctest-modules
+make test                 # uv run python -m pytest --doctest-modules --cov --cov-report=term-missing
+make build                # uv build: sdist and wheel into dist/
 make docs                  # uv run mkdocs serve
 make docs-test             # uv run mkdocs build -s
 ```
@@ -41,8 +68,11 @@ uv run pre-commit run -a                          # all pre-commit hooks (ruff +
 
 Notes on test config (`pyproject.toml` `[tool.pytest.ini_options]`):
 - `--doctest-modules` is enabled, so docstring doctests in `src/barra2_dl/*.py` are collected and run as tests too.
-- Coverage flags are commented out in a leftover `setup.cfg`-era style — coverage is not enforced locally.
-- `pytest-cov` is a dev dependency but not wired into `addopts` (dormant). `pytest-randomly` *is* active — it's an autoloading pytest plugin, so test order is randomized every run even without an explicit `addopts` entry (seed is printed at the top of each run).
+- Coverage is configured in `[tool.coverage.*]` and reported by `make test` (`--cov`), not enforced. It is not in
+  `addopts`, so a bare `pytest` run does not collect it.
+- Tests that hit the real THREDDS server are skipped unless `BARRA2_LIVE=1`; everything else runs offline with
+  `requests.get` faked.
+- `pytest-randomly` *is* active — it's an autoloading pytest plugin, so test order is randomized every run even without an explicit `addopts` entry (seed is printed at the top of each run).
 
 CI (`.github/workflows/main.yml`) runs three jobs: `quality` (pre-commit incl.
 ruff, mypy, deptry, lockfile/pip checks), `tests-and-type-check` (pytest + mypy,
@@ -139,7 +169,7 @@ These are for fast iteration; they don't replace full verification.
 
 ```bash
 make check   # uv lock --locked, pre-commit run -a, mypy, deptry, uv pip check
-make test    # uv run python -m pytest --doctest-modules (no coverage enforced)
+make test    # uv run python -m pytest --doctest-modules --cov (coverage reported, not enforced)
 ```
 
 - If pre-commit auto-fixes files, review the changes and rerun `make check`.

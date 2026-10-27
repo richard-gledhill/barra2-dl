@@ -170,6 +170,16 @@ def test_convert_wind_components_nothing_to_convert(columns):
     assert list(result.columns) == list(df.columns)
 
 
+@pytest.mark.xfail(strict=True, reason='uas/vas output is named vs[...] instead of v10m[...]; see docs backlog')
+def test_convert_wind_components_surface_wind_column_name():
+    """The 10 m surface wind pair is converted to a height-named speed column."""
+    df = pd.DataFrame({'uas[unit="m s-1"]': [3.0], 'vas[unit="m s-1"]': [4.0]})
+
+    result = barra2_dl.convert.convert_wind_components(df)
+
+    assert 'v10m[unit="m s-1"]' in result.columns
+
+
 def test_convert_wind_components_does_not_modify_input():
     """The input frame is left unchanged."""
     df = pd.DataFrame({UA50: [3.0], VA50: [4.0]})
