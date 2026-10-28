@@ -7,10 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## Unreleased changes
 
 ### Continuous Integration
+- push the changelog branch and leave the PR to the user [`3f5fe4e`](https://github.com/richard-gledhill/barra2-dl/commit/3f5fe4e)
+- generate the changelog on demand and open a PR [`f239f87`](https://github.com/richard-gledhill/barra2-dl/commit/f239f87)
 - add ci-ok gate, skip tests on docs-only PRs, per-job dependency groups [`0638b12`](https://github.com/richard-gledhill/barra2-dl/commit/0638b12)
 - allow manual docs deploy via workflow_dispatch [`93eb277`](https://github.com/richard-gledhill/barra2-dl/commit/93eb277)
 
 ### Documentation
+- :robot: changelog file generated [`60faf82`](https://github.com/richard-gledhill/barra2-dl/commit/60faf82)
 - :robot: changelog file generated [`46781cc`](https://github.com/richard-gledhill/barra2-dl/commit/46781cc)
 - add development docs, CLAUDE.md, CONTEXT.md and backlog [`61a9120`](https://github.com/richard-gledhill/barra2-dl/commit/61a9120)
 - :robot: changelog file generated [`22a023f`](https://github.com/richard-gledhill/barra2-dl/commit/22a023f)
@@ -27,7 +30,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - bump the uv group across 1 directory with 2 updates [`f3a3f7f`](https://github.com/richard-gledhill/barra2-dl/commit/f3a3f7f)
 - bump virtualenv [`8dca171`](https://github.com/richard-gledhill/barra2-dl/commit/8dca171)
 
+### Refactor
+- apply module layout convention to source and tests [`3f54f09`](https://github.com/richard-gledhill/barra2-dl/commit/3f54f09)
+
 ### Other
+- Merge pull request #125 from richard-gledhill/ci/changelog-on-demand [`ac2444f`](https://github.com/richard-gledhill/barra2-dl/commit/ac2444f)
+- Merge pull request #124 from richard-gledhill/refactor/module-layout [`f155251`](https://github.com/richard-gledhill/barra2-dl/commit/f155251)
 - Merge pull request #114 from richard-gledhill/docs/dev-docs-and-agents [`2775645`](https://github.com/richard-gledhill/barra2-dl/commit/2775645)
 - Merge pull request #113 from richard-gledhill/chore/coverage-mypy-build [`f66c8c7`](https://github.com/richard-gledhill/barra2-dl/commit/f66c8c7)
 - Merge pull request #112 from richard-gledhill/ci/gate-and-env [`7c877b1`](https://github.com/richard-gledhill/barra2-dl/commit/7c877b1)
