@@ -14,8 +14,7 @@ from pathlib import Path
 import barra2_dl
 from barra2_dl.globals import (
     BARRA2_INDEX,
-    BARRA2_URL_AUS11_1HR,
-    BARRA2_URL_AUST04_1HR,
+    BARRA2_URL,
     BARRA2_VAR_WIND_50,
     BARRA2_VAR_WIND_DEFAULT,
 )
@@ -51,8 +50,14 @@ end_datetime = datetime.strptime("2023-03-31T23:00:00Z", "%Y-%m-%dT%H:%M:%SZ")
 # use project or location name.
 #
 #%%
-fileout_prefix = "barra2_aust04_1hr"
-fileout_prefix = "barra2_aus11_1hr"
+fileout_prefix = "demo"
+
+#%% md
+# Choose the BARRA2 domain and frequency: AUS-11 (BARRA-R2) at 1hr, or AUST-04 (BARRA-C2) at 1hr or 20min.
+# Cache files are named with both, so different runs can share the cache folder.
+#%%
+domain = "AUS-11"  # or "AUST-04"
+freq = "1hr"  # or "20min" on AUST-04
 
 #%% md
 # ## Download point data
@@ -60,13 +65,15 @@ fileout_prefix = "barra2_aus11_1hr"
 # into the target cache folder.
 #%%
 urlfilenames = barra2_dl.download.point_data_urlfilenames(
-    barra2_url = BARRA2_URL_AUS11_1HR, # or barra2_url_aust04_1hr
+    barra2_url = BARRA2_URL,
     barra2_vars = BARRA2_VAR_WIND_DEFAULT,
     latitude = lat_lon_point.lat,
     longitude = lat_lon_point.lon,
     start_datetime= start_datetime,
     end_datetime = end_datetime,
     fileout_prefix = fileout_prefix,
+    domain = domain,
+    freq = freq,
 )
 # Use download_multithread with n-1 threads or download_serial with 1 thread
 barra2_dl.download.download_multithread(urlfilenames, cache_dir)
@@ -76,7 +83,7 @@ barra2_dl.download.download_multithread(urlfilenames, cache_dir)
 #%%
 df_merged = barra2_dl.merge.merge_csvs_to_df(
     filein_folder= cache_dir,
-    filename_pattern=f'{fileout_prefix}*.csv',
+    filename_pattern=f'{fileout_prefix}_{domain}_{freq}_*.csv',
     index_for_join=BARRA2_INDEX,
 )
 print(df_merged.head())

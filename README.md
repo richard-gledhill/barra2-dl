@@ -65,7 +65,10 @@ https://opus.nci.org.au/pages/viewpage.action?pageId=264241166
 
 ## Features
 
-- Point data download to closest node from BARRA2 AUS-11 (BARRA-R2) and AUST-04 (BARRA-C2) 1-hourly reanalysis data
+- Point data download to closest node from BARRA2 AUS-11 (BARRA-R2) and AUST-04 (BARRA-C2) reanalysis data,
+  1-hourly by default, and 20-minute on AUST-04
+- Wind at 10, 50, 100, 150, 200, 250 and 1500 m; the 10 m wind (`uas`/`vas`) is output as `ua10m`/`va10m` so every
+  height is named alike
 - Parallel, resumable download: files already in the cache folder are skipped
 - Merge the downloaded csv files into one DataFrame, and derive wind speed and direction from the u/v components
 - Fully typed with annotations and checked with mypy, [PEP561 compatible](https://www.python.org/dev/peps/pep-0561/)
@@ -93,20 +96,22 @@ from datetime import datetime
 from pathlib import Path
 
 import barra2_dl
-from barra2_dl.globals import BARRA2_INDEX, BARRA2_URL_AUS11_1HR, BARRA2_VAR_WIND_DEFAULT
+from barra2_dl.globals import BARRA2_INDEX, BARRA2_URL, BARRA2_VAR_WIND_DEFAULT
 
 cache_dir = Path('cache')
 cache_dir.mkdir(exist_ok=True)  # the download folder must already exist
 
 # 1. Build one (url, filename) pair per variable per month
 urlfilenames = barra2_dl.download.point_data_urlfilenames(
-    barra2_url=BARRA2_URL_AUS11_1HR,  # or BARRA2_URL_AUST04_1HR
+    barra2_url=BARRA2_URL,
     barra2_vars=BARRA2_VAR_WIND_DEFAULT,
     latitude=-23.5527472,
     longitude=133.3961111,
     start_datetime=datetime(2023, 1, 1),
     end_datetime=datetime(2023, 3, 31),
     fileout_prefix='Demo',
+    domain='AUS-11',  # or 'AUST-04'
+    freq='1hr',  # or '20min' on AUST-04
 )
 
 # 2. Download the csv files into the cache folder (files already there are skipped)
@@ -123,6 +128,10 @@ df_merged = barra2_dl.merge.merge_csvs_to_df(
 df_converted = barra2_dl.convert.convert_wind_components(df_merged)
 ```
 
+Cache files are named `<prefix>_<domain>_<freq>_<var>_<start>_<end>.csv`, so runs for different domains or
+frequencies can share a cache folder. `BARRA2_URL_AUS11_1HR` and `BARRA2_URL_AUST04_1HR` still work in place of
+`BARRA2_URL` but are deprecated.
+
 Also refer to the example Jupyter Notebook and script in `scripts/`.
 
 ## License
@@ -131,7 +140,7 @@ Also refer to the example Jupyter Notebook and script in `scripts/`.
 
 
 ## Roadmap
-1) Currently, AUS-11 and AUST-04 1hr is implemented.
+1) Currently, AUS-11 1hr, AUST-04 1hr and AUST-04 20min are implemented.
 2) Add option for AUS-22
 3) Implement bulk download for netCDF (for gridded data)
 4) Add download progress bar

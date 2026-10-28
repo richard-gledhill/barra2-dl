@@ -1,25 +1,38 @@
 """This module contains the barra2.download test function(s)."""
 
+import io
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
 import pytest
+import requests
 from pandas import Timestamp
 
 import barra2_dl.download
 import barra2_dl.globals
 from barra2_dl.globals import (
+    BARRA2_FREQS,
+    BARRA2_URL,
     BARRA2_URL_AUS11_1HR,
     BARRA2_URL_AUST04_1HR,
     BARRA2_VAR_WIND_50,
+    BARRA2_VAR_WIND_DEFAULT,
+    BARRA2_WIND_VARS,
 )
 from barra2_dl.mapping import LatLonPoint
 
 # region Test helpers
 # Tests that hit the real THREDDS server are opt-in: set BARRA2_LIVE=1 to run them.
 live_network = pytest.mark.skipif(not os.environ.get('BARRA2_LIVE'), reason='live network test; set BARRA2_LIVE=1')
+
+# every (domain, freq) barra2-dl can download
+DOMAIN_FREQS = [(domain, freq) for domain, freqs in BARRA2_FREQS.items() for freq in freqs]
+
+# every variable named in the wind table or the default list, which must exist on every (domain, freq)
+LISTED_VARS = sorted({name for entry in BARRA2_WIND_VARS for name in entry[:2]} | set(BARRA2_VAR_WIND_DEFAULT))
 
 
 class _FakeResponse:
@@ -51,7 +64,7 @@ def fake_get(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 def test_point_data_urlfilenames_mid_month_start() -> None:
     """A mid-month start date still downloads the file for the start month."""
     urlfilenames = barra2_dl.download.point_data_urlfilenames(
-        BARRA2_URL_AUS11_1HR,
+        BARRA2_URL,
         ['ua50m'],
         -23.5527472,
         133.3961111,
@@ -60,8 +73,8 @@ def test_point_data_urlfilenames_mid_month_start() -> None:
         'demo',
     )
     assert [filename for _, filename in urlfilenames] == [
-        'demo_ua50m_20230101_20230131.csv',
-        'demo_ua50m_20230201_20230228.csv',
+        'demo_AUS-11_1hr_ua50m_20230101_20230131.csv',
+        'demo_AUS-11_1hr_ua50m_20230201_20230228.csv',
     ]
 
 
@@ -78,7 +91,7 @@ def test_point_data_urlfilenames_mid_month_start() -> None:
     ),
     [
         (
-            BARRA2_URL_AUS11_1HR,
+            BARRA2_URL,
             BARRA2_VAR_WIND_50,
             LatLonPoint(-23.5527472, 133.3961111).lat,
             LatLonPoint(-23.5527472, 133.3961111).lon,
@@ -88,39 +101,39 @@ def test_point_data_urlfilenames_mid_month_start() -> None:
             [
                 (
                     'https://thredds.nci.org.au/thredds/ncss/grid/ob53/output/reanalysis/AUS-11/BOM/ERA5/historical/hres/BARRA-R2/v1/1hr/ua50m/latest/ua50m_AUS-11_ERA5_historical_hres_BOM_BARRA-R2_v1_1hr_202301-202301.nc?var=ua50m&latitude=-23.5527472&longitude=133.3961111&time_start=2023-01-01T00:00:00Z&time_end=2023-01-31T23:00:00Z&timeStride=&vertCoord=&accept=csv_file',
-                    'demo_ua50m_20230101_20230131.csv',
+                    'demo_AUS-11_1hr_ua50m_20230101_20230131.csv',
                 ),
                 (
                     'https://thredds.nci.org.au/thredds/ncss/grid/ob53/output/reanalysis/AUS-11/BOM/ERA5/historical/hres/BARRA-R2/v1/1hr/ua50m/latest/ua50m_AUS-11_ERA5_historical_hres_BOM_BARRA-R2_v1_1hr_202302-202302.nc?var=ua50m&latitude=-23.5527472&longitude=133.3961111&time_start=2023-02-01T00:00:00Z&time_end=2023-02-28T23:00:00Z&timeStride=&vertCoord=&accept=csv_file',
-                    'demo_ua50m_20230201_20230228.csv',
+                    'demo_AUS-11_1hr_ua50m_20230201_20230228.csv',
                 ),
                 (
                     'https://thredds.nci.org.au/thredds/ncss/grid/ob53/output/reanalysis/AUS-11/BOM/ERA5/historical/hres/BARRA-R2/v1/1hr/ua50m/latest/ua50m_AUS-11_ERA5_historical_hres_BOM_BARRA-R2_v1_1hr_202303-202303.nc?var=ua50m&latitude=-23.5527472&longitude=133.3961111&time_start=2023-03-01T00:00:00Z&time_end=2023-03-31T23:00:00Z&timeStride=&vertCoord=&accept=csv_file',
-                    'demo_ua50m_20230301_20230331.csv',
+                    'demo_AUS-11_1hr_ua50m_20230301_20230331.csv',
                 ),
                 (
                     'https://thredds.nci.org.au/thredds/ncss/grid/ob53/output/reanalysis/AUS-11/BOM/ERA5/historical/hres/BARRA-R2/v1/1hr/va50m/latest/va50m_AUS-11_ERA5_historical_hres_BOM_BARRA-R2_v1_1hr_202301-202301.nc?var=va50m&latitude=-23.5527472&longitude=133.3961111&time_start=2023-01-01T00:00:00Z&time_end=2023-01-31T23:00:00Z&timeStride=&vertCoord=&accept=csv_file',
-                    'demo_va50m_20230101_20230131.csv',
+                    'demo_AUS-11_1hr_va50m_20230101_20230131.csv',
                 ),
                 (
                     'https://thredds.nci.org.au/thredds/ncss/grid/ob53/output/reanalysis/AUS-11/BOM/ERA5/historical/hres/BARRA-R2/v1/1hr/va50m/latest/va50m_AUS-11_ERA5_historical_hres_BOM_BARRA-R2_v1_1hr_202302-202302.nc?var=va50m&latitude=-23.5527472&longitude=133.3961111&time_start=2023-02-01T00:00:00Z&time_end=2023-02-28T23:00:00Z&timeStride=&vertCoord=&accept=csv_file',
-                    'demo_va50m_20230201_20230228.csv',
+                    'demo_AUS-11_1hr_va50m_20230201_20230228.csv',
                 ),
                 (
                     'https://thredds.nci.org.au/thredds/ncss/grid/ob53/output/reanalysis/AUS-11/BOM/ERA5/historical/hres/BARRA-R2/v1/1hr/va50m/latest/va50m_AUS-11_ERA5_historical_hres_BOM_BARRA-R2_v1_1hr_202303-202303.nc?var=va50m&latitude=-23.5527472&longitude=133.3961111&time_start=2023-03-01T00:00:00Z&time_end=2023-03-31T23:00:00Z&timeStride=&vertCoord=&accept=csv_file',
-                    'demo_va50m_20230301_20230331.csv',
+                    'demo_AUS-11_1hr_va50m_20230301_20230331.csv',
                 ),
                 (
                     'https://thredds.nci.org.au/thredds/ncss/grid/ob53/output/reanalysis/AUS-11/BOM/ERA5/historical/hres/BARRA-R2/v1/1hr/ta50m/latest/ta50m_AUS-11_ERA5_historical_hres_BOM_BARRA-R2_v1_1hr_202301-202301.nc?var=ta50m&latitude=-23.5527472&longitude=133.3961111&time_start=2023-01-01T00:00:00Z&time_end=2023-01-31T23:00:00Z&timeStride=&vertCoord=&accept=csv_file',
-                    'demo_ta50m_20230101_20230131.csv',
+                    'demo_AUS-11_1hr_ta50m_20230101_20230131.csv',
                 ),
                 (
                     'https://thredds.nci.org.au/thredds/ncss/grid/ob53/output/reanalysis/AUS-11/BOM/ERA5/historical/hres/BARRA-R2/v1/1hr/ta50m/latest/ta50m_AUS-11_ERA5_historical_hres_BOM_BARRA-R2_v1_1hr_202302-202302.nc?var=ta50m&latitude=-23.5527472&longitude=133.3961111&time_start=2023-02-01T00:00:00Z&time_end=2023-02-28T23:00:00Z&timeStride=&vertCoord=&accept=csv_file',
-                    'demo_ta50m_20230201_20230228.csv',
+                    'demo_AUS-11_1hr_ta50m_20230201_20230228.csv',
                 ),
                 (
                     'https://thredds.nci.org.au/thredds/ncss/grid/ob53/output/reanalysis/AUS-11/BOM/ERA5/historical/hres/BARRA-R2/v1/1hr/ta50m/latest/ta50m_AUS-11_ERA5_historical_hres_BOM_BARRA-R2_v1_1hr_202303-202303.nc?var=ta50m&latitude=-23.5527472&longitude=133.3961111&time_start=2023-03-01T00:00:00Z&time_end=2023-03-31T23:00:00Z&timeStride=&vertCoord=&accept=csv_file',
-                    'demo_ta50m_20230301_20230331.csv',
+                    'demo_AUS-11_1hr_ta50m_20230301_20230331.csv',
                 ),
             ],
         ),
@@ -148,33 +161,33 @@ def test_point_data_urlfilenames_unsupported_fileout_type() -> None:
     """Only csv_file output is supported."""
     with pytest.raises(ValueError, match='not supported'):
         barra2_dl.download.point_data_urlfilenames(
-            BARRA2_URL_AUS11_1HR, ['ua50m'], -23.5, 133.4, '2023-01-01', '2023-01-31', 'demo', fileout_type='netcdf'
+            BARRA2_URL, ['ua50m'], -23.5, 133.4, '2023-01-01', '2023-01-31', 'demo', fileout_type='netcdf'
         )
 
 
 def test_point_data_urlfilenames_leap_february() -> None:
     """February in a leap year runs to the 29th."""
     urlfilenames = barra2_dl.download.point_data_urlfilenames(
-        BARRA2_URL_AUS11_1HR, ['ua50m'], -23.5, 133.4, '2024-02-01', '2024-02-29', 'demo'
+        BARRA2_URL, ['ua50m'], -23.5, 133.4, '2024-02-01', '2024-02-29', 'demo'
     )
 
-    assert [name for _, name in urlfilenames] == ['demo_ua50m_20240201_20240229.csv']
+    assert [name for _, name in urlfilenames] == ['demo_AUS-11_1hr_ua50m_20240201_20240229.csv']
     assert 'time_end=2024-02-29T23:00:00Z' in urlfilenames[0][0]
 
 
 def test_point_data_urlfilenames_no_variables() -> None:
     """No variables means no downloads."""
     urlfilenames = barra2_dl.download.point_data_urlfilenames(
-        BARRA2_URL_AUS11_1HR, [], -23.5, 133.4, '2023-01-01', '2023-03-31', 'demo'
+        BARRA2_URL, [], -23.5, 133.4, '2023-01-01', '2023-03-31', 'demo'
     )
 
     assert urlfilenames == []
 
 
 def test_point_data_urlfilenames_aust04_urls() -> None:
-    """The AUST-04 template produces BARRA-C2 URLs."""
+    """AUST-04 produces BARRA-C2 URLs."""
     (url, _), *_ = barra2_dl.download.point_data_urlfilenames(
-        BARRA2_URL_AUST04_1HR, ['va50m'], -23.5, 133.4, '2023-01-01', '2023-01-31', 'demo'
+        BARRA2_URL, ['va50m'], -23.5, 133.4, '2023-01-01', '2023-01-31', 'demo', domain='AUST-04'
     )
 
     assert '/AUST-04/' in url
@@ -182,11 +195,124 @@ def test_point_data_urlfilenames_aust04_urls() -> None:
     assert 'va50m_AUST-04' in url
 
 
+def test_point_data_urlfilenames_aust04_20min() -> None:
+    """AUST-04 20-minute data uses the 20min folder and ends each month at 23:40."""
+    urlfilenames = barra2_dl.download.point_data_urlfilenames(
+        BARRA2_URL, ['ua50m'], -33.88, 151.18, '2020-01-01', '2020-01-31', 'site', domain='AUST-04', freq='20min'
+    )
+
+    assert urlfilenames == [
+        (
+            'https://thredds.nci.org.au/thredds/ncss/grid/ob53/output/reanalysis/AUST-04/BOM/ERA5/historical/hres/BARRA-C2/v1/20min/ua50m/latest/ua50m_AUST-04_ERA5_historical_hres_BOM_BARRA-C2_v1_20min_202001-202001.nc?var=ua50m&latitude=-33.88&longitude=151.18&time_start=2020-01-01T00:00:00Z&time_end=2020-01-31T23:40:00Z&timeStride=&vertCoord=&accept=csv_file',
+            'site_AUST-04_20min_ua50m_20200101_20200131.csv',
+        )
+    ]
+
+
+@pytest.mark.parametrize(('domain', 'freq'), [('AUS-11', '20min'), ('AUS-22', '1hr'), ('AUST-04', 'day')])
+def test_point_data_urlfilenames_unsupported_domain_freq(domain: str, freq: str) -> None:
+    """A domain and frequency that barra2-dl does not support is rejected before any URL is built."""
+    with pytest.raises(
+        ValueError, match=re.escape('is not supported. Supported: AUS-11 1hr, AUST-04 1hr, AUST-04 20min')
+    ):
+        barra2_dl.download.point_data_urlfilenames(
+            BARRA2_URL, ['ua50m'], -23.5, 133.4, '2023-01-01', '2023-01-31', 'demo', domain=domain, freq=freq
+        )
+
+
+def test_point_data_urlfilenames_filenames_differ_by_domain_and_freq() -> None:
+    """The same variable and period give a different cache file per domain and frequency."""
+    names = {
+        barra2_dl.download.point_data_urlfilenames(
+            BARRA2_URL, ['ua50m'], -23.5, 133.4, '2023-01-01', '2023-01-31', 'demo', domain=domain, freq=freq
+        )[0][1]
+        for domain, freq in DOMAIN_FREQS
+    }
+
+    assert len(names) == len(DOMAIN_FREQS)
+
+
+def test_point_data_urlfilenames_alias_downloads_server_name() -> None:
+    """ua10m/va10m are downloaded as uas/vas."""
+    urlfilenames = barra2_dl.download.point_data_urlfilenames(
+        BARRA2_URL, ['ua10m', 'va10m'], -23.5, 133.4, '2023-01-01', '2023-01-31', 'demo'
+    )
+
+    assert [name for _, name in urlfilenames] == [
+        'demo_AUS-11_1hr_uas_20230101_20230131.csv',
+        'demo_AUS-11_1hr_vas_20230101_20230131.csv',
+    ]
+    assert all('ua10m' not in url and 'va10m' not in url for url, _ in urlfilenames)
+
+
+def test_point_data_urlfilenames_alias_and_server_name_download_once() -> None:
+    """Asking for uas and its alias ua10m downloads one file per month."""
+    urlfilenames = barra2_dl.download.point_data_urlfilenames(
+        BARRA2_URL, ['uas', 'ua10m'], -23.5, 133.4, '2023-01-01', '2023-02-28', 'demo'
+    )
+
+    assert [name for _, name in urlfilenames] == [
+        'demo_AUS-11_1hr_uas_20230101_20230131.csv',
+        'demo_AUS-11_1hr_uas_20230201_20230228.csv',
+    ]
+
+
+@pytest.mark.parametrize(
+    ('url', 'domain'),
+    [(BARRA2_URL_AUS11_1HR, 'AUS-11'), (BARRA2_URL_AUST04_1HR, 'AUST-04')],
+)
+def test_point_data_urlfilenames_deprecated_url(url: str, domain: str) -> None:
+    """The pre-filled 1hr templates still work, warn, and match BARRA2_URL with their domain."""
+    with pytest.deprecated_call():
+        deprecated = barra2_dl.download.point_data_urlfilenames(
+            url, ['ua50m'], -23.5, 133.4, '2023-01-01', '2023-01-31', 'demo'
+        )
+
+    assert deprecated == barra2_dl.download.point_data_urlfilenames(
+        BARRA2_URL, ['ua50m'], -23.5, 133.4, '2023-01-01', '2023-01-31', 'demo', domain=domain
+    )
+
+
+def test_point_data_urlfilenames_deprecated_url_ignores_domain_freq() -> None:
+    """A pre-filled template fixes its own domain and freq, so a conflicting argument can't mislabel the files."""
+    with pytest.deprecated_call():
+        (_, name), *_ = barra2_dl.download.point_data_urlfilenames(
+            BARRA2_URL_AUS11_1HR, ['ua50m'], -23.5, 133.4, '2023-01-01', '2023-01-31', 'demo', domain='AUST-04'
+        )
+
+    assert name == 'demo_AUS-11_1hr_ua50m_20230101_20230131.csv'
+
+
+@live_network
+@pytest.mark.parametrize(('domain', 'freq'), DOMAIN_FREQS)
+@pytest.mark.parametrize('var', LISTED_VARS)
+def test_point_data_urlfilenames_variables_are_served(var: str, domain: str, freq: str) -> None:
+    """Every listed wind variable and default variable is served on every supported domain and frequency."""
+    (url, _), *_ = barra2_dl.download.point_data_urlfilenames(
+        BARRA2_URL, [var], -33.88, 151.18, '2020-01-01', '2020-01-31', 'live', domain=domain, freq=freq
+    )
+
+    assert requests.get(url, timeout=120).status_code == 200
+
+
+@live_network
+def test_point_data_urlfilenames_20min_has_three_steps_per_hour() -> None:
+    """A 20-minute download has a value every 20 minutes through to 23:40 on the last day."""
+    (url, _), *_ = barra2_dl.download.point_data_urlfilenames(
+        BARRA2_URL, ['ua50m'], -33.88, 151.18, '2020-01-01', '2020-01-31', 'live', domain='AUST-04', freq='20min'
+    )
+
+    times = pd.read_csv(io.StringIO(requests.get(url, timeout=120).text))['time']
+
+    assert len(times) == 31 * 24 * 3
+    assert times.iloc[-1] == '2020-01-31T23:40:00Z'
+
+
 @pytest.mark.xfail(strict=True, reason='fileout_prefix=None is documented as a todo and yields a "None_" filename')
 def test_point_data_urlfilenames_default_prefix() -> None:
     """A missing prefix should not leak the string 'None' into filenames."""
     (_, name), *_ = barra2_dl.download.point_data_urlfilenames(
-        BARRA2_URL_AUS11_1HR, ['ua50m'], -23.5, 133.4, '2023-01-01', '2023-01-31'
+        BARRA2_URL, ['ua50m'], -23.5, 133.4, '2023-01-01', '2023-01-31'
     )
 
     assert not name.startswith('None')
@@ -196,52 +322,22 @@ def test_point_data_urlfilenames_default_prefix() -> None:
 
 
 # region download_serial
-@pytest.mark.parametrize(
-    (
-        'barra2_url',
-        'barra2_vars',
-        'latitude',
-        'longitude',
-        'start_datetime',
-        'end_datetime',
-        'fileout_prefix',
-    ),
-    [
-        (
-            BARRA2_URL_AUS11_1HR,
-            BARRA2_VAR_WIND_50,
-            LatLonPoint(-23.5527472, 133.3961111).lat,
-            LatLonPoint(-23.5527472, 133.3961111).lon,
-            datetime.strptime('2023-01-01T00:00:00Z', '%Y-%m-%dT%H:%M:%SZ'),
-            datetime.strptime('2023-03-31T23:00:00Z', '%Y-%m-%dT%H:%M:%SZ'),
-            'barra2_aus11_1hr',
-        ),
-        (
-            BARRA2_URL_AUST04_1HR,
-            BARRA2_VAR_WIND_50,
-            LatLonPoint(-23.5527472, 133.3961111).lat,
-            LatLonPoint(-23.5527472, 133.3961111).lon,
-            datetime.strptime('2023-01-01T00:00:00Z', '%Y-%m-%dT%H:%M:%SZ'),
-            datetime.strptime('2023-03-31T23:00:00Z', '%Y-%m-%dT%H:%M:%SZ'),
-            'barra2_aust04_1hr',
-        ),
-    ],
-)
 @live_network
-def test_download_serial(
-    barra2_url, barra2_vars, latitude, longitude, start_datetime, end_datetime, fileout_prefix, tmp_path
-) -> None:
-    """Test with parametrization."""
+@pytest.mark.parametrize(('domain', 'freq'), DOMAIN_FREQS)
+def test_download_serial(domain: str, freq: str, tmp_path: Path) -> None:
+    """Three months of the 50 m variables download from every supported domain and frequency."""
     download_folder = tmp_path / 'cache'
     download_folder.mkdir()
     urlfilenames = barra2_dl.download.point_data_urlfilenames(
-        barra2_url,
-        barra2_vars,
-        latitude,
-        longitude,
-        start_datetime,
-        end_datetime,
-        fileout_prefix,
+        BARRA2_URL,
+        BARRA2_VAR_WIND_50,
+        LatLonPoint(-23.5527472, 133.3961111).lat,
+        LatLonPoint(-23.5527472, 133.3961111).lon,
+        datetime(2023, 1, 1),
+        datetime(2023, 3, 31),
+        'live',
+        domain=domain,
+        freq=freq,
     )
 
     barra2_dl.download.download_serial(urlfilenames, download_folder)
@@ -272,52 +368,22 @@ def test_download_serial_empty_list(fake_get: list[str], tmp_path: Path) -> None
 
 
 # region download_multithread
-@pytest.mark.parametrize(
-    (
-        'barra2_url',
-        'barra2_vars',
-        'latitude',
-        'longitude',
-        'start_datetime',
-        'end_datetime',
-        'fileout_prefix',
-    ),
-    [
-        (
-            BARRA2_URL_AUS11_1HR,
-            BARRA2_VAR_WIND_50,
-            LatLonPoint(-23.5527472, 133.3961111).lat,
-            LatLonPoint(-23.5527472, 133.3961111).lon,
-            datetime.strptime('2023-01-01T00:00:00Z', '%Y-%m-%dT%H:%M:%SZ'),
-            datetime.strptime('2023-03-31T23:00:00Z', '%Y-%m-%dT%H:%M:%SZ'),
-            'barra2_aus11_1hr',
-        ),
-        (
-            BARRA2_URL_AUST04_1HR,
-            BARRA2_VAR_WIND_50,
-            LatLonPoint(-23.5527472, 133.3961111).lat,
-            LatLonPoint(-23.5527472, 133.3961111).lon,
-            datetime.strptime('2023-01-01T00:00:00Z', '%Y-%m-%dT%H:%M:%SZ'),
-            datetime.strptime('2023-03-31T23:00:00Z', '%Y-%m-%dT%H:%M:%SZ'),
-            'barra2_aust04_1hr',
-        ),
-    ],
-)
 @live_network
-def test_download_multithread(
-    barra2_url, barra2_vars, latitude, longitude, start_datetime, end_datetime, fileout_prefix, tmp_path
-) -> None:
-    """Test with parametrization."""
+@pytest.mark.parametrize(('domain', 'freq'), DOMAIN_FREQS)
+def test_download_multithread(domain: str, freq: str, tmp_path: Path) -> None:
+    """Three months of the 50 m variables download from every supported domain and frequency."""
     download_folder = tmp_path / 'cache'
     download_folder.mkdir()
     urlfilenames = barra2_dl.download.point_data_urlfilenames(
-        barra2_url,
-        barra2_vars,
-        latitude,
-        longitude,
-        start_datetime,
-        end_datetime,
-        fileout_prefix,
+        BARRA2_URL,
+        BARRA2_VAR_WIND_50,
+        LatLonPoint(-23.5527472, 133.3961111).lat,
+        LatLonPoint(-23.5527472, 133.3961111).lon,
+        datetime(2023, 1, 1),
+        datetime(2023, 3, 31),
+        'live',
+        domain=domain,
+        freq=freq,
     )
 
     barra2_dl.download.download_multithread(urlfilenames, download_folder)

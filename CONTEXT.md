@@ -11,13 +11,22 @@ it and derives wind speed and direction for wind resource and energy assessment.
 The Bureau of Meteorology's second-generation atmospheric reanalysis, served from the NCI THREDDS server.
 _Avoid_: BARRA (the first-generation reanalysis, a different product)
 
+**Domain**:
+A BARRA2 model grid, named as on the server: AUS-11 or AUST-04. Listed in `BARRA2_DOMAINS` with the model that
+produced it, and passed as `domain=` with the `BARRA2_URL` template.
+
 **AUS-11**:
-The BARRA-R2 regional domain, about 11 km grid spacing. Template: `BARRA2_URL_AUS11_1HR`.
+The BARRA-R2 regional domain, about 11 km grid spacing. Frequencies: `1hr`.
 _Avoid_: BARRA-R2 when naming the domain in code (it names the model, AUS-11 the domain)
 
 **AUST-04**:
-The BARRA-C2 convective-scale domain, about 4 km grid spacing. Template: `BARRA2_URL_AUST04_1HR`.
+The BARRA-C2 convective-scale domain, about 4 km grid spacing. Frequencies: `1hr`, `20min`.
 _Avoid_: BARRA-C2 when naming the domain in code
+
+**Frequency**:
+The time step of a BARRA2 output, named as its server folder: `1hr` (the default) or `20min` (AUST-04 only). Listed
+per domain in `BARRA2_FREQS` and passed as `freq=`.
+_Avoid_: Resolution (that is the grid spacing)
 
 **Variable**:
 One BARRA2 field such as `ua50m` or `ta50m`. BARRA2 stores each variable-month as a separate remote file.
@@ -40,8 +49,15 @@ The columns `time`, `station`, latitude and longitude that the per-variable CSVs
 _Avoid_: Key
 
 **ua / va**:
-The eastward and northward wind components at a height, in m s-1. Listed in `BARRA2_WIND_VARS`.
+The eastward and northward wind components at a height, in m s-1. Listed in `BARRA2_WIND_VARS` with their height:
+`uas`/`vas` (10 m), `ua50m`…`ua250m` and `ua1500m`. `ua<N>` without the `m` (e.g. `ua850`) is a pressure level in
+hPa, not a height.
 _Avoid_: u / v in column names (the BARRA2 names are `ua*` and `va*`)
+
+**Alias** (`BARRA2_VAR_ALIASES`):
+A barra2-dl name for a server variable: `ua10m`/`va10m` for `uas`/`vas`. An alias is downloaded under the server
+name, and the converted output uses the alias so the 10 m wind is named like the other heights.
+_Avoid_: Treating `ua10m` as a server variable (the server has none)
 
 **Wind speed** (`v*`):
 The magnitude of the `ua`/`va` pair, added as `v<height>[unit="m s-1"]`.

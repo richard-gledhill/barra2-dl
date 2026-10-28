@@ -7,7 +7,7 @@ from typing import overload
 import numpy as np
 import pandas as pd
 
-from barra2_dl.globals import BARRA2_WIND_VARS
+from barra2_dl.globals import BARRA2_VAR_ALIASES, BARRA2_WIND_VARS
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
@@ -128,6 +128,10 @@ def convert_wind_components(
 ) -> pd.DataFrame:
     """Converts columns of wind components ua* and va* to v and phi.
 
+    Columns are matched on their exact variable name (the text before '[unit=...]'), and output columns are named
+    from the height in BARRA2_WIND_VARS. The 10 m server names uas and vas are renamed to their BARRA2_VAR_ALIASES
+    (ua10m, va10m), so every height is named alike for import into other software.
+
     Args:
         df_merged: Dataframe with wind data ua and va columns to convert to v and phi
 
@@ -141,36 +145,42 @@ def convert_wind_components(
         Add checks for ua and va components
         Update function as following leverages global variables
     """
+    # map each variable name to its full column header, e.g. 'ua50m' -> 'ua50m[unit="m s-1"]'
+    columns = {str(column).split('[', 1)[0]: column for column in df_merged.columns}
+
     # loop through all possible wind components
     df_processed = df_merged
 
-    for tup in BARRA2_WIND_VARS:
-        mask_wind_speed_h = tup[0][2:]
-        mask_ua = df_merged.columns.str.contains(tup[0])  # select the ua column header
-        mask_va = df_merged.columns.str.contains(tup[1])  # select the va column header
-
-        if np.any(mask_ua) and np.any(mask_va):
-            # create temporary dataframe for ua and va using the mask
-            df_merged_ua = df_merged.loc[:, mask_ua]
-            df_merged_va = df_merged.loc[:, mask_va]
+    for ua, va, height in BARRA2_WIND_VARS:
+        if ua in columns and va in columns:
+            ua_values = df_merged[columns[ua]].tolist()
+            va_values = df_merged[columns[va]].tolist()
 
             df_processed_v = pd.DataFrame(
-                wind_components_to_speed(df_merged_ua.iloc[:, 0].tolist(), df_merged_va.iloc[:, 0].tolist()),
-                columns=['v' + mask_wind_speed_h + '[unit="m s-1"]'],
+                wind_components_to_speed(ua_values, va_values),
+                columns=[f'v{height}m[unit="m s-1"]'],
             )
 
             # instantiate a temp dataframe for the phi value
             df_processed_phi_met = pd.DataFrame(
-                wind_components_to_direction(df_merged_ua.iloc[:, 0].tolist(), df_merged_va.iloc[:, 0].tolist()),
-                columns=['v' + mask_wind_speed_h + '_' + 'phi_met[unit="degrees"]'],
+                wind_components_to_direction(ua_values, va_values),
+                columns=[f'v{height}m_phi_met[unit="degrees"]'],
             )
 
             # Merge the current variable DataFrame with the combined DataFrame
             df_processed = df_processed.join(df_processed_v)
             df_processed = df_processed.join(df_processed_phi_met)
 
-            sys.stdout.write('Converted: ' + df_merged_ua.columns.values[0] + ', ' + df_merged_va.columns.values[0])
+            sys.stdout.write(f'Converted: {columns[ua]}, {columns[va]}')
             sys.stdout.write('\n')
+
+    # rename server names to their aliases, keeping the unit suffix, e.g. uas[unit="m s-1"] -> ua10m[unit="m s-1"]
+    renames = {
+        columns[server]: str(columns[server]).replace(server, alias, 1)
+        for alias, server in BARRA2_VAR_ALIASES.items()
+        if server in columns
+    }
+    df_processed = df_processed.rename(columns=renames)
 
     # todo check if df_processed was updated
     # if df_processed == df_merged:
