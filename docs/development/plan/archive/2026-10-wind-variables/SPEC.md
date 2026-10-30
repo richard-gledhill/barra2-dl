@@ -1,7 +1,7 @@
 # SPEC: wind variable table and wind frequencies
 
-Requirement: [RFC-001](../requirements/wind-variables-bugfix-prd.md). Style and gates: [conventions.md](../conventions.md),
-[constraints.md](../constraints.md).
+Requirement: [RFC-001](../../../requirements/wind-variables-bugfix-prd.md). Style and gates: [conventions.md](../../../conventions.md),
+[constraints.md](../../../constraints.md).
 
 ## Decisions on RFC-001's open questions
 
