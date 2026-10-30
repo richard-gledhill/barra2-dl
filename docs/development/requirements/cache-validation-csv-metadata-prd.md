@@ -1,4 +1,4 @@
-Status: Draft
+Status: Done
 
 # RFC-007: Cache validation and csv metadata header
 

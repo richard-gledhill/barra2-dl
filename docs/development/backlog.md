@@ -11,6 +11,12 @@ fail loudly once the bug is fixed, so remove the `xfail` in the same change.
 | Tuple bounds crash | `_generate_point_grid` validates a 4-tuple `(north, south, east, west)` as its docstring promises, then indexes it by key and raises `TypeError`. Unwired helper. | `tests/test_mapping.py::test_generate_point_grid_tuple` |
 | `None_` filename prefix | `point_data_urlfilenames(..., fileout_prefix=None)` produces filenames starting `None_`. | `tests/test_download.py::test_point_data_urlfilenames_default_prefix` |
 
+## Manual checks owed
+
+- Windographer import of a nearest-node and an `average4` csv with the metadata header (RFC-007 acceptance). Follow
+  [`testing/manual-checks.md`](testing/manual-checks.md) and record the result in its table. If Windographer doesn't
+  read the location, time step or time zone, take it to RFC-006.
+
 ## Deferred features (from existing `Todo` notes)
 
 - The draft grid helpers in `mapping.py` (`_generate_point_grid`, `_find_nearest_point`, `_format_lat_lon`) and the

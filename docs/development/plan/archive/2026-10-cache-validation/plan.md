@@ -1,8 +1,8 @@
 # Plan: cache validation and csv metadata header (RFC-007)
 
-Requirement: [RFC-007](../requirements/cache-validation-csv-metadata-prd.md). It goes before
-[RFC-005](../requirements/gui-prd.md), whose SPEC, plan and todo are parked in
-[`parked/2026-10-gui/`](parked/2026-10-gui/SPEC.md) and resume when this ships.
+Requirement: [RFC-007](../../../requirements/cache-validation-csv-metadata-prd.md). It goes before
+[RFC-005](../../../requirements/gui-prd.md), whose SPEC, plan and todo are parked in
+[`parked/2026-10-gui/`](../../parked/2026-10-gui/SPEC.md) and resume when this ships.
 
 Spec: [SPEC.md](SPEC.md), written and approved 2026-10-31. One PR (`fix/cache-validation-csv-header`), branched from an up-to-date `main`, passing `make check`,
 `make test` and `make docs-test`.
