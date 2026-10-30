@@ -217,3 +217,7 @@ fabric.properties
 
 /scripts/cache/
 /scripts/output/
+
+# Agent skills installed locally via npx skills
+.claude/skills/
+skills-lock.json
