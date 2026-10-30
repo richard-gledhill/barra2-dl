@@ -18,7 +18,7 @@ inventory so a bad name fails before any download.
 
 RFC-001 made domain and frequency parameters (`BARRA2_DOMAINS`, `BARRA2_FREQS`, `BARRA2_URL`) and supports AUS-11
 `1hr`, AUST-04 `1hr` and AUST-04 `20min`. It left two questions here: whether to add `day`/`mon`, and how to treat
-their time-averaged wind components (section 5.5).
+their time-averaged wind components (section 5.6).
 
 ## 2. Sources
 
@@ -128,53 +128,69 @@ for time series only.
 ### 4.6 Out of scope
 
 Convective indices (`CAPE`, `CIN`, `BWD*`, `SRH*` …), soil and land-surface fields, top-of-atmosphere radiation,
-radar and lightning fields. They can still be requested by name once the inventory exists (section 5.2).
+radar and lightning fields. They can still be requested by name once the inventory exists (section 5.3).
 
 ## 5. Proposed design
 
-### 5.1 Presets
+### 5.1 Default frequency: 1 hour
 
-| Preset | Variables | Use | AUST-04 `20min` |
-|---|---|---|---|
-| `wind` (default) | `uas`, `vas`, `ua/va` 50-250 m | Long-term reference | Yes |
-| `wind+density` | `wind` + `ps`, `tas`, `ta50m`…`ta250m`, `hurs` | Energy yield with density correction | No: `ps`, `hurs` missing (open question 4) |
-| `wind+stability` | `wind+density` + `zmla`, `hfss` | Shear/veer analysis | No |
-| `extremes` | `sfcWindmax`, `wsgsmax` | Site suitability screening | Partly: `wsgsmax` only |
-| `environment` | `pr`, `rsds`, `hurs`, `tas` | Icing, erosion, hybrid | Partly: `tas` only |
-| `site` | `orog`, `sftlf` | Node representativeness (fixed fields) | n/a (`fx`) |
+`1hr` is the default setting throughout this design, as it already is for `point_data_urlfilenames` (`freq='1hr'`).
+It's the only frequency every proposed parameter has on both domains, and it's what MCP and energy-yield work use.
+
+- Presets, the inventory checks and the tests are defined against `1hr` first. A preset is valid only if all its
+  variables exist at `1hr` on both domains.
+- Other frequencies are opt-in: a user gets AUST-04 `20min`, or `day`/`mon` if added (5.6), only by passing `freq=`
+  explicitly. Nothing switches frequency automatically.
+- The CLI and GUI start on `1hr` and show other frequencies only where `BARRA2_FREQS` lists them for the chosen
+  domain.
+
+### 5.2 Presets
+
+All presets are defined at the `1hr` default. The last column shows what happens if a user opts in to AUST-04
+`20min`.
+
+| Preset | Variables | Use | At `1hr` (default) | At AUST-04 `20min` (opt-in) |
+|---|---|---|---|---|
+| `wind` (default preset) | `uas`, `vas`, `ua/va` 50-250 m | Long-term reference | Yes, both domains | Yes |
+| `wind+density` | `wind` + `ps`, `tas`, `ta50m`…`ta250m`, `hurs` | Energy yield with density correction | Yes, both domains | No: `ps`, `hurs` missing (open question 4) |
+| `wind+stability` | `wind+density` + `zmla`, `hfss` | Shear/veer analysis | Yes, both domains | No |
+| `extremes` | `sfcWindmax`, `wsgsmax` | Site suitability screening | Yes, both domains | Partly: `wsgsmax` only |
+| `environment` | `pr`, `rsds`, `hurs`, `tas` | Icing, erosion, hybrid | Yes, both domains | Partly: `tas` only |
+| `site` | `orog`, `sftlf` | Node representativeness (fixed fields) | n/a (`fx`) | n/a (`fx`) |
 
 Presets are plain lists in `globals.py`, like `BARRA2_VAR_WIND_DEFAULT`. The CLI and GUI expose them by name.
-Requesting a preset at a frequency where some of its variables don't exist raises an error that names the missing
-variables. It never quietly downloads part of the preset.
+Requesting a preset at an opt-in frequency where some of its variables don't exist raises an error that names the
+missing variables and says they are available at `1hr`. It never quietly downloads part of the preset.
 
-### 5.2 Variable inventory
+### 5.3 Variable inventory
 
 Add `BARRA2_VARS: dict[tuple[str, str], frozenset[str]]`, keyed by `(domain, freq)` to match `BARRA2_FREQS`. Generate
 it from the S3 listing with a small script in `scripts/` and check it in. Uses:
 
 - `point_data_urlfilenames` resolves aliases (`BARRA2_VAR_ALIASES`) first, then checks every name against
   `BARRA2_VARS[(domain, freq)]`. Unknown names raise a `ValueError` naming the domain and frequency, before any
-  request. Today an unknown name only produces one logged 404 per month.
+  request. Today an unknown name only produces one logged 404 per month. With `freq` left at its default, the check
+  uses the `1hr` inventory.
 - A live test (`BARRA2_LIVE=1`) re-lists S3 and fails if the checked-in inventory drifts.
 - A test that every `(domain, freq)` in `BARRA2_FREQS` has an inventory entry, so adding a frequency forces the
   inventory to follow.
 
 Also record per-variable metadata needed downstream: units, and the cell method, i.e. whether the value is
 instantaneous (`time: point`), a mean or a maximum. RFC-003 needs this for time alignment (`pr`, `rsds` are hourly
-means stamped at :30) and section 5.5 needs it for wind.
+means stamped at :30) and section 5.6 needs it for wind.
 
-### 5.3 Pressure levels
+### 5.4 Pressure levels
 
 Accept `ua<hPa>`/`va<hPa>` through the inventory, but keep them out of `BARRA2_WIND_VARS` and presets. RFC-001's
 exact column matching already stops `ua200` pairing with `ua200m`. If they are ever converted, name the outputs
 `v<hPa>hPa[...]` so they can't collide with heights.
 
-### 5.4 Unit conversion
+### 5.5 Unit conversion
 
 Adopt the useful conversions from the atl3b fork as an explicit, opt-in step: K → °C, Pa → hPa,
 kg m-2 s-1 → mm h-1. Keep SI by default in netCDF; CSV for wind software may prefer °C and hPa.
 
-### 5.5 Daily and monthly frequencies (deferred from RFC-001)
+### 5.6 Daily and monthly frequencies (deferred from RFC-001)
 
 The `day` and `mon` folders have the same height wind names as `1hr`, but each value is a time mean of the
 component. Wind speed computed from mean components is the speed of the mean wind vector. It is always at most the
@@ -182,17 +198,19 @@ mean of the hourly speeds, and much lower when the direction varies. A daily or 
 understate the wind resource.
 
 Recommendation:
-- Add `day` and `mon` to `BARRA2_FREQS` for both domains, so non-wind parameters (`tas`, `ps`, `pr`, `z0` …) can be
-  fetched for climate summaries.
-- `convert_wind_components` refuses mean components: it checks the cell method recorded in 5.2 and raises an error
+- Add `day` and `mon` to `BARRA2_FREQS` for both domains as opt-in frequencies, so non-wind parameters (`tas`, `ps`,
+  `pr`, `z0` …) can be fetched for climate summaries. `1hr` stays the default (5.1).
+- `convert_wind_components` refuses mean components: it checks the cell method recorded in 5.3 and raises an error
   that says to use `1hr` data and average the speeds instead.
 - For a daily or monthly mean wind speed, document `sfcWind` (10 m, a true mean speed) and recommend averaging
   hourly `v<h>m` for other heights.
 
 ## 6. Testing
 
-- Unit tests that every preset is a subset of the inventory for each `(domain, freq)` it claims to support.
-- A preset requested at an unsupported frequency raises an error naming the missing variables.
+- `1hr` is the default frequency, and every preset except `site` is a subset of the `1hr` inventory on both domains.
+- Unit tests that every preset is a subset of the inventory for each opt-in `(domain, freq)` it claims to support.
+- A preset requested at an opt-in frequency that lacks some of its variables raises an error naming them and
+  pointing to `1hr`.
 - `point_data_urlfilenames` raises on an unknown variable, offline.
 - Every `(domain, freq)` in `BARRA2_FREQS` has an inventory entry.
 - `convert_wind_components` refuses `day`/`mon` mean components.
@@ -202,7 +220,7 @@ Recommendation:
 
 1. Which presets do your users need on day one? `wind+density` is the strongest candidate for the default.
 2. Fetch `orog`/`sftlf` automatically with every point download, or only on request?
-3. Add `3hr`, `day` and `mon` to `BARRA2_FREQS` now (recommended for `day`/`mon`, with the wind guard in 5.5), or
+3. Add `3hr`, `day` and `mon` to `BARRA2_FREQS` now (recommended for `day`/`mon`, with the wind guard in 5.6), or
    keep to `1hr` and `20min`?
 4. For 20-minute density, which approach: `psl` reduced with `orog` plus `huss` (all 20-minute), or the hourly `ps`
    and `hurs` interpolated to 20 minutes?
