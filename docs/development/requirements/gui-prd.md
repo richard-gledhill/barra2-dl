@@ -6,8 +6,9 @@ Status: Draft
 |---|---|
 | Raised by | atl3b, in [issue #59](https://github.com/richard-gledhill/barra2-dl/issues/59), with a proof of concept in the fork [atl3b/barra2-dl-wr](https://github.com/atl3b/barra2-dl-wr) (v0.5.0, commit `0f1a360`). The GUI is a fresh build; credit atl3b as the person who raised the feature. |
 | Depends on | [RFC-001](wind-variables-bugfix-prd.md) (Done), [RFC-002 parameter review](parameter-review-prd.md), [RFC-003 netCDF output](netcdf-output-prd.md); see the [roadmap](wind-engineering-roadmap-prd.md#4-rfc-roadmap) |
+| Goes after | [RFC-007 cache validation and csv metadata header](cache-validation-csv-metadata-prd.md), which changes `download._download_file` first (cache check, atomic writes) and adds the csv writer `run_site` uses |
 | Replaces | RFC-004 (CLI), dropped on 2026-10-30. Its engine and project file are folded in here (5.5, 5.6); the command-line tool is deferred to the backlog |
-| Drafted | 2026-10-28, updated 2026-10-30 with the owner's decisions (section 8) |
+| Drafted | 2026-10-28, updated 2026-10-30 with the owner's decisions (section 8), and 2026-10-31 with the [package structure review](package-structure-review-prd.md) (5.7, section 9) |
 
 ## 1. Summary
 
@@ -36,7 +37,7 @@ The toolkit is chosen by spikes (5.2), with a web-style interface such as Stream
 ## 2. Motivation
 
 - Wind farm developers and resource analysts want a long-term reference series for a mast or site, not a Python
-  workflow. Today they must edit `scripts/example_barra2_dl.py`.
+  workflow. Today they must edit `scripts/example_barra2_dl_csv.py` or `scripts/example_barra2_dl_netcdf.py`.
 - Choosing the right grid node matters: the user needs to see which BARRA2 node(s) surround the site and how far
   away they are before downloading years of data.
 - A GUI is the lowest-friction way to show that, and to run multi-site, multi-node batches.
@@ -56,7 +57,7 @@ Mostly, for AUS-11.
 | `pytest tests` | 38 passed (61 s). |
 | Bare `pytest` (repo root) | Fails at collection: `scripts/example_barra2_dl.py` runs a download at import and raises `FileNotFoundError` for `scripts/cache`. |
 | GUI start-up (`Barra2GUI` built and a coordinate added, headless smoke test) | Works; four candidate nodes found per coordinate. |
-| AUS-11 node maths (`find_nearest_four_grid_points`) vs the shipped 698,972-node `BOM_BARRA2_AUS11_latlon.csv` | 8,000 of 8,000 corners from 2,000 random Australian sites are real grid nodes. |
+| AUS-11 node maths (`find_nearest_four_grid_points`) vs the 698,972-node `BOM_BARRA2_AUS11_latlon.csv` | 8,000 of 8,000 corners from 2,000 random Australian sites are real grid nodes. |
 | Live download, AUS-11, `ua50m`/`ua100m`/`tas`/`rsds`/`ta50m` | HTTP 200, about 3 s per variable-month. |
 | `ruff check` / `mypy` on the fork | 59 and 27 errors respectively (it predates this repo's ruff/mypy setup). |
 
@@ -147,6 +148,7 @@ Everything the GUI needs lives in the library, so the GUI and scripts share it:
 - **Timestamps aren't shifted** (RFC-003 decision 1), so there is no `align_time` step.
 
 This follows the conventions: functional modules, no orchestrator class, and the GUI is the only stateful piece.
+How the package is laid out to keep it that way, for the GUI now and a CLI later, is in 5.7.
 
 ### 5.2 Toolkit: chosen by spikes
 
@@ -250,11 +252,14 @@ for site in proj.sites:
 - `load_project(path)` returns validated settings and sites as plain dataclasses. The GUI builds the same
   dataclasses from its form, so a project file and a form run go through one code path.
 - `run_site(site, settings, progress=None, cancel=None)` builds the URLs, downloads, merges, converts, writes the
-  output (RFC-003) and writes the run summary. It returns the result. It's a function, not a class, as the
-  conventions require.
+  output (RFC-003, with RFC-007's csv metadata header) and writes the run summary. It returns the result. It's a
+  function, not a class, as the conventions require.
+- **Location safety net.** RFC-007 stops a cached file from another location being reused. As a second check,
+  `run_site` fails the site if the merged node is further from the requested point than one grid spacing, which
+  can only happen if something upstream went wrong.
 - It passes the deletion test: the GUI and the example script would otherwise each rebuild the pipeline, which is
   the fork's main defect.
-- **Example script:** `scripts/example_barra2_dl.py` and its notebook gain a cell that loads
+- **Example script:** `scripts/example_barra2_dl_netcdf.py` and its notebook gain a cell that loads
   `scripts/example_project.toml` and loops over the sites. The existing step-by-step cells stay, to show what
   `run_site` does underneath.
 
@@ -270,6 +275,55 @@ for site in proj.sites:
   button from them; a script can ignore them.
 - **Batches.** A failing site doesn't stop the others in a project run. Its gaps are listed in its run summary,
   and the end-of-run report highlights failed sites (decision 12).
+- **Atomic writes and empty responses** are done by RFC-007, which lands first. The retries here wrap that code.
+
+### 5.7 Package structure and interfaces (from the structure review)
+
+The [package structure review](package-structure-review-prd.md) asked whether `src/` should be split into a `core`
+module and a `gui` module that is purely an interface layer, and whether that suits a future CLI or API. Its
+findings, proposed here for the owner's decision (section 9):
+
+**Layout.** No `core/` folder: the top-level package already is the core, and moving it would change every public
+import for no new boundary. Interfaces are subpackages or modules beside it:
+
+```text
+src/barra2_dl/
+    __init__.py      exports convert, download, mapping, merge, project (not gui or cli)
+    globals.py  mapping.py  download.py  merge.py  convert.py
+    project.py       the engine (5.5)
+    gui/             interface, `gui` extra; entry point barra2-dl-gui
+    cli.py           later (backlog); entry point barra2-dl
+```
+
+**Rules**, each checked by a test in `tests/test_package.py` using only the standard library:
+1. An interface imports only names in a module's `__all__`, plus `globals` constants. `mapping.py` and `globals.py`
+   gain `__all__` for this.
+2. No library or engine module imports `barra2_dl.gui`, `barra2_dl.cli` or a GUI toolkit, so `import barra2_dl`
+   works without the `gui` extra.
+3. Anything two interfaces would need lives in the engine or library, not in `gui/`: building settings from input,
+   validation, mast-list import, output naming, the download preview. `gui/` holds only its toolkit's widgets,
+   layout, state and threading.
+4. The engine reports through return values, the progress callback and logging; interfaces decide what the user
+   sees.
+
+**Engine additions so the GUI, a CLI and any API share one path:**
+- `project_from_dict(data, base_dir)` and `site_from_dict(data, settings)` build the dataclasses from plain data;
+  `load_project(path)` is `tomllib` plus `project_from_dict`. A form, CLI flags and a file go through the same code.
+- `validate(settings, site) -> list[Problem]`, public, with `Problem(site, key, message)`. The GUI marks the field
+  named by `key` and disables invalid combinations (G3); a CLI prints them; an API would return them as JSON.
+  `ProjectError.problems` holds the same `Problem`s.
+- The choices come from the library, never retyped in an interface: `BARRA2_FREQS`, `BARRA2_PRESETS`,
+  `BARRA2_NODE_SELECTIONS`, plus a new constant for the output formats, and `Literal` type aliases for node
+  selection, format and the result statuses.
+- `plan_site(site, settings)` returns the files a run would download and which are already cached: the GUI's
+  "1,240 files, 310 cached" preview and a CLI's `--dry-run`.
+- `SiteResult` and the run summary (5.4) serialise through one function, so the GUI's report, a CLI's exit code and
+  any API response read the same structure. `schema_version` stays.
+
+**Fit for a CLI or API.** With this engine the deferred CLI is about 100 lines: `argparse` to `site_from_dict` to
+`run_site`, Ctrl-C setting the cancel event, the exit code from `SiteResult.status`. An HTTP API stays a non-goal;
+if it were wanted, it would wrap `run_site` in a job runner, and the toolkit ADR (5.2) should note that NiceGUI runs
+on FastAPI and Streamlit can't share a server.
 
 ## 6. Testing
 
@@ -281,16 +335,25 @@ for site in proj.sites:
 - **Retries:** a 503 and then a 200 downloads once after one retry; a 404 isn't retried; each file reports
   `downloaded`, `skipped` or `failed` as appropriate.
 - **Progress and cancel:** the callback sees every file; setting the cancel event stops new requests.
+- **Validation as data:** `validate` returns one `Problem` per fault with its site and key, for a form-built site as
+  for a file; `plan_site` lists the right files and marks cached ones.
+- **Location safety net:** a merged node more than one grid spacing from the request fails the site.
+- **Boundaries (5.7):** `import barra2_dl` in a subprocess loads no `gui`, `cli` or toolkit module; every
+  `barra2_dl` import in `gui/` (and later `cli.py`) names a member of that module's `__all__`.
 - **GUI:** a smoke test that needs no display builds the app and drives one fake download.
 - **Live** (`BARRA2_LIVE=1`): `run_site` for one month on each `(domain, freq)`.
 
 ## 7. Rollout (thin slices)
 
+0. Before this RFC: [RFC-007](cache-validation-csv-metadata-prd.md) (cache validation, atomic writes, csv metadata
+   header).
 1. Engine: `project.py` (`load_project`, `run_site`), retries, per-file results, progress/cancel and the run summary,
-   with their tests. Example project file and example-script cell.
+   with their tests; the 5.7 engine additions and `__all__` for `mapping` and `globals`, if accepted. Example project
+   file and example-script cell.
 2. Library pieces from RFC-003 (node lookup, node selection) if not already built.
 3. Toolkit spikes (5.2); ADR recording the choice.
-4. GUI under `src/barra2_dl/gui/` calling only public API; a smoke test that needs no display.
+4. GUI under `src/barra2_dl/gui/` calling only public API; a smoke test that needs no display; the boundary tests
+   (5.7).
 5. Map preview, mast-list and project-file import, run summary view.
 6. User docs: the GUI, the project file reference, and the note on why AUS-11 is the default (decision 8).
    "Raised by atl3b" credit in the README, the docs and the release notes.
@@ -317,3 +380,25 @@ Decided by the owner on 2026-10-30:
 11. **Parallel downloads:** 4 by default, configurable in the GUI and the project file (5.6).
 12. **Failing sites:** a project run always carries on; each site's gaps are in its run summary, and the
     end-of-run report highlights failures (5.6).
+
+## 9. Open questions from the structure review
+
+Raised on 2026-10-31 by the [package structure review](package-structure-review-prd.md); not yet decided.
+
+1. **Layout:** top-level library with `gui/` and later `cli.py` beside it (proposed, 5.7), rather than a `core/`
+   folder or a separate `barra2-dl-gui` distribution. Revisit a separate distribution only if the toolkit's
+   dependency pins conflict with the library's.
+2. **Engine additions:** `project_from_dict`/`site_from_dict`, `validate` with structured `Problem`s, `plan_site`,
+   the output-format constant and `Literal` aliases (5.7).
+3. **Console output in the engine.** The conventions have every progress message logged and written to stdout. From
+   a GUI worker thread that floods the server console, and a CLI can't offer `--quiet`. Options: keep it and rely on
+   the progress callback; change the convention so the library logs and interfaces write to stdout; or a `verbose`
+   argument. A convention change is the owner's to make.
+4. **Boundary tests** with the standard library (5.7), rather than `import-linter`, which would be a new dev
+   dependency.
+5. **ADR** recording the layering, numbered after RFC-007's ADR-003.
+6. **Cache location** is handled by RFC-007, which goes first; this RFC keeps only the safety net in 5.5.
+7. **Recovering from a cache mismatch in the GUI.** RFC-007 fails a run whose cache holds another location's files
+   (or unreadable ones) and leaves recovery to the error message: rename the site or delete the files. Moving a pin
+   is normal in the GUI, so decide whether it offers a "clear this site's cache and re-download" action, a rename
+   prompt, or just shows the error; `run_site` reports it as a failed site either way.

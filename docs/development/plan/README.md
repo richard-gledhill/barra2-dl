@@ -8,6 +8,7 @@ The current piece of work: what is being built, how, and what is left. One piece
 | `plan.md` | The implementation plan for `SPEC.md`. Created by agents. |
 | `todo.md` | The task list for the plan. Created by agents. |
 | `archive/` | Finished work, one folder each. |
+| `parked/` | Unfinished work set aside for something that must go first, one folder each, opening with a note on why and what to change before resuming. Resume it by moving its files back here. |
 
 ## Lifecycle
 
