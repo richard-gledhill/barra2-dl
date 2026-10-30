@@ -138,12 +138,11 @@ ds.to_netcdf(Path(output_dir) / f"{fileout_prefix}_{domain}_{freq}_{node_selecti
                                 f"_{end_datetime.strftime("%Y%m%d")}.nc")
 #%% md
 # ## Write csv (optional)
-# The same data can be written as csv. dataset_to_frames returns a DataFrame for the series, and for "average4" one for
-# the average and one for each of the four nodes, each written to its own file.
+# The same data can be written as csv. write_csv writes a file for the series, and for "average4" one for the average and
+# one for each of the four nodes. Each file opens with a metadata header (source, node, elevation, requested point, time
+# zone, dataset versions ...); header=False writes the bare frame. merge.read_csv reads a file back with its header.
 #%%
-for name, frame in barra2_dl.merge.dataset_to_frames(ds).items():
-    frame.to_csv(Path(output_dir) / f"{fileout_prefix}_{domain}_{freq}_{name}_{start_datetime.strftime("%Y%m%d")}"
-                                    f"_{end_datetime.strftime("%Y%m%d")}.csv", index=False)
+csv_paths = barra2_dl.merge.write_csv(ds, output_dir, fileout_prefix)
 #%% md
 # The netCDF file is now ready to open with xarray, e.g. xarray.open_dataset(path), or any netCDF tool.
 # For example ds.wind_speed.sel(height=[50, 100]) selects two heights.

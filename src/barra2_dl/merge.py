@@ -1,6 +1,8 @@
 """This module contains the barra2 merge function(s)."""
 
+import csv
 import logging
+import os
 import re
 import sys
 from datetime import UTC, datetime
@@ -31,8 +33,11 @@ __all__ = [
     'dataset_to_frames',
     'merge_csvs_to_df',
     'merge_netcdf_to_dataset',
+    'read_csv',
     'read_fixed_fields',
     'to_dataset',
+    'write_csv',
+    'write_df_csv',
 ]
 
 
@@ -290,6 +295,103 @@ def dataset_to_frames(ds: xr.Dataset) -> dict[str, pd.DataFrame]:
     if 'node' in ds.dims:
         frames |= {f'node{int(node) + 1}': _frame(ds, int(node)) for node in ds['node'].to_numpy()}
     return frames
+
+
+def write_csv(ds: xr.Dataset, folder: str | Path, prefix: str, *, header: bool = True) -> list[Path]:
+    """Write a point or four-node-average Dataset as csv files, each opening with a metadata header block.
+
+    One file per frame of dataset_to_frames, named f'{prefix}_{domain}_{freq}_{frame}_{first}_{last}.csv', with first
+    and last the dates (%Y%m%d) of the Dataset's first and last time. The header mirrors the netCDF attributes as
+    key,value lines (source, domain, time step, node, elevation, requested point, distance, time zone, versions,
+    download date, license), then a blank line, then the usual columns. Software that skips leading lines, such as
+    Windographer, strips it; in pandas use read_csv here, or skiprows=int(header['Header lines']).
+
+    Args:
+        ds (xr.Dataset): From merge_netcdf_to_dataset or to_dataset.
+        folder (str | Path): The existing folder to write into.
+        prefix (str): Filename prefix, e.g. the site name.
+        header (bool): False writes just the frame, exactly as frame.to_csv(path, index=False) would.
+
+    Returns:
+        list[Path]: The files written, in the order of dataset_to_frames.
+
+    Raises:
+        ValueError: If the Dataset is an area, which is a grid and doesn't fit csv.
+    """
+    frames = dataset_to_frames(ds)
+    time = pd.DatetimeIndex(ds['time'].to_numpy())
+    dates = f'{time.min().strftime("%Y%m%d")}_{time.max().strftime("%Y%m%d")}'
+    paths = []
+    for name, frame in frames.items():
+        path = Path(folder) / f'{prefix}_{ds.attrs["domain"]}_{ds.attrs["freq"]}_{name}_{dates}.csv'
+        _write_frame(path, frame, _csv_header(ds, name) if header else None)
+        paths.append(path)
+    return paths
+
+
+def write_df_csv(
+    df: pd.DataFrame,
+    path: str | Path,
+    *,
+    domain: str,
+    freq: str,
+    requested: LatLonPoint,
+    orog: float | None = None,
+    versions: dict[str, str] | None = None,
+) -> Path:
+    """Write a csv-route DataFrame, as it is, under the same metadata header that write_csv gives.
+
+    For the csv route: df is from merge_csvs_to_df, optionally after convert_wind_components and convert_units, and its
+    columns and rows are written unchanged. The header is built as to_dataset would build the Dataset's attributes, so
+    the arguments are those of to_dataset. The node selection is 'nearest', the only one the csv route downloads.
+
+    Args:
+        df (pd.DataFrame): The merged (and optionally converted) point frame.
+        path (str | Path): The file to write.
+        domain (str): BARRA2 domain the data came from, a key of BARRA2_DOMAINS.
+        freq (str): BARRA2 frequency the data came from.
+        requested (LatLonPoint): The site that was requested; the node coordinates come from the frame.
+        orog (float | None): Node altitude in m, e.g. from read_fixed_fields. Empty in the header if None.
+        versions (dict[str, str] | None): Dataset version of each variable, e.g. from
+            download.resolve_variable_versions. 'latest' where unknown.
+
+    Returns:
+        Path: The file written.
+
+    Raises:
+        ValueError: If the frame has no time column or no rows, or holds more than one node.
+    """
+    ds = to_dataset(df, domain=domain, freq=freq, requested=requested, orog=orog, versions=versions)
+    return _write_frame(Path(path), df, _csv_header(ds, 'nearest'))
+
+
+def read_csv(path: str | Path) -> tuple[pd.DataFrame, dict[str, str]]:
+    """Read a csv written by write_csv: the frame, and the metadata header as a dict.
+
+    A file without a header, which starts with the time column as the csv route's files do, gives an empty dict.
+
+    Args:
+        path (str | Path): The csv file.
+
+    Returns:
+        tuple[pd.DataFrame, dict[str, str]]: The frame, and the header's key,value lines.
+
+    Raises:
+        FileNotFoundError: If the file doesn't exist.
+        pandas.errors.EmptyDataError: If the file has a header but no frame after it.
+    """
+    metadata: dict[str, str] = {}
+    lines = 0
+    with Path(path).open(newline='', encoding='utf-8') as file:
+        first = file.readline()
+        if not first.startswith(BARRA2_INDEX[0] + ','):
+            file.seek(0)
+            for row in csv.reader(file):
+                lines += 1
+                if not row:
+                    break
+                metadata[row[0]] = row[1] if len(row) > 1 else ''
+    return pd.read_csv(path, skiprows=lines), metadata
 
 
 # endregion
@@ -814,6 +916,75 @@ def _frame(ds: xr.Dataset, node: int | None) -> pd.DataFrame:
     frame = pd.concat([index_columns, data], axis=1)
     frame.insert(0, BARRA2_INDEX[0], pd.DatetimeIndex(data.index).strftime('%Y-%m-%dT%H:%M:%SZ'))
     return frame.reset_index(drop=True)
+
+
+def _write_frame(path: Path, frame: pd.DataFrame, header: list[tuple[str, str]] | None) -> Path:
+    """Write the frame as csv, under the header's key,value lines and a blank line if there is one."""
+    with path.open('w', newline='', encoding='utf-8') as file:
+        if header is not None:
+            csv.writer(file, lineterminator=os.linesep).writerows([*header, []])
+        frame.to_csv(file, index=False)
+    logger.info(f'<{path.name}> written to <{path.parent}>')
+    sys.stdout.write(f'<{path.name}> written to <{path.parent}>\n')
+    return path
+
+
+def _csv_header(ds: xr.Dataset, frame_name: str) -> list[tuple[str, str]]:
+    """Return the key,value lines that open a csv: the Dataset's provenance and the frame's own node.
+
+    Every key is always present, empty when unknown, so the layout is stable. The four-node average also has a Node
+    line per node. Header lines counts the lines up to and including the blank line after the header.
+    """
+    node = int(frame_name.removeprefix('node')) - 1 if frame_name.startswith('node') else None
+    requested = (float(ds['requested_lat']), float(ds['requested_lon']))
+    if node is None:
+        lat, lon = float(ds['lat']), float(ds['lon'])
+        orog = ds.attrs.get('orog')
+        distance = float(distance_km(*requested, lat, lon)) if frame_name == 'nearest' else None
+    else:
+        lat, lon = float(ds['node_lat'][node]), float(ds['node_lon'][node])
+        orog = float(ds['node_orog'][node]) if 'node_orog' in ds else None
+        distance = float(ds['node_distance'][node])
+    rows = [
+        ('File', 'barra2-dl output'),
+        ('Source', ds.attrs['source']),
+        ('Domain', ds.attrs['domain']),
+        ('Time step', ds.attrs['freq']),
+        ('Node selection', ds.attrs['node_selection']),
+        ('Latitude', lat),
+        ('Longitude', lon),
+        ('Elevation', orog),
+        ('Elevation units', 'm'),
+        ('Requested latitude', requested[0]),
+        ('Requested longitude', requested[1]),
+        ('Distance to node', distance),
+        ('Distance units', 'km'),
+        ('Time zone', 'UTC'),
+        ('Time stamp', 'instantaneous at the stamp; time-mean variables (pr, rsds) are stamped mid-step'),
+        ('Dataset versions', ds.attrs['barra2_version']),
+        ('Downloaded', ds.attrs['downloaded']),
+        ('Created by', f'barra2-dl {version("barra2-dl")}'),
+        ('License', ds.attrs['license']),
+        ('References', ds.attrs['references']),
+    ]
+    if frame_name == 'average4':
+        rows += [(f'Node {k + 1}', _node_line(ds, k)) for k in range(ds.sizes['node'])]
+    rows.append(('Header lines', len(rows) + 2))
+    return [(key, _csv_text(value)) for key, value in rows]
+
+
+def _csv_text(value: object) -> str:
+    """Return a header value as text: empty for None, the exact repr of a float, else str."""
+    return '' if value is None else repr(value) if isinstance(value, float) else str(value)
+
+
+def _node_line(ds: xr.Dataset, node: int) -> str:
+    """Describe one node of the four-node average: its position, distance, weight and altitude."""
+    orog = f'{float(ds["node_orog"][node])!r}' if 'node_orog' in ds else ''
+    return (
+        f'lat {float(ds["node_lat"][node])!r}; lon {float(ds["node_lon"][node])!r}; '
+        f'distance {float(ds["node_distance"][node])!r} km; weight {float(ds["node_weight"][node])!r}; orog {orog} m'
+    )
 
 
 def _variable_name(column: str) -> str:

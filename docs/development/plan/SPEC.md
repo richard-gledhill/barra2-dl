@@ -9,8 +9,13 @@ All of RFC-007 in one PR (`fix/cache-validation-csv-header`): the cache check be
 empty-response failure, and the csv metadata header with its writer and reader, plus tests, the netCDF example, docs
 and ADR-003.
 
+Added at the owner's request, 2026-10-31: the csv example (`.py` and `.ipynb`) names its merged and converted files
+`<prefix>_<domain>_<freq>_<node type>_merged|converted_<start>_<end>.csv`, and writes the converted file with the same
+header through `merge.write_df_csv(df, path, *, domain, freq, requested, orog, versions)`, which builds the header
+from `to_dataset` and writes the frame unchanged. The merged file stays raw. `merge_csvs_to_df` is unchanged.
+
 Out of scope: retries, per-file results, worker count and progress/cancel (RFC-005, parked); Windographer-native
-column names, a units row and WIS files (RFC-006); any change to the csv route (`merge_csvs_to_df`, the csv example).
+column names, a units row and WIS files (RFC-006); any change to `merge_csvs_to_df`.
 
 ## Findings from the Windographer pages
 

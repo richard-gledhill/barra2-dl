@@ -75,6 +75,21 @@ df.to_csv('Demo_converted_20230101_20230331.csv', index=False)
 This is the format for spreadsheets and most wind analysis software. The cached per-variable files are csv too, so
 you can also use those directly. See `example_barra2_dl_csv.py`.
 
+The merged frame is written as it is. For the converted frame the example uses `merge.write_df_csv`, which writes the
+same frame under a [metadata header](#csv-metadata-header) (the node, elevation, requested point and dataset versions):
+
+```python
+versions = barra2_dl.download.resolve_variable_versions(variables, domain='AUS-11', freq='1hr')
+orog = barra2_dl.merge.read_fixed_fields(cache_dir, 'Demo_AUS-11_fx_orog.csv')['orog[unit="m"]']
+barra2_dl.merge.write_df_csv(
+    df, 'Demo_AUS-11_1hr_nearest_converted_20230101_20230331.csv',
+    domain='AUS-11', freq='1hr', requested=point, orog=orog, versions=versions,
+)
+```
+
+The example names its files `<prefix>_<domain>_<freq>_<node type>_merged_<start>_<end>.csv` and `..._converted_...`, as the
+netCDF route names its files.
+
 ## Output 3: netCDF
 
 netCDF keeps the units, coordinates and provenance inside the file, and loads lazily, which suits long series. The
@@ -185,11 +200,12 @@ twin on a `node` dimension (size 4), with `node_lat`, `node_lon`, `node_distance
 weighted mean. Comparing the node series shows which node best represents the point.
 
 **csv output.** `dataset_to_frames(ds)` returns a DataFrame for the average (key `average4`) and one for each node
-(`node1` to `node4`), with the same columns as the csv route. Write each to its own file:
+(`node1` to `node4`), with the same columns as the csv route. `write_csv` writes each to its own file, with a
+[metadata header](#csv-metadata-header):
 
 ```python
-for name, frame in barra2_dl.merge.dataset_to_frames(ds).items():
-    frame.to_csv(f'Demo_AUS-11_1hr_{name}_20230101_20230331.csv', index=False)
+paths = barra2_dl.merge.write_csv(ds, 'output', 'Demo')
+# Demo_AUS-11_1hr_average4_20230101_20230331.csv, Demo_AUS-11_1hr_node1_20230101_20230331.csv, ...
 ```
 
 ### Area
@@ -218,6 +234,73 @@ box, so the edge nodes can sit just outside it. An area can't be written as csv.
 are in the name), so they can share a cache folder. `merge_netcdf_to_dataset` picks only the files of the node
 selection you ask for, so a loose pattern such as `Demo_AUS-11_1hr_*.nc` is safe. For the nearest node, read the node
 altitude from its exact name (`Demo_AUS-11_fx_orog.nc`), because `read_fixed_fields` reads every file the pattern matches.
+
+## Re-running and the cache
+
+A file already in the cache folder is not downloaded again, so a re-run resumes. Before any request, every cached
+file is checked against what you are asking for:
+
+- a point file (csv or netCDF) must have been requested for the same point, to the 3 decimals the server records;
+- an `average4` file must have nodes that surround the point;
+- an `area` file must cover the box;
+- any file that can't be read (empty, cut short, not csv or netCDF) fails the check.
+
+If a file fails, `CacheMismatchError` lists each one with the location it holds and the one you asked for, and nothing
+is downloaded. This happens when you move a site but keep its name, because the filename holds the site name and not the
+location. Either rename the site (the `fileout_prefix`) so it gets its own files, or delete the files the error lists
+from the cache folder, then run again.
+
+A download is written under a temporary `.part` name and renamed when complete, and an empty response is reported as a
+failure, so a run that is stopped part way leaves no file that the next run would trust.
+
+## csv metadata header
+
+`merge.write_csv(ds, folder, prefix)` writes the netCDF route's Dataset as csv, one file per frame, and
+`merge.write_df_csv(df, path, ...)` writes the csv route's converted DataFrame under the same header. Each file opens
+with `key,value` lines, then a blank line, then the same columns as the csv route:
+
+```text
+File,barra2-dl output
+Source,"BARRA2 BARRA-R2 reanalysis, Bureau of Meteorology, via NCI THREDDS"
+Domain,AUS-11
+Time step,1hr
+Node selection,nearest
+Latitude,-23.54
+Longitude,133.36
+Elevation,747.6107
+Elevation units,m
+Requested latitude,-23.5527472
+Requested longitude,133.3961111
+Distance to node,3.6
+Distance units,km
+Time zone,UTC
+Time stamp,instantaneous at the stamp; time-mean variables (pr, rsds) are stamped mid-step
+Dataset versions,v20240516
+Downloaded,2026-10-31
+Created by,barra2-dl 0.3.1
+License,"CC BY 4.0, Bureau of Meteorology"
+References,http://www.bom.gov.au/research/publications/researchreports/BRR-067.pdf
+Header lines,22
+
+time,station,latitude[unit="degrees_north"],longitude[unit="degrees_east"],...
+```
+
+Latitude and longitude are decimal degrees (south and west negative). Every key is always present, empty when unknown
+(for example `Elevation` when no orog file was supplied). For the four-node average the file also has `Node 1` to
+`Node 4` lines (position, distance, weight and altitude of each node), `Header lines` is 26, and each node's own file
+holds that node's position, distance and altitude.
+
+**Reading it.** `merge.read_csv(path)` returns the frame and the header as a dict. In pandas or other software, skip
+the first `Header lines` lines (the count includes the blank line):
+
+```python
+frame, header = barra2_dl.merge.read_csv('output/Demo_AUS-11_1hr_nearest_20230101_20230331.csv')
+frame = pd.read_csv(path, skiprows=int(header['Header lines']))  # the same frame, without barra2-dl
+```
+
+`header=False` writes the bare frame, as the csv route does. Windographer detects and strips a header block like this
+on import. Whether it also reads the latitude, longitude and elevation from the header has not been confirmed; if it
+doesn't, set them in Windographer's Configure Dataset dialog after importing.
 
 ## Timestamps: :00 and :30
 

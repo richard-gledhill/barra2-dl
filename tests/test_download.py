@@ -67,6 +67,66 @@ def fake_get(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     return requested
 
 
+DATA_DIR = Path(__file__).parent / 'data'
+# the location the fixtures in tests/data were requested for
+FIXTURE_LAT, FIXTURE_LON = -23.55, 133.40
+
+
+def _seed_cache(folder: Path, pairs: list[tuple[str, str]]) -> None:
+    """Copy the matching tests/data fixture into folder under each pair's filename, where one exists."""
+    for _, name in pairs:
+        # fixtures cover 3 days; the pairs name whole months, and an area's box is part of its filename
+        source = re.sub(r'_\d{8}_\d{8}', '_20230101_20230103', name)
+        source = re.sub(r'_area_n[^_]+_s[^_]+_e[^_]+_w[^_]+_', '_average4_', source)
+        if (DATA_DIR / source).exists():
+            (folder / name).write_bytes((DATA_DIR / source).read_bytes())
+
+
+def _point_pairs(lat: float, lon: float, fileout_type: str = 'csv_file') -> list[tuple[str, str]]:
+    """The nearest-node urlfilenames for tas at the given point, named as the fixtures are."""
+    return barra2_dl.download.point_data_urlfilenames(
+        BARRA2_URL, ['tas'], lat, lon, '2023-01-01', '2023-01-03', 'fixture', fileout_type
+    )
+
+
+def _average4_pairs(lat: float, lon: float) -> list[tuple[str, str]]:
+    """The average4 urlfilenames for tas around the given point, named as the grid fixtures are."""
+    return barra2_dl.download.point_data_urlfilenames(
+        BARRA2_URL, ['tas'], lat, lon, '2023-01-01', '2023-01-03', 'grid', node_selection='average4'
+    )
+
+
+def _area_pairs(box: LatLonBBox) -> list[tuple[str, str]]:
+    """The area urlfilenames for tas in the box, with the grid prefix of the fixtures."""
+    return barra2_dl.download.area_data_urlfilenames(box, ['tas'], '2023-01-01', '2023-01-03', 'grid')
+
+
+def _snapshot(folder: Path) -> dict[str, bytes]:
+    """The name and bytes of every file in folder."""
+    return {path.name: path.read_bytes() for path in folder.iterdir()}
+
+
+# endregion
+
+
+# region Errors
+# region CacheMismatchError
+def test_cache_mismatch_error_message_lists_files_and_fix() -> None:
+    """The message names each file and reason, and says how to fix it; problems holds the pairs."""
+    error = barra2_dl.download.CacheMismatchError(
+        [('a.csv', 'holds 1, 2; requested 3, 4'), ('b.nc', "can't be read")], 'cache'
+    )
+
+    assert error.problems == [('a.csv', 'holds 1, 2; requested 3, 4'), ('b.nc', "can't be read")]
+    assert 'a.csv: holds 1, 2; requested 3, 4' in str(error)
+    assert "b.nc: can't be read" in str(error)
+    assert str(error).endswith(
+        'Rename the site (the filename prefix) or delete these files from cache, then run again.'
+    )
+    assert isinstance(error, ValueError)
+
+
+# endregion
 # endregion
 
 
@@ -998,6 +1058,276 @@ def test_download_file_missing_folder(fake_get: list[str], tmp_path: Path) -> No
         barra2_dl.download._download_file('https://example.test/a', 'a.csv', tmp_path / 'missing')
 
     assert fake_get == []
+
+
+def test_download_file_empty_response_writes_nothing(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """A 200 with an empty body is a failure: reported, and nothing is written."""
+    monkeypatch.setattr(barra2_dl.download.requests, 'get', lambda *_a, **_k: _FakeResponse(200, b''))
+
+    barra2_dl.download._download_file('https://example.test/a', 'a.csv', tmp_path)
+
+    assert list(tmp_path.iterdir()) == []
+    assert 'The response was empty' in capsys.readouterr().out
+
+
+def test_download_file_write_interrupted_leaves_no_final_file(
+    fake_get: list[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A write that fails part way leaves nothing under the final name, so the next run fetches it again."""
+
+    def partial_write(self: Path, data: bytes) -> int:
+        with self.open('wb') as file:
+            file.write(data[:3])
+        raise OSError('disk full')
+
+    monkeypatch.setattr(Path, 'write_bytes', partial_write)
+
+    with pytest.raises(OSError, match='disk full'):
+        barra2_dl.download._download_file('https://example.test/a', 'a.csv', tmp_path)
+
+    assert not (tmp_path / 'a.csv').exists()
+
+
+def test_download_file_success_leaves_no_part_file(fake_get: list[str], tmp_path: Path) -> None:
+    """A finished download is renamed into place, so no .part file remains."""
+    barra2_dl.download._download_file('https://example.test/a', 'a.csv', tmp_path)
+
+    assert [path.name for path in tmp_path.iterdir()] == ['a.csv']
+
+
+def test_download_file_overwrites_part_left_by_killed_run(fake_get: list[str], tmp_path: Path) -> None:
+    """A .part file from a killed run is replaced by the next download."""
+    (tmp_path / 'a.csv.part').write_bytes(b'half')
+
+    barra2_dl.download._download_file('https://example.test/a', 'a.csv', tmp_path)
+
+    assert [path.name for path in tmp_path.iterdir()] == ['a.csv']
+    assert (tmp_path / 'a.csv').read_bytes() == b'time,ua50m\n1,2.0\n'
+
+
+# endregion
+
+
+# region _check_cache
+@pytest.mark.parametrize('fileout_type', ['csv_file', 'netcdf4'])
+def test_check_cache_point_matching_request_is_skipped(fileout_type: str, fake_get: list[str], tmp_path: Path) -> None:
+    """Cached point files made for the requested point are reused, not fetched."""
+    pairs = _point_pairs(FIXTURE_LAT, FIXTURE_LON, fileout_type)
+    _seed_cache(tmp_path, pairs)
+    before = _snapshot(tmp_path)
+
+    barra2_dl.download.download_serial(pairs, tmp_path)
+
+    assert fake_get == []
+    assert _snapshot(tmp_path) == before
+
+
+@pytest.mark.parametrize('fileout_type', ['csv_file', 'netcdf4'])
+def test_check_cache_point_within_tolerance_is_skipped(fileout_type: str, fake_get: list[str], tmp_path: Path) -> None:
+    """A request 0.0004 degrees away is the same point at the 3 decimals NCSS writes."""
+    pairs = _point_pairs(FIXTURE_LAT - 0.0004, FIXTURE_LON, fileout_type)
+    _seed_cache(tmp_path, pairs)
+
+    barra2_dl.download.download_serial(pairs, tmp_path)
+
+    assert fake_get == []
+
+
+@pytest.mark.parametrize('fileout_type', ['csv_file', 'netcdf4'])
+@pytest.mark.parametrize('download', ['download_serial', 'download_multithread'])
+def test_check_cache_point_moved_raises_before_any_request(
+    download: str, fileout_type: str, fake_get: list[str], tmp_path: Path
+) -> None:
+    """A point 0.1 degrees away raises, naming the file and both locations; nothing is fetched or changed."""
+    pairs = _point_pairs(FIXTURE_LAT - 0.1, FIXTURE_LON, fileout_type)
+    _seed_cache(tmp_path, pairs)
+    before = _snapshot(tmp_path)
+
+    with pytest.raises(barra2_dl.download.CacheMismatchError) as error:
+        getattr(barra2_dl.download, download)(pairs, tmp_path)
+
+    names = [name for _, name in pairs]
+    assert [name for name, _ in error.value.problems] == names
+    assert error.value.problems[0][1] == 'holds -23.550, 133.400; requested -23.650, 133.400'
+    assert names[0] in str(error.value)
+    assert fake_get == []
+    assert _snapshot(tmp_path) == before
+
+
+def test_check_cache_average4_point_inside_nodes_is_skipped(fake_get: list[str], tmp_path: Path) -> None:
+    """A point moved inside the cached grid's nodes still has its four surrounding nodes."""
+    pairs = _average4_pairs(-23.60, 133.40)
+    _seed_cache(tmp_path, pairs)
+
+    barra2_dl.download.download_serial(pairs, tmp_path)
+
+    assert fake_get == []
+
+
+def test_check_cache_average4_point_outside_nodes_raises(fake_get: list[str], tmp_path: Path) -> None:
+    """A point outside the cached grid's nodes fails, naming the point its nodes don't surround."""
+    pairs = _average4_pairs(-23.70, 133.40)
+    _seed_cache(tmp_path, pairs)
+
+    with pytest.raises(barra2_dl.download.CacheMismatchError) as error:
+        barra2_dl.download.download_serial(pairs, tmp_path)
+
+    assert error.value.problems[0][1] == "its nodes don't surround -23.700, 133.400"
+    assert fake_get == []
+
+
+def test_check_cache_area_inside_bounds_is_skipped(fake_get: list[str], tmp_path: Path) -> None:
+    """A box inside the cached grid's geospatial bounds is covered."""
+    pairs = _area_pairs(LatLonBBox(north=-23.4, south=-23.7, east=133.5, west=133.2))
+    _seed_cache(tmp_path, pairs)
+
+    barra2_dl.download.download_serial(pairs, tmp_path)
+
+    assert fake_get == []
+
+
+def test_check_cache_area_wider_than_bounds_raises(fake_get: list[str], tmp_path: Path) -> None:
+    """A wider box than the cached grid covers fails."""
+    pairs = _area_pairs(LatLonBBox(north=-23.0, south=-23.7, east=133.5, west=133.2))
+    _seed_cache(tmp_path, pairs)
+
+    with pytest.raises(barra2_dl.download.CacheMismatchError) as error:
+        barra2_dl.download.download_serial(pairs, tmp_path)
+
+    assert error.value.problems[0][1] == "doesn't cover the box"
+    assert fake_get == []
+
+
+@pytest.mark.parametrize('download', ['download_serial', 'download_multithread'])
+def test_check_cache_one_mismatch_among_many_changes_nothing(
+    download: str, fake_get: list[str], tmp_path: Path
+) -> None:
+    """One moved file among cached and missing ones raises one error listing only it, before any request."""
+    pairs = barra2_dl.download.point_data_urlfilenames(
+        BARRA2_URL, ['tas', 'pr'], FIXTURE_LAT, FIXTURE_LON, '2023-01-01', '2023-02-28', 'fixture'
+    )
+    _seed_cache(tmp_path, pairs)
+    # the fixtures cache only January, and its pr file was made for another point
+    moved = tmp_path / 'fixture_AUS-11_1hr_pr_20230101_20230131.csv'
+    moved.write_text(moved.read_text().replace('GridPointRequestedAt[23.550S', 'GridPointRequestedAt[24.550S'))
+    before = _snapshot(tmp_path)
+
+    with pytest.raises(barra2_dl.download.CacheMismatchError) as error:
+        getattr(barra2_dl.download, download)(pairs, tmp_path)
+
+    assert [name for name, _ in error.value.problems] == [moved.name]
+    assert fake_get == []
+    assert _snapshot(tmp_path) == before
+
+
+def test_check_cache_fixed_field_is_checked_like_a_point(fake_get: list[str], tmp_path: Path) -> None:
+    """The fixed orog file, which has one row, is checked against the requested point too."""
+    pairs = _point_pairs(FIXTURE_LAT - 0.1, FIXTURE_LON)
+    (tmp_path / 'fixture_AUS-11_fx_orog.csv').write_bytes((DATA_DIR / 'fixture_AUS-11_fx_orog.csv').read_bytes())
+
+    with pytest.raises(barra2_dl.download.CacheMismatchError) as error:
+        barra2_dl.download.download_serial(pairs, tmp_path)
+
+    assert [name for name, _ in error.value.problems] == ['fixture_AUS-11_fx_orog.csv']
+
+
+def test_check_cache_url_without_location_is_not_checked(fake_get: list[str], tmp_path: Path) -> None:
+    """Urls that aren't BARRA2 requests keep today's behaviour: an existing file is skipped unread."""
+    (tmp_path / 'a.csv').write_bytes(b'')
+
+    barra2_dl.download.download_serial([('https://example.test/a', 'a.csv')], tmp_path)
+
+    assert fake_get == []
+
+
+# endregion
+
+
+# region _cached_file_problem
+POINT_URL = 'https://example.test/x?latitude={lat}&longitude={lon}&accept={accept}'
+
+
+@pytest.mark.parametrize(
+    ('station', 'lat', 'lon', 'expected'),
+    [
+        ('GridPointRequestedAt[33.880S_151.180E]', -33.88, 151.18, None),
+        ('GridPointRequestedAt[33.880N_151.180W]', 33.88, -151.18, None),
+        (
+            'GridPointRequestedAt[33.880N_151.180W]',
+            -33.88,
+            151.18,
+            'holds 33.880, -151.180; requested -33.880, 151.180',
+        ),
+        # AUS-11 reaches 207.39 E: the request may give it either way
+        ('GridPointRequestedAt[23.550S_207.390E]', -23.55, 207.39, None),
+        ('GridPointRequestedAt[23.550S_207.390E]', -23.55, -152.61, None),
+        ('GridPointRequestedAt[23.550S_207.390E]', -23.55, 27.39, 'holds -23.550, 207.390; requested -23.550, 27.390'),
+    ],
+)
+def test_cached_file_problem_station_hemispheres_and_longitude_wrap(
+    station: str, lat: float, lon: float, expected: str | None, tmp_path: Path
+) -> None:
+    """The station value is parsed with south and west negative, and longitudes compared on -180 to 180."""
+    path = tmp_path / 'a.csv'
+    path.write_text(f'time,station,latitude,longitude,tas\n2023-01-01T00:00:00Z,{station},0,0,1\n')
+
+    assert (
+        barra2_dl.download._cached_file_problem(path, POINT_URL.format(lat=lat, lon=lon, accept='csv_file')) == expected
+    )
+
+
+@pytest.mark.parametrize(
+    ('name', 'content', 'accept'),
+    [
+        ('empty.csv', b'', 'csv_file'),
+        ('column_row_only.csv', b'time,station,latitude,longitude,tas\n', 'csv_file'),
+        ('no_station_column.csv', b'time,latitude\n2023-01-01T00:00:00Z,-23.54\n', 'csv_file'),
+        ('no_location.csv', b'time,station\n2023-01-01T00:00:00Z,somewhere\n', 'csv_file'),
+        ('not_netcdf.nc', b'not netcdf', 'netcdf4'),
+    ],
+)
+def test_cached_file_problem_unreadable_file(name: str, content: bytes, accept: str, tmp_path: Path) -> None:
+    """An empty file, a csv without a data row or location, or a non-netCDF file can't be read."""
+    path = tmp_path / name
+    path.write_bytes(content)
+
+    problem = barra2_dl.download._cached_file_problem(path, POINT_URL.format(lat=-23.55, lon=133.4, accept=accept))
+
+    assert problem == "can't be read"
+
+
+@live_network
+@pytest.mark.parametrize('fileout_type', ['csv_file', 'netcdf4'])
+@pytest.mark.parametrize('lon', [133.40, 190.0])
+def test_cached_file_problem_live_station_format(fileout_type: str, lon: float, tmp_path: Path) -> None:
+    """The server's GridPointRequestedAt format still parses, including a longitude above 180."""
+    ((url, name),) = _point_pairs(-23.55, lon, fileout_type)[-1:]  # the fixed orog request: one small file
+    tmp_path.mkdir(exist_ok=True)
+    barra2_dl.download.download_serial([(url, name)], tmp_path)
+
+    assert (tmp_path / name).exists()
+    assert barra2_dl.download._cached_file_problem(tmp_path / name, url) is None
+
+
+def test_cached_file_problem_netcdf_without_expected_variable(tmp_path: Path) -> None:
+    """A netCDF file without station_description can't be read as a point."""
+    path = tmp_path / 'a.nc'
+    xr.Dataset({'tas': ('time', [1.0, 2.0])}).to_netcdf(path)
+
+    problem = barra2_dl.download._cached_file_problem(path, POINT_URL.format(lat=-23.55, lon=133.4, accept='netcdf4'))
+
+    assert problem == "can't be read"
+
+
+def test_cached_file_problem_grid_without_axes(tmp_path: Path) -> None:
+    """A netCDF grid without lat and lon axes can't be read."""
+    path = tmp_path / 'grid_AUS-11_1hr_average4_tas.nc'
+    xr.Dataset({'tas': ('time', [1.0, 2.0])}).to_netcdf(path)
+    url = 'https://example.test/x?north=1&south=0&east=1&west=0'
+
+    assert barra2_dl.download._cached_file_problem(path, url) == "can't be read"
 
 
 # endregion

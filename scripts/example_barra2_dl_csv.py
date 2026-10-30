@@ -63,6 +63,7 @@ fileout_prefix = "demo"
 #%%
 domain = "AUS-11"  # or "AUST-04"
 freq = "1hr"  # or "20min" on AUST-04
+node_type = "nearest"  # the csv route downloads the nearest node; used in the output file names
 
 #%% md
 # Choose the variables with a preset. The default, wind+density, adds pressure, temperature and humidity to the wind
@@ -104,18 +105,34 @@ print(df_merged.head())
 #%%
 print(barra2_dl.merge.read_fixed_fields(cache_dir, f'{fileout_prefix}_{domain}_fx_*.csv'))
 #%%
-df_merged.to_csv(Path(output_dir) / f"{fileout_prefix}_merged_{start_datetime.strftime("%Y%m%d")}"
-                                    f"_{end_datetime.strftime("%Y%m%d")}.csv", index=False)
+df_merged.to_csv(Path(output_dir) / f"{fileout_prefix}_{domain}_{freq}_{node_type}_merged_"
+                                    f"{start_datetime.strftime("%Y%m%d")}_{end_datetime.strftime("%Y%m%d")}.csv", index=False)
 #%% md
 # ## Convert wind speed components
-# Using the merged dataframe, convert ua and va to v and phi_met, and export to new csv file
+# Using the merged dataframe, convert ua and va to v and phi_met.
 #%%
 df_converted = barra2_dl.convert.convert_wind_components(df_merged)
 # optional: convert K to degC, Pa to hPa and precipitation flux to mm h-1
 df_converted = barra2_dl.convert.convert_units(df_converted)
 print(df_converted.head())
+#%% md
+# ## Write the converted csv
+# THREDDS serves only the latest data, so record which dataset version each variable came from (a few small requests),
+# and read the node altitude. write_df_csv writes the converted frame under a metadata header (source, node, elevation,
+# requested point, time zone, dataset versions ...), the same header the netCDF example's write_csv gives.
+# merge.read_csv reads the file back with its header.
 #%%
-df_converted.to_csv(Path(output_dir) / f"{fileout_prefix}_converted_{start_datetime.strftime("%Y%m%d")}"
-                                       f"_{end_datetime.strftime("%Y%m%d")}.csv", index=False)
+versions = barra2_dl.download.resolve_variable_versions(barra2_vars, domain, freq)
+node_altitude = barra2_dl.merge.read_fixed_fields(cache_dir, f'{fileout_prefix}_{domain}_fx_orog.csv')['orog[unit="m"]']
+barra2_dl.merge.write_df_csv(
+    df_converted,
+    Path(output_dir) / f"{fileout_prefix}_{domain}_{freq}_{node_type}_converted_"
+                       f"{start_datetime.strftime("%Y%m%d")}_{end_datetime.strftime("%Y%m%d")}.csv",
+    domain = domain,
+    freq = freq,
+    requested = lat_lon_point,
+    orog = node_altitude,
+    versions = versions,
+)
 #%% md
 # The merged and converted data is now ready to import into your favourite wind analysis program...

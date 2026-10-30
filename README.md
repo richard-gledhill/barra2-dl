@@ -79,7 +79,8 @@ https://opus.nci.org.au/pages/viewpage.action?pageId=264241166
 - Merge the downloaded csv files into one DataFrame, and derive wind speed and direction from the u/v components
 - netCDF output: download netCDF4 (`fileout_type='netcdf4'`) and `merge.merge_netcdf_to_dataset` gives a CF-style
   xarray Dataset with a `height` dimension, units, the dataset version and the node altitude, ready for
-  `to_netcdf()`; `merge.to_dataset` does the same from csv files; `merge.dataset_to_frames` writes a four-node average as csv;
+  `to_netcdf()`; `merge.to_dataset` does the same from csv files; `merge.write_csv` writes the Dataset as csv with a metadata header, and `merge.write_df_csv` does the same for the
+  csv route's converted frame (`merge.read_csv` reads either back); a cached file that doesn't match the request stops a re-run with `CacheMismatchError`;
   timestamps are kept as served ([how to use](https://richard-gledhill.github.io/barra2-dl/how-to-use/))
 - Optional unit conversion: K to °C, Pa to hPa, precipitation flux to mm/h
 - Fully typed with annotations and checked with mypy, [PEP561 compatible](https://www.python.org/dev/peps/pep-0561/)
