@@ -194,8 +194,7 @@ def _find_nearest_point(
         raise ValueError("Target latitude and/or longitude are out of the range of the DataFrame's coordinates.")
 
     distances = ((df_point_grid['latitude'] - target_lat) ** 2 + (df_point_grid['longitude'] - target_lon) ** 2) ** 0.5
-    nearest_index = distances.idxmin()
-    return cast(pd.Series, df_point_grid.loc[nearest_index])
+    return cast(pd.Series, df_point_grid.iloc[distances.argmin()])
 
 
 def _format_lat_lon(
