@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from barra2_dl.merge import _merge_suffix_columns, merge_csvs_to_df
+from barra2_dl.merge import _merge_suffix_columns, merge_csvs_to_df, read_fixed_fields
 
 
 # region Test helpers
@@ -86,6 +86,45 @@ def test_merge_csvs_to_df_multiple_index_columns(tmp_path: Path) -> None:
 
     assert len(df) == 2
     assert sorted(df.columns) == ['station', 'time', 'ua50m', 'va50m']
+
+
+def test_merge_csvs_to_df_skips_fixed_field_files(tmp_path: Path) -> None:
+    """An fx file such as the automatic orog download is left out, so a loose pattern adds no 1970 row."""
+    _write_csv(
+        tmp_path, 'site_AUS-11_1hr_ua50m_20230101_20230131.csv', {'time': ['2023-01-01T00:00:00Z'], 'ua50m': [1.0]}
+    )
+    _write_csv(tmp_path, 'site_AUS-11_fx_orog.csv', {'time': ['1970-01-01T00:00:00Z'], 'orog[unit="m"]': [33.0]})
+
+    df = merge_csvs_to_df(str(tmp_path), 'site*.csv', index_for_join='time')
+
+    assert df['time'].tolist() == ['2023-01-01T00:00:00Z']
+    assert 'orog[unit="m"]' not in df.columns
+
+
+# endregion
+
+
+# region read_fixed_fields
+def test_read_fixed_fields_returns_each_value(tmp_path: Path) -> None:
+    """Every fx file contributes its field and value; the index columns are left out."""
+    index = {
+        'time': ['1970-01-01T00:00:00Z'],
+        'station': ['GridPointRequestedAt[33.880S_151.180E]'],
+        'latitude[unit="degrees_north"]': [-33.879],
+        'longitude[unit="degrees_east"]': [151.18],
+    }
+    _write_csv(tmp_path, 'site_AUS-11_fx_orog.csv', index | {'orog[unit="m"]': [33.05]})
+    _write_csv(tmp_path, 'site_AUS-11_fx_sftlf.csv', index | {'sftlf[unit="%"]': [100.0]})
+    _write_csv(
+        tmp_path, 'site_AUS-11_1hr_ua50m_20230101_20230131.csv', {'time': ['2023-01-01T00:00:00Z'], 'ua50m': [1.0]}
+    )
+
+    assert read_fixed_fields(str(tmp_path)) == {'orog[unit="m"]': 33.05, 'sftlf[unit="%"]': 100.0}
+
+
+def test_read_fixed_fields_none_found(tmp_path: Path) -> None:
+    """A folder without fx files gives an empty dict."""
+    assert read_fixed_fields(str(tmp_path)) == {}
 
 
 # endregion

@@ -1,0 +1,377 @@
+domain,freq,var,units,cell_methods,long_name
+AUS-11,1hr,CAPE,J kg-1,,Convective Available Potential Energy
+AUS-11,1hr,CIN,J kg-1,time: point (interval: 1H),Convective Inhibition
+AUS-11,1hr,clh,%,time: mean (interval: 1 hour),High Level Cloud Fraction
+AUS-11,1hr,clivi,kg m-2,time: point (interval: 1H),Ice Water Path
+AUS-11,1hr,cll,%,time: mean (interval: 1 hour),Low Level Cloud Fraction
+AUS-11,1hr,clm,%,time: mean (interval: 1 hour),Mid Level Cloud Fraction
+AUS-11,1hr,clt,%,time: mean (interval: 1 hour),Total Cloud Cover Percentage
+AUS-11,1hr,clwvi,kg m-2,time: point (interval: 1H),Condensed Water Path
+AUS-11,1hr,evspsbl,kg m-2 s-1,time: mean (interval: 1 hour) time: mean (interval: 1H),Evaporation Including Sublimation and Transpiration
+AUS-11,1hr,evspsblpot,kg m-2 s-1,time: mean (interval: 1 hour),Potential Evapotranspiration
+AUS-11,1hr,hfls,W m-2,time: mean (interval: 1 hour) time: mean (interval: 1H),Surface Upward Latent Heat Flux
+AUS-11,1hr,hfss,W m-2,time: mean (interval: 1 hour) time: mean (interval: 1H),Surface Upward Sensible Heat Flux
+AUS-11,1hr,hurs,%,time: point (interval: 1H),Near-Surface Relative Humidity
+AUS-11,1hr,hus1000,1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Specific Humidity
+AUS-11,1hr,hus200,1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Specific Humidity
+AUS-11,1hr,hus300,1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Specific Humidity
+AUS-11,1hr,hus400,1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Specific Humidity
+AUS-11,1hr,hus500,1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Specific Humidity
+AUS-11,1hr,hus600,1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Specific Humidity
+AUS-11,1hr,hus700,1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Specific Humidity
+AUS-11,1hr,hus850,1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Specific Humidity
+AUS-11,1hr,hus925,1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Specific Humidity
+AUS-11,1hr,hus950,1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Specific Humidity
+AUS-11,1hr,huss,1,time: point (interval: 1H),Near-Surface Specific Humidity
+AUS-11,1hr,mrfsos,kg m-2,time: point (interval: 1H),Frozen Water Content in Upper Portion of Soil Column
+AUS-11,1hr,mrsos,kg m-2,time: point (interval: 1H),Moisture in Upper Portion of Soil Column
+AUS-11,1hr,omega500,Pa s-1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Downward Air Velocity in pressure coordinates
+AUS-11,1hr,pr,kg m-2 s-1,time: mean (interval: 1 hour),Precipitation
+AUS-11,1hr,prc,kg m-2 s-1,time: mean (interval: 1 hour),Convective Precipitation
+AUS-11,1hr,prmax,kg m-2 s-1,time: maximum (interval: 1 hour) time: maximum (interval: 1 hour),Hourly Maximum Precipitation Rate
+AUS-11,1hr,prsn,kg m-2 s-1,time: mean (interval: 1 hour),Snowfall Flux
+AUS-11,1hr,prw,kg m-2,time: point (interval: 1H),Water Vapor Path
+AUS-11,1hr,ps,Pa,time: point (interval: 1H),Surface Air Pressure
+AUS-11,1hr,psl,Pa,time: point (interval: 1H),Sea Level Pressure
+AUS-11,1hr,rlds,W m-2,time: mean (interval: 1 hour),Surface Downwelling Longwave Radiation
+AUS-11,1hr,rldscs,W m-2,,Surface Downwelling Clear-Sky Longwave Radiation
+AUS-11,1hr,rlus,W m-2,time: mean (interval: 1 hour) time: mean (interval: 1H),Surface Upwelling Longwave Radiation
+AUS-11,1hr,rluscs,W m-2,,Surface Upwelling Clear-Sky Longwave Radiation
+AUS-11,1hr,rlut,W m-2,time: mean (interval: 1 hour) time: mean (interval: 1H),TOA Outgoing Longwave Radiation
+AUS-11,1hr,rlutcs,W m-2,time: mean (interval: 1 hour),TOA Outgoing Clear-Sky Longwave Radiation
+AUS-11,1hr,rsds,W m-2,time: mean (interval: 1 hour),Surface Downwelling Shortwave Radiation
+AUS-11,1hr,rsdscs,W m-2,,Surface Downwelling Clear-Sky Shortwave Radiation
+AUS-11,1hr,rsdsdir,W m-2,time: mean (interval: 1H),Surface Direct Downwelling Shortwave Radiation
+AUS-11,1hr,rsdt,W m-2,time: mean (interval: 1 hour) time: mean (interval: 1H),TOA Incident Shortwave Radiation
+AUS-11,1hr,rsus,W m-2,time: mean (interval: 1 hour) time: mean (interval: 1H),Surface Upwelling Shortwave Radiation
+AUS-11,1hr,rsuscs,W m-2,,Surface Upwelling Clear-Sky Shortwave Radiation
+AUS-11,1hr,rsut,W m-2,time: mean (interval: 1 hour) time: mean (interval: 1H),TOA Outgoing Shortwave Radiation
+AUS-11,1hr,rsutcs,W m-2,time: mean (interval: 1 hour),TOA Outgoing Clear-Sky Shortwave Radiation
+AUS-11,1hr,sfcWind,m s-1,time: point (interval: 1H) area: interpolation (method: bilinear),Near-Surface Wind Speed
+AUS-11,1hr,sfcWindmax,m s-1,time: maximum (interval: 1 hour) area: interpolation (method: bilinear) time: maximum (interval: 1 hour),Hourly Maximum Near-Surface Wind Speed
+AUS-11,1hr,ta1000,K,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Air Temperature
+AUS-11,1hr,ta100m,K,model_level_number: point area: interpolation (method: bilinear) height: interpolation(method: log) time: point (interval: 1H),Air Temperature at 100m
+AUS-11,1hr,ta1500m,K,model_level_number: point area: interpolation (method: bilinear) height: interpolation(method: log) time: point (interval: 1H),Air Temperature at 1500m
+AUS-11,1hr,ta150m,K,model_level_number: point area: interpolation (method: bilinear) height: interpolation(method: log) time: point (interval: 1H),Air Temperature at 150m
+AUS-11,1hr,ta200,K,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Air Temperature
+AUS-11,1hr,ta200m,K,model_level_number: point area: interpolation (method: bilinear) height: interpolation(method: log) time: point (interval: 1H),Air Temperature at 200m
+AUS-11,1hr,ta250m,K,model_level_number: point area: interpolation (method: bilinear) height: interpolation(method: log) time: point (interval: 1H),Air Temperature at 250m
+AUS-11,1hr,ta300,K,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Air Temperature
+AUS-11,1hr,ta400,K,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Air Temperature
+AUS-11,1hr,ta500,K,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Air Temperature
+AUS-11,1hr,ta50m,K,model_level_number: point area: interpolation (method: bilinear) height: interpolation(method: linear) time: point (interval: 1H),Air Temperature at 50m
+AUS-11,1hr,ta600,K,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Air Temperature
+AUS-11,1hr,ta700,K,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Air Temperature
+AUS-11,1hr,ta850,K,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Air Temperature
+AUS-11,1hr,ta925,K,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Air Temperature
+AUS-11,1hr,ta950,K,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Air Temperature
+AUS-11,1hr,tas,K,time: point (interval: 1H),Near-Surface Air Temperature
+AUS-11,1hr,tasmax,K,time: maximum (interval: 1 hour),Hourly Maximum Near-Surface Air Temperature
+AUS-11,1hr,tasmean,K,time: mean (interval: 1H),Hourly Mean Near-Surface Air Temperature
+AUS-11,1hr,tasmin,K,time: minimum (interval: 1 hour),Hourly Minimum Near-Surface Air Temperature
+AUS-11,1hr,ts,K,time: point (interval: 1H),Surface Temperature
+AUS-11,1hr,twiso,K,,Isobaric wet-bulb temperature
+AUS-11,1hr,twpse,K,,Pseudo wet-bulb temperature
+AUS-11,1hr,ua1000,m s-1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Eastward Wind
+AUS-11,1hr,ua100m,m s-1,model_level_number: point area: interpolation (method: bilinear) height: interpolation(method: log) time: point (interval: 1H),Eastward Wind at 100m
+AUS-11,1hr,ua1500m,m s-1,model_level_number: point area: interpolation (method: bilinear) height: interpolation(method: log) time: point (interval: 1H),Eastward Wind at 1500m
+AUS-11,1hr,ua150m,m s-1,model_level_number: point area: interpolation (method: bilinear) height: interpolation(method: log) time: point (interval: 1H),Eastward Wind at 150m
+AUS-11,1hr,ua200,m s-1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Eastward Wind
+AUS-11,1hr,ua200m,m s-1,model_level_number: point area: interpolation (method: bilinear) height: interpolation(method: log) time: point (interval: 1H),Eastward Wind at 200m
+AUS-11,1hr,ua250m,m s-1,model_level_number: point area: interpolation (method: bilinear) height: interpolation(method: log) time: point (interval: 1H),Eastward Wind at 250m
+AUS-11,1hr,ua300,m s-1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Eastward Wind
+AUS-11,1hr,ua400,m s-1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Eastward Wind
+AUS-11,1hr,ua500,m s-1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Eastward Wind
+AUS-11,1hr,ua50m,m s-1,model_level_number: point area: interpolation (method: bilinear) height: interpolation(method: log) time: point (interval: 1H),Eastward Wind at 50m
+AUS-11,1hr,ua600,m s-1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Eastward Wind
+AUS-11,1hr,ua700,m s-1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Eastward Wind
+AUS-11,1hr,ua850,m s-1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Eastward Wind
+AUS-11,1hr,ua925,m s-1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Eastward Wind
+AUS-11,1hr,uas,m s-1,time: point (interval: 1H) area: interpolation (method: bilinear),Eastward Near-Surface Wind
+AUS-11,1hr,uasmax,m s-1,area: interpolation (method: bilinear) time: maximum (interval: 1H),Eastward Near-Surface Wind
+AUS-11,1hr,uasmean,m s-1,area: interpolation (method: bilinear) time: mean (interval: 1H),Eastward Near-Surface Wind
+AUS-11,1hr,va1000,m s-1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Northward Wind
+AUS-11,1hr,va100m,m s-1,model_level_number: point area: interpolation (method: bilinear) height: interpolation(method: log) time: point (interval: 1H),Northward Wind at 100m
+AUS-11,1hr,va1500m,m s-1,model_level_number: point area: interpolation (method: bilinear) height: interpolation(method: log) time: point (interval: 1H),Northward Wind at 1500m
+AUS-11,1hr,va150m,m s-1,model_level_number: point area: interpolation (method: bilinear) height: interpolation(method: log) time: point (interval: 1H),Northward Wind at 150m
+AUS-11,1hr,va200,m s-1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Northward Wind
+AUS-11,1hr,va200m,m s-1,model_level_number: point area: interpolation (method: bilinear) height: interpolation(method: log) time: point (interval: 1H),Northward Wind at 200m
+AUS-11,1hr,va250m,m s-1,model_level_number: point area: interpolation (method: bilinear) height: interpolation(method: log) time: point (interval: 1H),Northward Wind at 250m
+AUS-11,1hr,va300,m s-1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Northward Wind
+AUS-11,1hr,va400,m s-1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Northward Wind
+AUS-11,1hr,va500,m s-1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Northward Wind
+AUS-11,1hr,va50m,m s-1,model_level_number: point area: interpolation (method: bilinear) height: interpolation(method: log) time: point (interval: 1H),Northward Wind at 50m
+AUS-11,1hr,va600,m s-1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Northward Wind
+AUS-11,1hr,va700,m s-1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Northward Wind
+AUS-11,1hr,va850,m s-1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Northward Wind
+AUS-11,1hr,va925,m s-1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Northward Wind
+AUS-11,1hr,vas,m s-1,time: point (interval: 1H) area: interpolation (method: bilinear),Northward Near-Surface Wind
+AUS-11,1hr,vasmax,m s-1,area: interpolation (method: bilinear) time: maximum (interval: 1H),Northward Near-Surface Wind
+AUS-11,1hr,vasmean,m s-1,area: interpolation (method: bilinear) time: mean (interval: 1H),Northward Near-Surface Wind
+AUS-11,1hr,wa1000,m s-1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Upward Air Velocity
+AUS-11,1hr,wa200,m s-1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Upward Air Velocity
+AUS-11,1hr,wa300,m s-1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Upward Air Velocity
+AUS-11,1hr,wa400,m s-1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Upward Air Velocity
+AUS-11,1hr,wa500,m s-1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Upward Air Velocity
+AUS-11,1hr,wa600,m s-1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Upward Air Velocity
+AUS-11,1hr,wa700,m s-1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Upward Air Velocity
+AUS-11,1hr,wa850,m s-1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Upward Air Velocity
+AUS-11,1hr,wa925,m s-1,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Upward Air Velocity
+AUS-11,1hr,wsgsmax,m s-1,time: maximum (interval: 1 hour) area: interpolation (method: bilinear) time: maximum (interval: 1H),Hourly Maximum Near-Surface Wind Speed of Gust
+AUS-11,1hr,zg1000,m,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Geopotential Height
+AUS-11,1hr,zg200,m,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Geopotential Height
+AUS-11,1hr,zg300,m,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Geopotential Height
+AUS-11,1hr,zg400,m,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Geopotential Height
+AUS-11,1hr,zg500,m,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Geopotential Height
+AUS-11,1hr,zg600,m,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Geopotential Height
+AUS-11,1hr,zg700,m,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Geopotential Height
+AUS-11,1hr,zg850,m,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Geopotential Height
+AUS-11,1hr,zg925,m,pressure: point time: point (interval: 1H) area: interpolation (method: bilinear),Geopotential Height
+AUS-11,1hr,zmla,m,time: point (interval: 1H),Height of Boundary Layer
+AUS-11,fx,orog,m,,Surface Altitude
+AUS-11,fx,sftlf,%,,Percentage of the grid  cell occupied by land (including lakes)
+AUST-04,1hr,BWD03,m s-1,,0 to 3 km AGL Bulk Wind Difference
+AUST-04,1hr,BWD06,m s-1,,0 to 6 km AGL Bulk Wind Difference
+AUST-04,1hr,CAPE,J kg-1,,Convective Available Potential Energy
+AUST-04,1hr,CIN,J kg-1,,Convective Inhibition
+AUST-04,1hr,DCAPE,J kg-1,,Downdraft Convective Available Potential Energy
+AUST-04,1hr,EBWD,m s-1,,Effective Bulk Wind Difference
+AUST-04,1hr,EILbase,m,,Effective Inflow Layer Base Height AGL
+AUST-04,1hr,EILdepth,m,,Effective Inflow Layer Depth
+AUST-04,1hr,ESRHl,m2 s-2,,Effective Storm-Relative Helicity for Bunkers Left Mover
+AUST-04,1hr,ESRHr,m2 s-2,,Effective Storm-Relative Helicity for Bunkers Right Mover
+AUST-04,1hr,FZL,m,,Freezing Level Height AGL
+AUST-04,1hr,LR03,K m-1,,0 to 3 km AGL Lapse Rate
+AUST-04,1hr,LR75,K m-1,,700 to 500 hPa Lapse Rate
+AUST-04,1hr,MLCAPE,J kg-1,,Convective Available Potential Energy for Mixed-Layer Parcel
+AUST-04,1hr,MLCIN,J kg-1,,Convective Inhibition for Mixed-Layer Parcel
+AUST-04,1hr,MLLCL,m,,Lifting Condensation Level Height AGL for Mixed-Layer Parcel
+AUST-04,1hr,MUCAPE,J kg-1,,Convective Available Potential Energy for Most-Unstable Parcel
+AUST-04,1hr,MUCIN,J kg-1,,Convective Inhibition for Most-Unstable Parcel
+AUST-04,1hr,MUEL,m,,Equilibrium Level Height AGL for Most-Unstable Parcel
+AUST-04,1hr,MULPL,m,,Lifted Parcel Level Height AGL for Most-Unstable Parcel
+AUST-04,1hr,MULPLmixr,kg kg-1,,Lifted Parcel Level Mixing Ratio of Most-Unstable Parcel
+AUST-04,1hr,MULPLpres,Pa,,Lifted Parcel Level Pressure for Most-Unstable Parcel
+AUST-04,1hr,MULPLtemp,K,,Lifted Parcel Level Temperature of Most-Unstable Parcel
+AUST-04,1hr,SRH01l,m2 s-2,,0 to 1 km AGL Storm-Relative Helicity for Bunkers Left Mover
+AUST-04,1hr,SRH01r,m2 s-2,,0 to 1 km AGL Storm-Relative Helicity for Bunkers Right Mover
+AUST-04,1hr,SRH03l,m2 s-2,,0 to 3 km AGL Storm-Relative Helicity for Bunkers Left Mover
+AUST-04,1hr,SRH03r,m2 s-2,,0 to 3 km AGL Storm-Relative Helicity for Bunkers Right Mover
+AUST-04,1hr,clh,%,time: mean (interval: 1 hour),High Level Cloud Fraction
+AUST-04,1hr,clivi,kg m-2,time: point (interval: 1H),Ice Water Path
+AUST-04,1hr,cll,%,time: mean (interval: 1 hour),Low Level Cloud Fraction
+AUST-04,1hr,clm,%,time: mean (interval: 1 hour),Mid Level Cloud Fraction
+AUST-04,1hr,clt,%,time: mean (interval: 1 hour),Total Cloud Cover Percentage
+AUST-04,1hr,clwvi,kg m-2,time: point (interval: 1H),Condensed Water Path
+AUST-04,1hr,coltotdrym,kg m-2,,Total column dry mass
+AUST-04,1hr,coltotwetm,kg m-2,,Total column wet mass
+AUST-04,1hr,evspsbl,kg m-2 s-1,time: mean (interval: 1 hour) time: mean (interval: 1H),Evaporation Including Sublimation and Transpiration
+AUST-04,1hr,evspsblpot,kg m-2 s-1,time: mean (interval: 1 hour),Potential Evapotranspiration
+AUST-04,1hr,flashrate,m-2 s-1,time: mean (interval: 1 hour),Flash rate of lightning
+AUST-04,1hr,fogfraction,1,,Fog fraction at 1.5m
+AUST-04,1hr,helicitymax,m2 s-2,time: maximum (interval: 1 hour),Updraft Helicity (2000-5000m)
+AUST-04,1hr,helicitymin,m2 s-2,time: minimum (interval: 1 hour),Updraft Helicity (2000-5000m)
+AUST-04,1hr,hfls,W m-2,time: mean (interval: 1 hour) time: mean (interval: 1H),Surface Upward Latent Heat Flux
+AUST-04,1hr,hfss,W m-2,time: mean (interval: 1 hour) time: mean (interval: 1H),Surface Upward Sensible Heat Flux
+AUST-04,1hr,hurs,%,time: point (interval: 1H),Near-Surface Relative Humidity
+AUST-04,1hr,hus1000,1,pressure: point,Specific Humidity
+AUST-04,1hr,hus200,1,pressure: point,Specific Humidity
+AUST-04,1hr,hus300,1,pressure: point,Specific Humidity
+AUST-04,1hr,hus400,1,pressure: point,Specific Humidity
+AUST-04,1hr,hus500,1,pressure: point,Specific Humidity
+AUST-04,1hr,hus600,1,pressure: point,Specific Humidity
+AUST-04,1hr,hus700,1,pressure: point,Specific Humidity
+AUST-04,1hr,hus750,1,pressure: point,Specific Humidity
+AUST-04,1hr,hus800,1,pressure: point,Specific Humidity
+AUST-04,1hr,hus850,1,pressure: point,Specific Humidity
+AUST-04,1hr,hus900,1,pressure: point,Specific Humidity
+AUST-04,1hr,hus925,1,pressure: point,Specific Humidity
+AUST-04,1hr,hus950,1,pressure: point,Specific Humidity
+AUST-04,1hr,hus975,1,pressure: point,Specific Humidity
+AUST-04,1hr,huss,1,time: point (interval: 1H),Near-Surface Specific Humidity
+AUST-04,1hr,maxcolrefl,dBZ,time: maximum (interval: 1 hour),Maximum Radar Reflectivity in the grid column due to all hydrometeors
+AUST-04,1hr,maxcolwa,m s-1,time: maximum (interval: 1 hour) model_level_number: maximum (below tropopause),Maximum vertical wind speed in column
+AUST-04,1hr,mrfsos,kg m-2,,Frozen Water Content in Upper Portion of Soil Column
+AUST-04,1hr,mrro,kg m-2 s-1,time: mean (interval: 1 hour),Total Runoff
+AUST-04,1hr,mrros,kg m-2 s-1,time: mean (interval: 1 hour),Surface Runoff
+AUST-04,1hr,mrsos,kg m-2,time: point (interval: 1H),Moisture in Upper Portion of Soil Column
+AUST-04,1hr,pr,kg m-2 s-1,time: mean (interval: 1 hour) time: mean (interval: 1H),Precipitation
+AUST-04,1hr,prga,kg kg-1 s-1,time: maximum (interval: 1 hour),Graupel Sediment Rate
+AUST-04,1hr,prmax,kg m-2 s-1,time: maximum (interval: 1 hour) time: maximum (interval: 1 hour),Hourly Maximum Precipitation Rate
+AUST-04,1hr,prra,kg m-2 s-1,time: maximum (interval: 1 hour),Large Scale Rainfall Rate
+AUST-04,1hr,prsn,kg m-2 s-1,time: mean (interval: 1 hour) time: mean (interval: 1H),Snowfall Flux
+AUST-04,1hr,prsnmax,kg m-2 s-1,time: maximum (interval: 1 hour),Hourly Maximum Snowfall Flux
+AUST-04,1hr,prw,kg m-2,time: point (interval: 1H),Water Vapor Path
+AUST-04,1hr,ps,Pa,time: point (interval: 1H),Surface Air Pressure
+AUST-04,1hr,psl,Pa,time: point (interval: 1H),Sea Level Pressure
+AUST-04,1hr,rlds,W m-2,time: mean (interval: 1 hour),Surface Downwelling Longwave Radiation
+AUST-04,1hr,rldscs,W m-2,time: mean (interval: 1 hour),Surface Downwelling Clear-Sky Longwave Radiation
+AUST-04,1hr,rlus,W m-2,time: mean (interval: 1 hour) time: mean (interval: 1H),Surface Upwelling Longwave Radiation
+AUST-04,1hr,rluscs,W m-2,time: mean (interval: 1 hour),Surface Upwelling Clear-Sky Longwave Radiation
+AUST-04,1hr,rlut,W m-2,time: mean (interval: 1 hour) time: mean (interval: 1H),TOA Outgoing Longwave Radiation
+AUST-04,1hr,rlutcs,W m-2,time: mean (interval: 1 hour),TOA Outgoing Clear-Sky Longwave Radiation
+AUST-04,1hr,rsds,W m-2,time: mean (interval: 1 hour),Surface Downwelling Shortwave Radiation
+AUST-04,1hr,rsdscs,W m-2,time: mean (interval: 1 hour),Surface Downwelling Clear-Sky Shortwave Radiation
+AUST-04,1hr,rsdsdir,W m-2,time: mean (interval: 1H),Surface Direct Downwelling Shortwave Radiation
+AUST-04,1hr,rsdt,W m-2,time: mean (interval: 1 hour) time: mean (interval: 1H),TOA Incident Shortwave Radiation
+AUST-04,1hr,rsus,W m-2,time: mean (interval: 1 hour) time: mean (interval: 1H),Surface Upwelling Shortwave Radiation
+AUST-04,1hr,rsuscs,W m-2,time: mean (interval: 1 hour),Surface Upwelling Clear-Sky Shortwave Radiation
+AUST-04,1hr,rsut,W m-2,time: mean (interval: 1 hour) time: mean (interval: 1H),TOA Outgoing Shortwave Radiation
+AUST-04,1hr,rsutcs,W m-2,time: mean (interval: 1 hour),TOA Outgoing Clear-Sky Shortwave Radiation
+AUST-04,1hr,sfcWind,m s-1,area: interpolation (method: bilinear) time: point (interval: 1H) area: interpolation (method: bilinear),Near-Surface Wind Speed
+AUST-04,1hr,sfcWindmax,m s-1,time: maximum (interval: 1 hour),Hourly Maximum Near-Surface Wind Speed
+AUST-04,1hr,ta1000,K,pressure: point,Air Temperature
+AUST-04,1hr,ta100m,K,height: interpolation(method: linear) time: point (interval: 1H),Air Temperature at 100m
+AUST-04,1hr,ta1500m,K,height: interpolation(method: linear) time: point (interval: 1H),Air Temperature at 1500m
+AUST-04,1hr,ta150m,K,height: interpolation(method: linear) time: point (interval: 1H),Air Temperature at 150m
+AUST-04,1hr,ta200,K,pressure: point,Air Temperature
+AUST-04,1hr,ta200m,K,height: interpolation(method: linear) time: point (interval: 1H),Air Temperature at 200m
+AUST-04,1hr,ta250m,K,height: interpolation(method: linear) time: point (interval: 1H),Air Temperature at 250m
+AUST-04,1hr,ta300,K,pressure: point,Air Temperature
+AUST-04,1hr,ta400,K,pressure: point,Air Temperature
+AUST-04,1hr,ta500,K,pressure: point,Air Temperature
+AUST-04,1hr,ta50m,K,height: interpolation(method: linear) time: point (interval: 1H),Air Temperature at 50m
+AUST-04,1hr,ta600,K,pressure: point,Air Temperature
+AUST-04,1hr,ta700,K,pressure: point,Air Temperature
+AUST-04,1hr,ta750,K,pressure: point,Air Temperature
+AUST-04,1hr,ta800,K,pressure: point,Air Temperature
+AUST-04,1hr,ta850,K,pressure: point,Air Temperature
+AUST-04,1hr,ta900,K,pressure: point,Air Temperature
+AUST-04,1hr,ta925,K,pressure: point,Air Temperature
+AUST-04,1hr,ta950,K,pressure: point,Air Temperature
+AUST-04,1hr,ta975,K,pressure: point,Air Temperature
+AUST-04,1hr,tas,K,time: point (interval: 1H),Near-Surface Air Temperature
+AUST-04,1hr,tasmax,K,time: maximum (interval: 1 hour),Hourly Maximum Near-Surface Air Temperature
+AUST-04,1hr,tasmean,K,time: mean (interval: 1H),Hourly Mean Near-Surface Air Temperature
+AUST-04,1hr,tasmin,K,time: minimum (interval: 1 hour),Hourly Minimum Near-Surface Air Temperature
+AUST-04,1hr,ts,K,time: point (interval: 1H),Surface Temperature
+AUST-04,1hr,tsmean,K,time: mean (interval: 1 hour),Mean Houly Surface Temperature
+AUST-04,1hr,twiso,K,,Isobaric wet-bulb temperature
+AUST-04,1hr,twpse,K,,Pseudo wet-bulb temperature
+AUST-04,1hr,ua1000,m s-1,area: interpolation (method: bilinear) pressure: point area: interpolation (method: bilinear),Eastward Wind
+AUST-04,1hr,ua100m,m s-1,area: interpolation (method: bilinear) height: interpolation(method: log) time: point (interval: 1H) area: interpolation (method: bilinear),Eastward Wind at 100m
+AUST-04,1hr,ua1500m,m s-1,area: interpolation (method: bilinear) height: interpolation(method: log) time: point (interval: 1H) area: interpolation (method: bilinear),Eastward Wind at 1500m
+AUST-04,1hr,ua150m,m s-1,area: interpolation (method: bilinear) height: interpolation(method: log) time: point (interval: 1H) area: interpolation (method: bilinear),Eastward Wind at 150m
+AUST-04,1hr,ua200,m s-1,pressure: point area: interpolation (method: bilinear),Eastward Wind
+AUST-04,1hr,ua200m,m s-1,area: interpolation (method: bilinear) height: interpolation(method: log) time: point (interval: 1H) area: interpolation (method: bilinear),Eastward Wind at 200m
+AUST-04,1hr,ua250m,m s-1,area: interpolation (method: bilinear) height: interpolation(method: log) time: point (interval: 1H) area: interpolation (method: bilinear),Eastward Wind at 250m
+AUST-04,1hr,ua300,m s-1,pressure: point area: interpolation (method: bilinear),Eastward Wind
+AUST-04,1hr,ua400,m s-1,pressure: point area: interpolation (method: bilinear),Eastward Wind
+AUST-04,1hr,ua500,m s-1,pressure: point area: interpolation (method: bilinear),Eastward Wind
+AUST-04,1hr,ua50m,m s-1,area: interpolation (method: bilinear) height: interpolation(method: log) time: point (interval: 1H) area: interpolation (method: bilinear),Eastward Wind at 50m
+AUST-04,1hr,ua600,m s-1,area: interpolation (method: bilinear) pressure: point area: interpolation (method: bilinear),Eastward Wind
+AUST-04,1hr,ua700,m s-1,area: interpolation (method: bilinear) pressure: point area: interpolation (method: bilinear),Eastward Wind
+AUST-04,1hr,ua750,m s-1,area: interpolation (method: bilinear) pressure: point area: interpolation (method: bilinear),Eastward Wind
+AUST-04,1hr,ua800,m s-1,area: interpolation (method: bilinear) pressure: point area: interpolation (method: bilinear),Eastward Wind
+AUST-04,1hr,ua850,m s-1,area: interpolation (method: bilinear) pressure: point area: interpolation (method: bilinear),Eastward Wind
+AUST-04,1hr,ua900,m s-1,area: interpolation (method: bilinear) pressure: point area: interpolation (method: bilinear),Eastward Wind
+AUST-04,1hr,ua925,m s-1,area: interpolation (method: bilinear) pressure: point area: interpolation (method: bilinear),Eastward Wind
+AUST-04,1hr,ua950,m s-1,area: interpolation (method: bilinear) pressure: point area: interpolation (method: bilinear),Eastward Wind
+AUST-04,1hr,ua975,m s-1,area: interpolation (method: bilinear) pressure: point area: interpolation (method: bilinear),Eastward Wind
+AUST-04,1hr,uas,m s-1,time: point (interval: 1H) area: interpolation (method: bilinear),Eastward Near-Surface Wind
+AUST-04,1hr,uasmean,m s-1,area: interpolation (method: bilinear) time: mean (interval: 1H),Eastward Near-Surface Wind
+AUST-04,1hr,va1000,m s-1,area: interpolation (method: bilinear) pressure: point area: interpolation (method: bilinear),Northward Wind
+AUST-04,1hr,va100m,m s-1,area: interpolation (method: bilinear) height: interpolation(method: log) time: point (interval: 1H) area: interpolation (method: bilinear),Northward Wind at 100m
+AUST-04,1hr,va1500m,m s-1,area: interpolation (method: bilinear) height: interpolation(method: log) time: point (interval: 1H) area: interpolation (method: bilinear),Northward Wind at 1500m
+AUST-04,1hr,va150m,m s-1,area: interpolation (method: bilinear) height: interpolation(method: log) time: point (interval: 1H) area: interpolation (method: bilinear),Northward Wind at 150m
+AUST-04,1hr,va200,m s-1,pressure: point area: interpolation (method: bilinear),Northward Wind
+AUST-04,1hr,va200m,m s-1,area: interpolation (method: bilinear) height: interpolation(method: log) time: point (interval: 1H) area: interpolation (method: bilinear),Northward Wind at 200m
+AUST-04,1hr,va250m,m s-1,area: interpolation (method: bilinear) height: interpolation(method: log) time: point (interval: 1H) area: interpolation (method: bilinear),Northward Wind at 250m
+AUST-04,1hr,va300,m s-1,pressure: point area: interpolation (method: bilinear),Northward Wind
+AUST-04,1hr,va400,m s-1,pressure: point area: interpolation (method: bilinear),Northward Wind
+AUST-04,1hr,va500,m s-1,pressure: point area: interpolation (method: bilinear),Northward Wind
+AUST-04,1hr,va50m,m s-1,area: interpolation (method: bilinear) height: interpolation(method: log) time: point (interval: 1H) area: interpolation (method: bilinear),Northward Wind at 50m
+AUST-04,1hr,va600,m s-1,area: interpolation (method: bilinear) pressure: point area: interpolation (method: bilinear),Northward Wind
+AUST-04,1hr,va700,m s-1,area: interpolation (method: bilinear) pressure: point area: interpolation (method: bilinear),Northward Wind
+AUST-04,1hr,va750,m s-1,area: interpolation (method: bilinear) pressure: point area: interpolation (method: bilinear),Northward Wind
+AUST-04,1hr,va800,m s-1,area: interpolation (method: bilinear) pressure: point area: interpolation (method: bilinear),Northward Wind
+AUST-04,1hr,va850,m s-1,area: interpolation (method: bilinear) pressure: point area: interpolation (method: bilinear),Northward Wind
+AUST-04,1hr,va900,m s-1,area: interpolation (method: bilinear) pressure: point area: interpolation (method: bilinear),Northward Wind
+AUST-04,1hr,va925,m s-1,area: interpolation (method: bilinear) pressure: point area: interpolation (method: bilinear),Northward Wind
+AUST-04,1hr,va950,m s-1,area: interpolation (method: bilinear) pressure: point area: interpolation (method: bilinear),Northward Wind
+AUST-04,1hr,va975,m s-1,area: interpolation (method: bilinear) pressure: point area: interpolation (method: bilinear),Northward Wind
+AUST-04,1hr,vas,m s-1,time: point (interval: 1H) area: interpolation (method: bilinear),Northward Near-Surface Wind
+AUST-04,1hr,vasmean,m s-1,area: interpolation (method: bilinear) time: mean (interval: 1H),Northward Near-Surface Wind
+AUST-04,1hr,visibility,m,,Visibility at 1.5m
+AUST-04,1hr,wa1000,m s-1,pressure: point,Upward Air Velocity
+AUST-04,1hr,wa200,m s-1,pressure: point,Upward Air Velocity
+AUST-04,1hr,wa300,m s-1,pressure: point,Upward Air Velocity
+AUST-04,1hr,wa400,m s-1,pressure: point,Upward Air Velocity
+AUST-04,1hr,wa500,m s-1,pressure: point,Upward Air Velocity
+AUST-04,1hr,wa600,m s-1,pressure: point,Upward Air Velocity
+AUST-04,1hr,wa700,m s-1,pressure: point,Upward Air Velocity
+AUST-04,1hr,wa750,m s-1,pressure: point,Upward Air Velocity
+AUST-04,1hr,wa800,m s-1,pressure: point,Upward Air Velocity
+AUST-04,1hr,wa850,m s-1,pressure: point,Upward Air Velocity
+AUST-04,1hr,wa900,m s-1,pressure: point,Upward Air Velocity
+AUST-04,1hr,wa925,m s-1,pressure: point,Upward Air Velocity
+AUST-04,1hr,wa950,m s-1,pressure: point,Upward Air Velocity
+AUST-04,1hr,wa975,m s-1,pressure: point,Upward Air Velocity
+AUST-04,1hr,wap1000,Pa s-1,pressure: point,Upward air velocity in pressure/second
+AUST-04,1hr,wap200,Pa s-1,pressure: point,Upward air velocity in pressure/second
+AUST-04,1hr,wap300,Pa s-1,pressure: point,Upward air velocity in pressure/second
+AUST-04,1hr,wap400,Pa s-1,pressure: point,Upward air velocity in pressure/second
+AUST-04,1hr,wap500,Pa s-1,pressure: point,Upward air velocity in pressure/second
+AUST-04,1hr,wap600,Pa s-1,pressure: point,Upward air velocity in pressure/second
+AUST-04,1hr,wap700,Pa s-1,pressure: point,Upward air velocity in pressure/second
+AUST-04,1hr,wap750,Pa s-1,pressure: point,Upward air velocity in pressure/second
+AUST-04,1hr,wap800,Pa s-1,pressure: point,Upward air velocity in pressure/second
+AUST-04,1hr,wap850,Pa s-1,pressure: point,Upward air velocity in pressure/second
+AUST-04,1hr,wap900,Pa s-1,pressure: point,Upward air velocity in pressure/second
+AUST-04,1hr,wap925,Pa s-1,pressure: point,Upward air velocity in pressure/second
+AUST-04,1hr,wap950,Pa s-1,pressure: point,Upward air velocity in pressure/second
+AUST-04,1hr,wap975,Pa s-1,pressure: point,Upward air velocity in pressure/second
+AUST-04,1hr,wsgs,m s-1,,Near-Surface Wind Speed of Gust
+AUST-04,1hr,wsgsmax,m s-1,time: maximum (interval: 1 hour) area: interpolation (method: bilinear) time: maximum (interval: 1H),Hourly Maximum Near-Surface Wind Speed of Gust
+AUST-04,1hr,zg1000,m,pressure: point,Geopotential Height
+AUST-04,1hr,zg200,m,pressure: point,Geopotential Height
+AUST-04,1hr,zg300,m,pressure: point,Geopotential Height
+AUST-04,1hr,zg400,m,pressure: point,Geopotential Height
+AUST-04,1hr,zg500,m,pressure: point,Geopotential Height
+AUST-04,1hr,zg600,m,pressure: point,Geopotential Height
+AUST-04,1hr,zg700,m,pressure: point,Geopotential Height
+AUST-04,1hr,zg750,m,pressure: point,Geopotential Height
+AUST-04,1hr,zg800,m,pressure: point,Geopotential Height
+AUST-04,1hr,zg850,m,pressure: point,Geopotential Height
+AUST-04,1hr,zg900,m,pressure: point,Geopotential Height
+AUST-04,1hr,zg925,m,pressure: point,Geopotential Height
+AUST-04,1hr,zg950,m,pressure: point,Geopotential Height
+AUST-04,1hr,zg975,m,pressure: point,Geopotential Height
+AUST-04,1hr,zmla,m,time: point (interval: 1H),Height of Boundary Layer
+AUST-04,1hr,ztp,m,time: mean (interval: 1 hour),Tropopause height
+AUST-04,20min,clt,%,,Total Cloud Cover Percentage
+AUST-04,20min,helicity,m2 s-2,,Updraft Helicity (2000-5000m)
+AUST-04,20min,huss,1,,Near-Surface Specific Humidity
+AUST-04,20min,prga,kg kg-1 s-1,time: mean (interval: 1 hour),Graupel Sediment Rate
+AUST-04,20min,prra,kg m-2 s-1,time: mean (interval: 1 hour),Large Scale Rainfall Rate
+AUST-04,20min,prsn,kg m-2 s-1,time: mean (interval: 1 hour),Snowfall Flux
+AUST-04,20min,psl,Pa,,Sea Level Pressure
+AUST-04,20min,radrefl1km,dBZ,,Radar reflectivity at 1km altitude
+AUST-04,20min,rsdsdif,W m-2,,Surface diffused downwelling shortwave radiation
+AUST-04,20min,rsdsdir,W m-2,,Surface Direct Downwelling Shortwave Radiation
+AUST-04,20min,rss,W m-2,,Net downward shortwave flux at surface
+AUST-04,20min,ta100m,K,height: interpolation(method: linear),Air Temperature at 100m
+AUST-04,20min,ta1500m,K,height: interpolation(method: linear),Air Temperature at 1500m
+AUST-04,20min,ta150m,K,height: interpolation(method: linear),Air Temperature at 150m
+AUST-04,20min,ta200m,K,height: interpolation(method: linear),Air Temperature at 200m
+AUST-04,20min,ta250m,K,height: interpolation(method: linear),Air Temperature at 250m
+AUST-04,20min,ta50m,K,height: interpolation(method: linear),Air Temperature at 50m
+AUST-04,20min,tas,K,,Near-Surface Air Temperature
+AUST-04,20min,ts,K,,Surface Temperature
+AUST-04,20min,ua100m,m s-1,area: interpolation (method: bilinear) height: interpolation(method: log) area: interpolation (method: bilinear),Eastward Wind at 100m
+AUST-04,20min,ua1500m,m s-1,area: interpolation (method: bilinear) height: interpolation(method: log) area: interpolation (method: bilinear),Eastward Wind at 1500m
+AUST-04,20min,ua150m,m s-1,area: interpolation (method: bilinear) height: interpolation(method: log) area: interpolation (method: bilinear),Eastward Wind at 150m
+AUST-04,20min,ua200m,m s-1,area: interpolation (method: bilinear) height: interpolation(method: log) area: interpolation (method: bilinear),Eastward Wind at 200m
+AUST-04,20min,ua250m,m s-1,area: interpolation (method: bilinear) height: interpolation(method: log) area: interpolation (method: bilinear),Eastward Wind at 250m
+AUST-04,20min,ua50m,m s-1,area: interpolation (method: bilinear) height: interpolation(method: log) area: interpolation (method: bilinear),Eastward Wind at 50m
+AUST-04,20min,uas,m s-1,area: interpolation (method: bilinear),Eastward Near-Surface Wind
+AUST-04,20min,va100m,m s-1,area: interpolation (method: bilinear) height: interpolation(method: log) area: interpolation (method: bilinear),Northward Wind at 100m
+AUST-04,20min,va1500m,m s-1,area: interpolation (method: bilinear) height: interpolation(method: log) area: interpolation (method: bilinear),Northward Wind at 1500m
+AUST-04,20min,va150m,m s-1,area: interpolation (method: bilinear) height: interpolation(method: log) area: interpolation (method: bilinear),Northward Wind at 150m
+AUST-04,20min,va200m,m s-1,area: interpolation (method: bilinear) height: interpolation(method: log) area: interpolation (method: bilinear),Northward Wind at 200m
+AUST-04,20min,va250m,m s-1,area: interpolation (method: bilinear) height: interpolation(method: log) area: interpolation (method: bilinear),Northward Wind at 250m
+AUST-04,20min,va50m,m s-1,area: interpolation (method: bilinear) height: interpolation(method: log) area: interpolation (method: bilinear),Northward Wind at 50m
+AUST-04,20min,vas,m s-1,area: interpolation (method: bilinear),Northward Near-Surface Wind
+AUST-04,20min,wsgsmax,m s-1,time: maximum (interval: 1 hour),20-Minute Maximum Near-Surface Wind Speed of Gust
+AUST-04,fx,orog,m,,Surface Altitude
+AUST-04,fx,sftlf,%,,Percentage of the grid  cell occupied by land (including lakes)

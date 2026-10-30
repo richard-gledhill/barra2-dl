@@ -7,14 +7,21 @@ import pytest
 
 from barra2_dl.globals import (
     BARRA2_DOMAINS,
+    BARRA2_FIXED_FREQ,
+    BARRA2_FIXED_VARS_AUTO,
     BARRA2_FREQS,
     BARRA2_INDEX,
+    BARRA2_PRESET_DEFAULT,
+    BARRA2_PRESETS,
     BARRA2_URL,
     BARRA2_URL_AUS11_1HR,
     BARRA2_URL_AUST04_1HR,
+    BARRA2_URL_FX,
     BARRA2_VAR_ALIASES,
+    BARRA2_VAR_INFO,
     BARRA2_VAR_WIND_50,
     BARRA2_VAR_WIND_DEFAULT,
+    BARRA2_VARS,
     BARRA2_WIND_VARS,
 )
 
@@ -89,6 +96,85 @@ def test_freqs_aust04_20min() -> None:
     assert BARRA2_FREQS['AUST-04']['20min'] == timedelta(minutes=20)
 
 
+def test_freqs_are_1hr_and_20min_only() -> None:
+    """3hr, day and mon are not supported (RFC-002 decision 3)."""
+    assert {freq for freqs in BARRA2_FREQS.values() for freq in freqs} == {'1hr', '20min'}
+
+
+# endregion
+
+
+# region BARRA2_VARS and BARRA2_VAR_INFO
+DOMAIN_FREQS = [(domain, freq) for domain, freqs in BARRA2_FREQS.items() for freq in freqs]
+
+
+@pytest.mark.parametrize(('domain', 'freq'), [*DOMAIN_FREQS, *((d, BARRA2_FIXED_FREQ) for d in BARRA2_DOMAINS)])
+def test_inventory_covers_every_domain_freq(domain: str, freq: str) -> None:
+    """Every supported (domain, freq), and each domain's fixed fields, has an inventory entry."""
+    assert BARRA2_VARS[(domain, freq)]
+
+
+def test_inventory_has_no_unsupported_entries() -> None:
+    """The inventory lists only supported frequencies and the fixed fields."""
+    assert set(BARRA2_VARS) == {*DOMAIN_FREQS, *((d, BARRA2_FIXED_FREQ) for d in BARRA2_DOMAINS)}
+
+
+@pytest.mark.parametrize(('domain', 'freq'), DOMAIN_FREQS)
+def test_inventory_has_every_wind_var(domain: str, freq: str) -> None:
+    """Every wind table variable is in the inventory wherever height winds exist."""
+    assert {name for entry in BARRA2_WIND_VARS for name in entry[:2]} <= BARRA2_VARS[(domain, freq)]
+
+
+def test_inventory_info_for_every_var() -> None:
+    """Every inventory variable has units recorded, and the info keys match the inventory."""
+    assert {(d, f, v) for (d, f), names in BARRA2_VARS.items() for v in names} == set(BARRA2_VAR_INFO)
+    assert all(info['units'] for info in BARRA2_VAR_INFO.values())
+
+
+def test_inventory_cell_methods_mark_hourly_means() -> None:
+    """Precipitation (pr) and rsds are hourly means at 1hr, which RFC-003 needs for its time axes."""
+    for domain in BARRA2_DOMAINS:
+        assert 'time: mean' in BARRA2_VAR_INFO[(domain, '1hr', 'pr')]['cell_methods']
+        assert 'time: mean' in BARRA2_VAR_INFO[(domain, '1hr', 'rsds')]['cell_methods']
+
+
+# endregion
+
+
+# region BARRA2_PRESETS and fixed fields
+def test_preset_default_is_wind_density() -> None:
+    """wind+density is the default preset (RFC-002 decision 1)."""
+    assert BARRA2_PRESET_DEFAULT == 'wind+density'
+    assert BARRA2_PRESET_DEFAULT in BARRA2_PRESETS
+
+
+@pytest.mark.parametrize('domain', BARRA2_DOMAINS)
+@pytest.mark.parametrize('preset', [name for name in BARRA2_PRESETS if name != 'site'])
+def test_presets_available_at_1hr(preset: str, domain: str) -> None:
+    """Every time-series preset is available at 1hr on both domains."""
+    assert set(BARRA2_PRESETS[preset]) <= BARRA2_VARS[(domain, '1hr')]
+
+
+@pytest.mark.parametrize('domain', BARRA2_DOMAINS)
+def test_site_preset_is_fixed_fields(domain: str) -> None:
+    """The site preset holds only fixed fields, and not orog, which every download already gets."""
+    assert set(BARRA2_PRESETS['site']) <= BARRA2_VARS[(domain, BARRA2_FIXED_FREQ)]
+    assert not set(BARRA2_PRESETS['site']) & set(BARRA2_FIXED_VARS_AUTO)
+
+
+def test_presets_have_no_repeats() -> None:
+    """No preset lists a variable twice."""
+    for variables in BARRA2_PRESETS.values():
+        assert len(variables) == len(set(variables))
+
+
+@pytest.mark.parametrize('domain', BARRA2_DOMAINS)
+def test_fixed_vars_auto_is_orog(domain: str) -> None:
+    """The node altitude orog is added to every point download and is a fixed field (RFC-002 decision 2)."""
+    assert BARRA2_FIXED_VARS_AUTO == ['orog']
+    assert set(BARRA2_FIXED_VARS_AUTO) <= BARRA2_VARS[(domain, BARRA2_FIXED_FREQ)]
+
+
 # endregion
 
 
@@ -139,9 +225,21 @@ def test_url_template_formats_fully(domain: str, freq: str) -> None:
     assert formatted.endswith('accept=csv_file')
 
 
+@pytest.mark.parametrize('domain', BARRA2_DOMAINS)
+def test_fx_url_template_formats_fully(domain: str) -> None:
+    """The fx template fills with no time range and no month in the file name."""
+    formatted = BARRA2_URL_FX.format(
+        domain=domain, model=BARRA2_DOMAINS[domain], var='orog', latitude=-33.88, longitude=151.18, fileout_type='csv'
+    )
+    assert not re.search(r'[{}]', formatted)
+    assert f'/{domain}/' in formatted
+    assert f'/fx/orog/latest/orog_{domain}_ERA5_historical_hres_BOM_{BARRA2_DOMAINS[domain]}_v1.nc?' in formatted
+    assert 'time_start' not in formatted
+
+
 def test_url_template_uses_only_supplied_fields() -> None:
     """Every placeholder in the templates is one download.py provides."""
-    for url in (BARRA2_URL, BARRA2_URL_AUS11_1HR, BARRA2_URL_AUST04_1HR):
+    for url in (BARRA2_URL, BARRA2_URL_FX, BARRA2_URL_AUS11_1HR, BARRA2_URL_AUST04_1HR):
         assert set(re.findall(r'{(\w+)', url)) <= set(TEMPLATE_FIELDS)
 
 

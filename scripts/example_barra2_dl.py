@@ -14,16 +14,16 @@ from pathlib import Path
 import barra2_dl
 from barra2_dl.globals import (
     BARRA2_INDEX,
+    BARRA2_PRESET_DEFAULT,
+    BARRA2_PRESETS,
     BARRA2_URL,
-    BARRA2_VAR_WIND_50,
-    BARRA2_VAR_WIND_DEFAULT,
 )
 from barra2_dl.mapping import LatLonPoint
 
 #%%
 print('BARRA2_INDEX: ' + BARRA2_INDEX.__str__())
-print('BARRA2_VAR_WIND_50: ' + BARRA2_VAR_WIND_50.__str__())
-print('BARRA2_VAR_WIND_DEFAULT: ' + BARRA2_VAR_WIND_DEFAULT.__str__())
+print('Presets: ' + ', '.join(BARRA2_PRESETS))
+print('Default preset: ' + BARRA2_PRESET_DEFAULT)
 #%% md
 # ## Set variables
 # Set the cache and output folders.
@@ -60,13 +60,20 @@ domain = "AUS-11"  # or "AUST-04"
 freq = "1hr"  # or "20min" on AUST-04
 
 #%% md
+# Choose the variables with a preset. The default, wind+density, adds pressure, temperature and humidity to the wind
+# heights for air density work. preset_variables checks the preset is available for the domain and frequency: at
+# AUST-04 20min, choose the "wind" preset, as pressure and humidity aren't published every 20 minutes.
+#%%
+barra2_vars = barra2_dl.download.preset_variables(BARRA2_PRESET_DEFAULT, domain, freq)
+print(barra2_vars)
+#%% md
 # ## Download point data
 # Use point_data_urlfilenames and download_multithread to download the closest node for the desired variables
-# into the target cache folder.
+# into the target cache folder. The node altitude (orog) is downloaded too, once per node.
 #%%
 urlfilenames = barra2_dl.download.point_data_urlfilenames(
     barra2_url = BARRA2_URL,
-    barra2_vars = BARRA2_VAR_WIND_DEFAULT,
+    barra2_vars = barra2_vars,
     latitude = lat_lon_point.lat,
     longitude = lat_lon_point.lon,
     start_datetime= start_datetime,
@@ -87,6 +94,10 @@ df_merged = barra2_dl.merge.merge_csvs_to_df(
     index_for_join=BARRA2_INDEX,
 )
 print(df_merged.head())
+#%% md
+# The node altitude is a single value rather than a time series, so it isn't merged; read it separately.
+#%%
+print(barra2_dl.merge.read_fixed_fields(cache_dir, f'{fileout_prefix}_{domain}_fx_*.csv'))
 #%%
 df_merged.to_csv(Path(output_dir) / f"{fileout_prefix}_merged_{start_datetime.strftime("%Y%m%d")}"
                                     f"_{end_datetime.strftime("%Y%m%d")}.csv", index=False)
@@ -95,6 +106,8 @@ df_merged.to_csv(Path(output_dir) / f"{fileout_prefix}_merged_{start_datetime.st
 # Using the merged dataframe, convert ua and va to v and phi_met, and export to new csv file
 #%%
 df_converted = barra2_dl.convert.convert_wind_components(df_merged)
+# optional: convert K to degC, Pa to hPa and precipitation flux to mm h-1
+df_converted = barra2_dl.convert.convert_units(df_converted)
 print(df_converted.head())
 #%%
 df_converted.to_csv(Path(output_dir) / f"{fileout_prefix}_converted_{start_datetime.strftime("%Y%m%d")}"

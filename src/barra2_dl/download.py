@@ -15,10 +15,15 @@ import requests
 
 from barra2_dl.globals import (
     BARRA2_DOMAINS,
+    BARRA2_FIXED_FREQ,
+    BARRA2_FIXED_VARS_AUTO,
     BARRA2_FREQS,
+    BARRA2_PRESETS,
     BARRA2_URL_AUS11_1HR,
     BARRA2_URL_AUST04_1HR,
+    BARRA2_URL_FX,
     BARRA2_VAR_ALIASES,
+    BARRA2_VARS,
 )
 
 logger = logging.getLogger(__name__)
@@ -28,6 +33,7 @@ __all__ = [
     'download_multithread',
     'download_serial',
     'point_data_urlfilenames',
+    'preset_variables',
 ]
 
 
@@ -64,11 +70,15 @@ def point_data_urlfilenames(
     filenames as f'{fileout_prefix}_{domain}_{freq}_{var}_{time_start[:10]}_{time_end[:10]}.{fileout_type}'
     Currently limited to csv file download only.
 
+    Every variable is checked against the inventory BARRA2_VARS before any URL is built. Fixed (fx) fields such as
+    orog and sftlf have no time axis, so each gets one request, named f'{fileout_prefix}_{domain}_fx_{var}.csv'.
+    The node altitude, orog, is added automatically whenever at least one variable is requested.
+
     Args:
         barra2_url (str): BARRA2_URL from barra2_dl.globals. The pre-filled BARRA2_URL_AUS11_1HR and
             BARRA2_URL_AUST04_1HR still work but are deprecated; they set domain and freq themselves.
-        barra2_vars (list): Use from barra2-dl.globals or set explicitly. Aliases in BARRA2_VAR_ALIASES
-            (ua10m, va10m) are downloaded under their server name (uas, vas).
+        barra2_vars (list): Use from barra2-dl.globals, a preset from preset_variables, or set explicitly.
+            Aliases in BARRA2_VAR_ALIASES (ua10m, va10m) are downloaded under their server name (uas, vas).
         latitude (float |int):  Point latitude.
         longitude (float |int):  Point longitude.
         start_datetime (str | datetime): Used to define start of inclusive download period
@@ -82,7 +92,8 @@ def point_data_urlfilenames(
         point_data_urlfilenamepair(list[URLFilenamePair])
 
     Raises:
-        ValueError: If not csv file set for export, or the domain and freq are not in BARRA2_FREQS.
+        ValueError: If not csv file set for export, the domain and freq are not in BARRA2_FREQS, or a variable is not
+            available at that domain and freq.
 
     Examples:
         >>> from barra2_dl.globals import BARRA2_URL
@@ -90,8 +101,8 @@ def point_data_urlfilenames(
         ...     BARRA2_URL, ['ua10m'], -33.88, 151.18, '2020-01-01', '2020-01-31', 'site',
         ...     domain='AUST-04', freq='20min',
         ... )
-        >>> pairs[0][1]
-        'site_AUST-04_20min_uas_20200101_20200131.csv'
+        >>> [name for _, name in pairs]
+        ['site_AUST-04_20min_uas_20200101_20200131.csv', 'site_AUST-04_fx_orog.csv']
         >>> 'time_end=2020-01-31T23:40:00Z' in pairs[0][0]
         True
 
@@ -119,21 +130,28 @@ def point_data_urlfilenames(
         )
         domain, freq = _DEPRECATED_URLS.get(barra2_url, (domain, freq))
 
-    if freq not in BARRA2_FREQS.get(domain, {}):
-        supported = ', '.join(f'{d} {f}' for d, freqs in BARRA2_FREQS.items() for f in freqs)
-        logger.error(f'Unsupported domain and freq: {domain} {freq}')
-        raise ValueError(f'{domain} {freq} is not supported. Supported: {supported}.')
+    _check_domain_freq(domain, freq)
     model = BARRA2_DOMAINS[domain]
     step = BARRA2_FREQS[domain][freq]
 
     # resolve aliases to server names, dropping repeats such as uas and ua10m
     server_vars = list(dict.fromkeys(BARRA2_VAR_ALIASES.get(var, var) for var in barra2_vars))
 
+    # split the time series from the fixed fields, and reject anything the server doesn't have, before any URL
+    fixed_available = BARRA2_VARS[(domain, BARRA2_FIXED_FREQ)]
+    series_vars = [var for var in server_vars if var not in fixed_available]
+    _check_variables(series_vars, domain, freq)
+    fixed_vars = (
+        list(dict.fromkeys([*BARRA2_FIXED_VARS_AUTO, *(var for var in server_vars if var in fixed_available)]))
+        if server_vars
+        else []
+    )
+
     # create empty list for url and filename
     point_data_urlfilenamepair = []
 
     # loop through each variable requested for download as each variable is saved in a separate url
-    for var in server_vars:
+    for var in series_vars:
         # loop through each month as each BARRA2 file is saved by month todo check index enumerate addition works
         for date in _list_months(start_datetime, end_datetime, freq='MS'):
             year = date.year
@@ -168,7 +186,62 @@ def point_data_urlfilenames(
             # append url and filename as tuple
             point_data_urlfilenamepair.append((url, fileout_name))
 
+    # fixed fields have one file per domain, so one request each with no time range
+    for var in fixed_vars:
+        url = BARRA2_URL_FX.format(
+            domain=domain,
+            model=model,
+            var=var,
+            latitude=latitude,
+            longitude=longitude,
+            fileout_type=fileout_type,
+        )
+        point_data_urlfilenamepair.append((url, f'{fileout_prefix}_{domain}_{BARRA2_FIXED_FREQ}_{var}.{fileout_ext}'))
+
     return point_data_urlfilenamepair
+
+
+def preset_variables(
+    preset: str,
+    domain: str = 'AUS-11',
+    freq: str = '1hr',
+) -> list[str]:
+    """Return the variables of a named preset, checked for the domain and frequency.
+
+    Presets are defined in BARRA2_PRESETS for 1hr data on both domains. At an opt-in frequency such as AUST-04
+    20min some variables may not exist; then the preset is rejected rather than downloaded in part.
+
+    Args:
+        preset (str): A key of BARRA2_PRESETS, e.g. 'wind+density' (BARRA2_PRESET_DEFAULT).
+        domain (str): BARRA2 domain, a key of BARRA2_DOMAINS. Default 'AUS-11'.
+        freq (str): BARRA2 frequency available for the domain in BARRA2_FREQS. Default '1hr'.
+
+    Returns:
+        list[str]: The preset's variables, ready for point_data_urlfilenames.
+
+    Raises:
+        ValueError: If the preset is unknown, the domain and freq are not supported, or the preset needs variables
+            that are not available at that domain and freq.
+
+    Examples:
+        >>> preset_variables('wind', 'AUST-04', '20min')[:4]
+        ['uas', 'vas', 'ua50m', 'va50m']
+    """
+    if preset not in BARRA2_PRESETS:
+        raise ValueError(f'Unknown preset <{preset}>. Presets: {", ".join(BARRA2_PRESETS)}.')
+    _check_domain_freq(domain, freq)
+
+    available = BARRA2_VARS[(domain, freq)] | BARRA2_VARS[(domain, BARRA2_FIXED_FREQ)]
+    missing = [var for var in BARRA2_PRESETS[preset] if var not in available]
+    if missing:
+        usable = [name for name, variables in BARRA2_PRESETS.items() if set(variables) <= available]
+        message = (
+            f'Preset <{preset}> needs {", ".join(missing)}, which are not available at {domain} {freq}; '
+            f'they are available at 1hr. Presets available at {domain} {freq}: {", ".join(usable)}.'
+        )
+        logger.error(message)
+        raise ValueError(message)
+    return list(BARRA2_PRESETS[preset])
 
 
 def download_serial(
@@ -230,6 +303,27 @@ def download_multithread(
 
 
 # region Helpers
+def _check_domain_freq(domain: str, freq: str) -> None:
+    """Raise ValueError if the domain and freq are not a supported combination in BARRA2_FREQS."""
+    if freq not in BARRA2_FREQS.get(domain, {}):
+        supported = ', '.join(f'{d} {f}' for d, freqs in BARRA2_FREQS.items() for f in freqs)
+        logger.error(f'Unsupported domain and freq: {domain} {freq}')
+        raise ValueError(f'{domain} {freq} is not supported. Supported: {supported}.')
+
+
+def _check_variables(variables: list[str], domain: str, freq: str) -> None:
+    """Raise ValueError naming any time-series variable not in the inventory for the domain and freq."""
+    unknown = [var for var in variables if var not in BARRA2_VARS[(domain, freq)]]
+    if not unknown:
+        return
+    message = f'Not available at {domain} {freq}: {", ".join(unknown)}.'
+    at_hourly = [var for var in unknown if freq != '1hr' and var in BARRA2_VARS[(domain, '1hr')]]
+    if at_hourly:
+        message += f' Available at 1hr: {", ".join(at_hourly)}.'
+    logger.error(message)
+    raise ValueError(message)
+
+
 def _list_months(
     start_datetime: str | datetime,
     end_datetime: str | datetime,

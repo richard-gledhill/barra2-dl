@@ -15,10 +15,18 @@ logger.addHandler(logging.NullHandler())
 __all__ = [
     'calculate_wind_direction',
     'calculate_wind_speed',
+    'convert_units',
     'convert_wind_components',
     'wind_components_to_direction',
     'wind_components_to_speed',
 ]
+
+# units convert_units changes: BARRA2 unit -> (new unit, conversion)
+_UNIT_CONVERSIONS = {
+    'K': ('degC', lambda values: values - 273.15),
+    'Pa': ('hPa', lambda values: values / 100),
+    'kg m-2 s-1': ('mm h-1', lambda values: values * 3600),
+}
 
 
 def calculate_wind_speed(
@@ -187,3 +195,32 @@ def convert_wind_components(
     #     raise ValueError('No ua or va values in the dataframe to convert.')
 
     return df_processed
+
+
+def convert_units(
+    df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Convert BARRA2 SI units to those common in wind and weather analysis.
+
+    An opt-in step: K to degC, Pa to hPa and kg m-2 s-1 (precipitation and snowfall flux) to mm h-1. Columns are
+    matched on their unit suffix, which is renamed with the values, e.g. tas[unit="K"] becomes tas[unit="degC"].
+    Other columns are left as they are.
+
+    Args:
+        df: DataFrame with BARRA2 columns named <var>[unit="<unit>"], e.g. from merge_csvs_to_df.
+
+    Returns:
+        DataFrame: A copy with the converted columns; the input is not modified.
+
+    Examples:
+        >>> convert_units(pd.DataFrame({'tas[unit="K"]': [293.15], 'ps[unit="Pa"]': [101325.0]})).round(2).to_dict()
+        {'tas[unit="degC"]': {0: 20.0}, 'ps[unit="hPa"]': {0: 1013.25}}
+    """
+    df_converted = df.copy()
+    renames = {}
+    for column in df.columns:
+        for unit, (new_unit, conversion) in _UNIT_CONVERSIONS.items():
+            if str(column).endswith(f'[unit="{unit}"]'):
+                df_converted[column] = conversion(df[column])
+                renames[column] = str(column).replace(f'[unit="{unit}"]', f'[unit="{new_unit}"]')
+    return df_converted.rename(columns=renames)
