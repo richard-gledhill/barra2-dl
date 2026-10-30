@@ -50,3 +50,4 @@ requests). Then move the point and run again: it should stop with `CacheMismatch
 |---|---|---|
 | 2026-10-31 | csv example, `.py` and `.ipynb` (owner) | Work, before the filename and header change |
 | 2026-10-31 | csv example `.py` after the change (Claude, scratch folder; second run made no requests) | Work; `.ipynb` after the change not yet run |
+| 2026-10-31 | netCDF example, `.py` and `.ipynb`, after the change (owner) | Work |
