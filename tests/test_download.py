@@ -47,6 +47,11 @@ class _FakeResponse:
         self.status_code = status_code
         self.content = content
 
+    @property
+    def text(self) -> str:
+        """The content decoded as text."""
+        return self.content.decode()
+
 
 @pytest.fixture
 def fake_get(monkeypatch: pytest.MonkeyPatch) -> list[str]:
@@ -168,10 +173,10 @@ def test_point_data_urlfilenames(
 
 
 def test_point_data_urlfilenames_unsupported_fileout_type() -> None:
-    """Only csv_file output is supported."""
+    """Only csv_file and netcdf4 downloads are supported."""
     with pytest.raises(ValueError, match='not supported'):
         barra2_dl.download.point_data_urlfilenames(
-            BARRA2_URL, ['ua50m'], -23.5, 133.4, '2023-01-01', '2023-01-31', 'demo', fileout_type='netcdf'
+            BARRA2_URL, ['ua50m'], -23.5, 133.4, '2023-01-01', '2023-01-31', 'demo', fileout_type='netcdf3'
         )
 
 
@@ -430,6 +435,39 @@ def test_point_data_urlfilenames_orog_is_served(domain: str) -> None:
     assert 'orog[unit="m"]' in df.columns
 
 
+def test_point_data_urlfilenames_netcdf4_names_and_urls() -> None:
+    """netCDF4 downloads ask for accept=netcdf4 and are cached as .nc, including the orog fixed field."""
+    pairs = barra2_dl.download.point_data_urlfilenames(
+        BARRA2_URL, ['ua50m'], -23.5, 133.4, '2023-01-01', '2023-01-31', 'demo', fileout_type='netcdf4'
+    )
+
+    assert [name for _, name in pairs] == ['demo_AUS-11_1hr_ua50m_20230101_20230131.nc', 'demo_AUS-11_fx_orog.nc']
+    assert all(url.endswith('accept=netcdf4') for url, _ in pairs)
+
+
+def test_point_data_urlfilenames_csv_and_netcdf4_share_a_cache_without_clashing() -> None:
+    """The same request as csv and as netCDF4 differs only in extension, so both can sit in one cache folder."""
+    args = (BARRA2_URL, ['ua50m'], -23.5, 133.4, '2023-01-01', '2023-01-31', 'demo')
+    csv_names = [name for _, name in barra2_dl.download.point_data_urlfilenames(*args)]
+    nc_names = [name for _, name in barra2_dl.download.point_data_urlfilenames(*args, fileout_type='netcdf4')]
+
+    assert [Path(name).stem for name in csv_names] == [Path(name).stem for name in nc_names]
+    assert set(csv_names).isdisjoint(nc_names)
+
+
+@live_network
+def test_point_data_urlfilenames_netcdf4_is_served() -> None:
+    """The netCDF4 point request returns a netCDF4 (HDF5) file."""
+    (url, _), *_ = barra2_dl.download.point_data_urlfilenames(
+        BARRA2_URL, ['ua50m'], -33.88, 151.18, '2020-01-01', '2020-01-31', 'live', fileout_type='netcdf4'
+    )
+
+    response = requests.get(url, timeout=120)
+
+    assert response.status_code == 200
+    assert response.content[1:4] == b'HDF'
+
+
 # endregion
 
 
@@ -476,6 +514,78 @@ def test_preset_variables_returns_a_copy() -> None:
     barra2_dl.download.preset_variables('wind').append('ps')
 
     assert 'ps' not in BARRA2_PRESETS['wind']
+
+
+# endregion
+
+
+# region resolve_variable_versions
+def _das_text(version: str) -> str:
+    """An OPeNDAP .das response carrying the given variable_version."""
+    return f'Attributes {{ NC_GLOBAL {{ String variable_version "{version}"; }} }}'
+
+
+def test_resolve_variable_versions_reads_each_variables_version(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Each variable (and the automatic orog) gets the version its own file reports; aliases resolve to server names."""
+    versions = {'uas': 'v20231001', 'ua50m': 'v20240516', 'orog': 'v20231001'}
+
+    def _get(url: str, **_kwargs) -> _FakeResponse:
+        found = re.search(r'/([A-Za-z0-9]+)_AUS-11_ERA5', url)
+        assert found
+        return _FakeResponse(200, _das_text(versions[found.group(1)]).encode())
+
+    monkeypatch.setattr(barra2_dl.download.requests, 'get', _get)
+
+    result = barra2_dl.download.resolve_variable_versions(['ua10m', 'ua50m'], 'AUS-11', '1hr')
+
+    assert result == versions
+
+
+def test_resolve_variable_versions_asks_the_opendap_attributes(fake_get: list[str]) -> None:
+    """Versions come from the small OPeNDAP .das request, not a data download."""
+    barra2_dl.download.resolve_variable_versions(['ua50m'], 'AUST-04', '20min')
+
+    assert all('/dodsC/' in url and url.endswith('.nc.das') for url in fake_get)
+    assert any('/20min/ua50m/' in url for url in fake_get)
+    assert any('/fx/orog/' in url for url in fake_get)
+
+
+@pytest.mark.parametrize('failure', ['status', 'text', 'error'])
+def test_resolve_variable_versions_falls_back_to_latest(failure: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A variable whose version can't be read is recorded as latest."""
+
+    def _get(url: str, **_kwargs) -> _FakeResponse:
+        if failure == 'error':
+            raise requests.ConnectionError('offline')
+        if failure == 'status':
+            return _FakeResponse(404, b'')
+        return _FakeResponse(200, b'no such attribute')
+
+    monkeypatch.setattr(barra2_dl.download.requests, 'get', _get)
+
+    assert barra2_dl.download.resolve_variable_versions(['ua50m']) == {'ua50m': 'latest', 'orog': 'latest'}
+
+
+def test_resolve_variable_versions_without_variables_is_empty(fake_get: list[str]) -> None:
+    """No variables means nothing to resolve, not even the automatic orog."""
+    assert barra2_dl.download.resolve_variable_versions([]) == {}
+    assert fake_get == []
+
+
+def test_resolve_variable_versions_unsupported_freq() -> None:
+    """An unsupported domain and frequency is rejected."""
+    with pytest.raises(ValueError, match='not supported'):
+        barra2_dl.download.resolve_variable_versions(['ua50m'], 'AUS-11', '20min')
+
+
+@live_network
+@pytest.mark.parametrize(('domain', 'freq'), DOMAIN_FREQS)
+def test_resolve_variable_versions_live(domain: str, freq: str) -> None:
+    """The server reports a dated version such as v20240516 for the winds and the node altitude."""
+    result = barra2_dl.download.resolve_variable_versions(['ua50m', 'va50m'], domain, freq)
+
+    assert set(result) == {'ua50m', 'va50m', 'orog'}
+    assert all(re.fullmatch(r'v\d{8}', version) for version in result.values())
 
 
 # endregion

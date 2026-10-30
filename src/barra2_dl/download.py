@@ -2,6 +2,7 @@
 
 import calendar
 import logging
+import re
 import sys
 import time
 import warnings
@@ -19,6 +20,7 @@ from barra2_dl.globals import (
     BARRA2_FIXED_VARS_AUTO,
     BARRA2_FREQS,
     BARRA2_PRESETS,
+    BARRA2_URL,
     BARRA2_URL_AUS11_1HR,
     BARRA2_URL_AUST04_1HR,
     BARRA2_URL_FX,
@@ -34,6 +36,7 @@ __all__ = [
     'download_serial',
     'point_data_urlfilenames',
     'preset_variables',
+    'resolve_variable_versions',
 ]
 
 
@@ -68,7 +71,8 @@ def point_data_urlfilenames(
     List of URLs and filenames can be used to download files.
     URLs and filenames for each month between start and end datetime.
     filenames as f'{fileout_prefix}_{domain}_{freq}_{var}_{time_start[:10]}_{time_end[:10]}.{fileout_type}'
-    Currently limited to csv file download only.
+    fileout_type 'csv_file' (the default) downloads csv for merge_csvs_to_df; 'netcdf4' downloads netCDF4 (extension nc)
+    for merge.merge_netcdf_to_dataset. Both can share a cache folder.
 
     Every variable is checked against the inventory BARRA2_VARS before any URL is built. Fixed (fx) fields such as
     orog and sftlf have no time axis, so each gets one request, named f'{fileout_prefix}_{domain}_fx_{var}.csv'.
@@ -84,7 +88,7 @@ def point_data_urlfilenames(
         start_datetime (str | datetime): Used to define start of inclusive download period
         end_datetime (str | datetime): Used to define end of inclusive download period
         fileout_prefix (str): Optional prefix for downloaded file. E.g. location reference
-        fileout_type (str): Output file option, 'csv_file'
+        fileout_type (str): Download format, 'csv_file' (default) or 'netcdf4'.
         domain (str): BARRA2 domain, a key of BARRA2_DOMAINS. Default 'AUS-11'.
         freq (str): BARRA2 frequency available for the domain in BARRA2_FREQS. Default '1hr'.
 
@@ -92,8 +96,8 @@ def point_data_urlfilenames(
         point_data_urlfilenamepair(list[URLFilenamePair])
 
     Raises:
-        ValueError: If not csv file set for export, the domain and freq are not in BARRA2_FREQS, or a variable is not
-            available at that domain and freq.
+        ValueError: If fileout_type is not 'csv_file' or 'netcdf4', the domain and freq are not in BARRA2_FREQS, or a
+            variable is not available at that domain and freq.
 
     Examples:
         >>> from barra2_dl.globals import BARRA2_URL
@@ -107,7 +111,6 @@ def point_data_urlfilenames(
         True
 
     Todo:
-        Add additional output types
         Implement grid netCDF download
         Set default fileout_prefix if not set by user
         Add option to name file_prefix using BARRA2 node if fileout_prefix is None
@@ -116,6 +119,8 @@ def point_data_urlfilenames(
     match fileout_type:
         case 'csv_file':
             fileout_ext = 'csv'
+        case 'netcdf4':
+            fileout_ext = 'nc'
         case _:
             logger.error(f'Unsupported fileout_type: {fileout_type}')
             raise ValueError(f'{fileout_type} is currently not supported.')
@@ -244,6 +249,38 @@ def preset_variables(
     return list(BARRA2_PRESETS[preset])
 
 
+def resolve_variable_versions(
+    barra2_vars: list,
+    domain: str = 'AUS-11',
+    freq: str = '1hr',
+) -> dict[str, str]:
+    """Look up the dataset version that 'latest' resolves to for each variable, for recording in the output.
+
+    THREDDS serves only 'latest', but each file's attributes name the version it holds (variable_version, e.g.
+    'v20240516'). One small OPeNDAP attribute request is made per variable; a variable that can't be resolved is
+    recorded as 'latest' and logged. Versions differ between variables, so the result is a dict.
+
+    Args:
+        barra2_vars (list): Variables as given to point_data_urlfilenames; aliases (ua10m) are resolved to server names.
+        domain (str): BARRA2 domain, a key of BARRA2_DOMAINS. Default 'AUS-11'.
+        freq (str): BARRA2 frequency available for the domain in BARRA2_FREQS. Default '1hr'.
+
+    Returns:
+        dict[str, str]: The version of each variable under its server name, e.g. {'ua50m': 'v20240516'}. The node
+        altitude orog is included.
+
+    Raises:
+        ValueError: If the domain and freq are not in BARRA2_FREQS.
+    """
+    _check_domain_freq(domain, freq)
+    server_vars = list(dict.fromkeys(BARRA2_VAR_ALIASES.get(var, var) for var in barra2_vars))
+    variables = list(dict.fromkeys([*server_vars, *(BARRA2_FIXED_VARS_AUTO if server_vars else [])]))
+    fixed_available = BARRA2_VARS[(domain, BARRA2_FIXED_FREQ)]
+    with ThreadPool(min(4, max(1, len(variables)))) as pool:
+        found = pool.starmap(_lookup_version, [(var, domain, freq, var in fixed_available) for var in variables])
+    return dict(zip(variables, found, strict=True))
+
+
 def download_serial(
     urlfilenames: list[URLFilenamePair],
     folder_path: str | Path,
@@ -322,6 +359,23 @@ def _check_variables(variables: list[str], domain: str, freq: str) -> None:
         message += f' Available at 1hr: {", ".join(at_hourly)}.'
     logger.error(message)
     raise ValueError(message)
+
+
+def _lookup_version(var: str, domain: str, freq: str, fixed: bool) -> str:
+    """Return the variable_version attribute of one variable's file (any month), or 'latest' if it can't be read."""
+    template = BARRA2_URL_FX if fixed else BARRA2_URL
+    url = template.split('?', 1)[0].replace('/ncss/grid/', '/dodsC/')
+    url = url.format(domain=domain, model=BARRA2_DOMAINS[domain], freq=freq, var=var, year=2020, month=1) + '.das'
+    try:
+        response = requests.get(url, timeout=20)
+    except requests.RequestException as error:
+        logger.warning(f'Could not resolve the version of <{var}>: {error}')
+        return 'latest'
+    found = re.search(r'variable_version "([^"]+)"', response.text) if response.status_code == 200 else None
+    if found is None:
+        logger.warning(f'Could not resolve the version of <{var}>; recorded as latest.')
+        return 'latest'
+    return found.group(1)
 
 
 def _list_months(

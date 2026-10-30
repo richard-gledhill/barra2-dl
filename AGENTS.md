@@ -85,8 +85,8 @@ Source: GitHub Actions).
 
 The package (`src/barra2_dl/`) is a thin, functional pipeline of independent modules
 tied together only by `__init__.py` (`from . import convert, download, mapping, merge`).
-There is no class-based orchestrator — callers (see `scripts/example_barra2_dl.py`
-and the README example) chain these modules manually:
+There is no class-based orchestrator — callers (see `scripts/example_barra2_dl_csv.py`,
+`scripts/example_barra2_dl_netcdf.py` and the README example) chain these modules manually:
 
 1. **`globals.py`** — static configuration: BARRA2 URL templates
    (`BARRA2_URL_AUS11_1HR`, `BARRA2_URL_AUST04_1HR`) with `.format()` placeholders
@@ -121,10 +121,10 @@ and the README example) chain these modules manually:
    `Todo` in their docstrings) for a not-yet-implemented gridded/nearest-node
    workflow — don't assume they're wired into `download.py` yet.
 
-End-to-end usage lives in `scripts/example_barra2_dl.py` (also as a Jupyter
-notebook, `scripts/example_barra2_dl.ipynb`, via jupytext `#%%` cell markers):
+End-to-end usage lives in `scripts/example_barra2_dl_csv.py` and `scripts/example_barra2_dl_netcdf.py` (each also as a
+Jupyter notebook of the same name, via jupytext `#%%` cell markers; keep each pair in step):
 build URLs → `download_multithread` into a cache dir → `merge_csvs_to_df` →
-`convert_wind_components` → write output CSV.
+`convert_wind_components` → write output CSV, or `to_dataset` → write netCDF. `docs/how-to-use.md` explains both.
 
 ## Conventions
 

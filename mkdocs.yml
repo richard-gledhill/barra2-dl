@@ -13,6 +13,7 @@ exclude_docs: |
 
 nav:
   - Home: index.md
+  - How to use: how-to-use.md
   - Modules: modules.md
   - Changelog: changelog.md
   - Contributing: contributing.md
