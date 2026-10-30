@@ -13,12 +13,12 @@ fail loudly once the bug is fixed, so remove the `xfail` in the same change.
 
 ## Deferred features (from existing `Todo` notes)
 
-- Gridded / bounding-box download and nearest-node workflow (`mapping.py` helpers, `LatLonBBox` constants in
-  `globals.py`, grid netCDF output).
+- The draft grid helpers in `mapping.py` (`_generate_point_grid`, `_find_nearest_point`, `_format_lat_lon`) and the
+  `LatLonBBox` constants in `globals.py` are still unwired. RFC-003 downloads grids through NCSS bounding boxes and takes
+  the nodes from the response, so decide whether to finish or delete them.
 - Download only new data using the existing time range (`_list_timestamp_range`), with a validity check for files
   downloaded in the last three months.
 - Default `fileout_prefix` and naming files by BARRA2 node.
-- Additional output types beyond `csv_file`.
 - Checks for mismatched or multiple suffixed columns in `_merge_suffix_columns`, and for missing `ua`/`va` pairs in
   `convert_wind_components`.
 
