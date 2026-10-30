@@ -7,7 +7,7 @@ Status: Draft
 | Backlog | "Additional output types beyond `csv_file`" and the gridded-download item in [backlog.md](../backlog.md) |
 | Depends on | [RFC-001 wind variable fix](wind-variables-bugfix-prd.md) (Done), [RFC-002 parameter review](parameter-review-prd.md) (variable inventory, cell methods, `orog`) |
 | Related | [ADR-002](../adr/ADR-002-per-variable-month-idempotent-downloads.md), [RFC-005 GUI](gui-prd.md), [roadmap](wind-engineering-roadmap-prd.md) |
-| Drafted | 2026-10-28, updated 2026-10-30 with the owner's decisions (section 7) |
+| Drafted | 2026-10-28, updated 2026-10-30 with the owner's decisions (section 7); `average4` clarified 2026-10-30 (decision 8) |
 
 ## 1. Summary
 
@@ -16,7 +16,7 @@ axis inside the file, and it's the native format of BARRA2 and of most meteorolo
 for spreadsheet and wind-software users.
 
 The RFC also adds two ways of choosing which BARRA2 nodes a series comes from, beyond today's nearest node:
-- a four-node average around the site, in CSV and netCDF;
+- a four-node average around the requested point, in CSV and netCDF;
 - an area download, a `(time, lat, lon)` grid, in netCDF only.
 
 The GUI (RFC-005) offers both, so the library has to provide them.
@@ -28,7 +28,7 @@ The GUI (RFC-005) offers both, so the library has to provide them.
 - Height is encoded in names. A `height` dimension makes shear and profile work a one-liner
   (`ds.wind_speed.sel(height=[50, 100])`).
 - Long multi-decade series are large as CSV; netCDF is compact and loads lazily.
-- Analysts want either the nearest node, an average of the nodes around the site, or a wind-farm area. The last is
+- Analysts want either the nearest node, an average of the nodes around a point, or a wind-farm area. The last is
   a natural `(time, lat, lon)` array, which CSV can't hold cleanly.
 
 ## 3. What the server offers (verified 2026-10-28)
@@ -50,7 +50,7 @@ The GUI (RFC-005) offers both, so the library has to provide them.
   requested and actual node(s), `orog` per node, package version, licence and citation for BARRA2.
 - G4. CSV output and the current DataFrame API keep working unchanged.
 - G5. Node selection with three modes: `nearest` (today's behaviour, the default), `average4` (inverse-distance
-  average of the four nodes around the site) and `area` (a bounding box, netCDF only).
+  average of the four nodes around the requested point) and `area` (a bounding box, netCDF only).
 - G6. Downloaded data keeps its original timestamps everywhere: no shifting in the cache, CSV or netCDF (decision 1).
 - G7. One output file per site (decision 3).
 
@@ -131,12 +131,17 @@ Each site gets its own output file (decision 3): `<prefix>_<domain>_<freq>_<sele
 | Mode | How it's fetched | CSV | netCDF |
 |---|---|---|---|
 | `nearest` (default) | NCSS point request, as today; NCSS snaps to the nearest node | Yes | Yes |
-| `average4` | One small NCSS bounding-box request around the site, sized from the domain's grid spacing so that it encloses the four surrounding nodes. Those nodes are averaged with inverse-distance weights. | Yes | Yes |
+| `average4` | One small NCSS bounding-box request around the requested point, sized from the domain's grid spacing, used only as a download window to fetch the real nodes around the point. The four nodes that surround the point are averaged with inverse-distance weights. | Yes | Yes |
 | `area` | NCSS bounding-box request for a user-given `north`/`south`/`east`/`west` | No (a grid doesn't fit CSV) | Yes |
 
 - **Real nodes only.** The bounding-box response contains real nodes with their true coordinates. So `average4`
   never computes nodes arithmetically, avoiding the AUST-04 grid bug found in the atl3b fork. Add
   `BARRA2_GRID_SPACING` (AUS-11 0.11°, AUST-04 0.04°) to `globals.py` for sizing the box.
+- **One point, no boundary.** `average4` averages the four nodes around the single point the user gives (the node
+  either side of it in latitude and either side in longitude). It does not take a site boundary or area, and it
+  is not an average over the box: the box is only the download window, which returns a grid (typically 3 × 3) of
+  which the four surrounding nodes are used and the rest ignored. A point exactly on a node gives that node's values.
+  Averaging over a user-given area is not offered; `area` returns every node unaveraged.
 - **How values are averaged** (5.8). Each time step uses one set of inverse-distance weights:
   - **Speed:** the scalar mean, i.e. the weighted mean of each node's own speed, `sum(w_i * hypot(ua_i, va_i))`.
   - **Direction:** taken from the weighted mean components, `atan2` of the mean `ua` and `va`, converted to the
@@ -144,7 +149,7 @@ Each site gets its own output file (decision 3): `<prefix>_<domain>_<freq>_<sele
   - **`ua`/`va`:** the weighted means are written too, so the vector mean is available.
   - **Scalar variables** (`tas`, `ps` …): plain weighted means.
 - **Node series written too** (decision 6). `average4` writes the averaged series and the four node series, so an
-  analyst can see which node best represents the site. In netCDF they share one file, with a `node` dimension
+  analyst can see which node best represents the point. In netCDF they share one file, with a `node` dimension
   (size 4, with each node's coordinates, distance, weight and `orog`) beside the averaged variables. In CSV there is
   one file per node, plus the average file.
 - **Cache.** Bounding-box files are cached per variable-month like point files, with `average4` or `area` and the
@@ -228,3 +233,5 @@ Decided by the owner on 2026-10-30:
 6. **`average4` output:** write the average plus the four node series (5.6).
 7. **`average4` method:** hybrid. Scalar mean for speed, vector mean (from averaged components) for direction
    (5.8). This replaces the earlier "average components" recommendation, because components alone bias speed low.
+8. **`average4` input (2026-10-30):** the average is of the nodes around the single input point the user provides,
+   not a site boundary or area (5.6). The bounding box is only a download window.
