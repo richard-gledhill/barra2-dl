@@ -17,8 +17,8 @@ domain and frequency, proposes which parameters to support, groups them into pre
 inventory so a bad name fails before any download.
 
 RFC-001 made domain and frequency parameters (`BARRA2_DOMAINS`, `BARRA2_FREQS`, `BARRA2_URL`) and supports AUS-11
-`1hr`, AUST-04 `1hr` and AUST-04 `20min`. It left two questions here: whether to add `day`/`mon`, and how to treat
-their time-averaged wind components (section 5.6).
+`1hr`, AUST-04 `1hr` and AUST-04 `20min`. It left open whether to add `day`/`mon`; this RFC decides not to, and to
+keep `1hr` and `20min` only (section 5.6). The owner's decisions on the open questions are in section 7.
 
 ## 2. Sources
 
@@ -85,8 +85,9 @@ Status key:
 Pressure at height isn't published. Derive it from `ps`, `orog` and the temperature profile (hypsometric equation)
 when density is calculated (roadmap, derived variables).
 
-At 20 minutes there is no `ps` or `hurs`. Density needs either `psl` reduced to the node altitude with `orog`, plus
-`huss`, or the hourly `ps`/`hurs` interpolated to 20 minutes. Open question 4.
+At 20 minutes there is no `ps` or `hurs`, so density inputs aren't available at that frequency. barra2-dl raises an
+error rather than filling the gap: it does not substitute `psl` and `huss`, download the hourly `ps`/`hurs`, or
+interpolate them to 20 minutes (decision 4). Density work uses `1hr`.
 
 ### 4.3 Stability and boundary layer
 
@@ -96,8 +97,8 @@ At 20 minutes there is no `ps` or `hurs`. Density needs either `psl` reduced to 
 | `hfss` | Surface sensible heat flux, W m-2 | Both | no | Propose (stability sign and strength) |
 | `hfls` | Surface latent heat flux | Both | no | Optional |
 | `ts` | Surface (skin) temperature | Both | yes | Optional (surface-air temperature difference) |
-| `tauu`, `tauv` | Surface wind stress (friction velocity) | `3hr` only | no | Optional; needs a `3hr` entry in `BARRA2_FREQS` |
-| `z0` | Roughness length | `day`/`mon` only | no | Optional; needs a `day`/`mon` entry in `BARRA2_FREQS` |
+| `tauu`, `tauv` | Surface wind stress (friction velocity) | `3hr` only | no | No: `3hr` is not supported (decision 3) |
+| `z0` | Roughness length | `day`/`mon` only | no | No: `day`/`mon` are not supported (decision 3) |
 
 Lapse rates between `ta50m`…`ta250m` give a simple stability class at the download's own frequency without new
 downloads.
@@ -118,12 +119,12 @@ downloads.
 
 | Variable | Meaning | Frequency | Status |
 |---|---|---|---|
-| `orog` | Model surface altitude, m | `fx` (fixed) | Propose: report node altitude vs site altitude |
-| `sftlf` | Land fraction, % | `fx` | Propose: flag coastal nodes that are partly sea |
+| `orog` | Model surface altitude, m | `fx` (fixed) | Automatic with every point download: report node altitude vs site altitude (decision 2) |
+| `sftlf` | Land fraction, % | `fx` | On request only, through the `site` preset: flag coastal nodes that are partly sea (decision 2) |
 
 `fx` files have no time axis and aren't split by month, so they don't fit `BARRA2_URL` or the per-month loop in
 `point_data_urlfilenames`. They need their own small template and are fetched once per node. `BARRA2_FREQS` stays
-for time series only.
+for time series only. Section 5.7 covers how `orog` is fetched and stored.
 
 ### 4.6 Out of scope
 
@@ -139,8 +140,8 @@ It's the only frequency every proposed parameter has on both domains, and it's w
 
 - Presets, the inventory checks and the tests are defined against `1hr` first. A preset is valid only if all its
   variables exist at `1hr` on both domains.
-- Other frequencies are opt-in: a user gets AUST-04 `20min`, or `day`/`mon` if added (5.6), only by passing `freq=`
-  explicitly. Nothing switches frequency automatically.
+- AUST-04 `20min` is the only other frequency, and it's opt-in: a user gets it only by passing `freq='20min'`.
+  Nothing switches frequency automatically. `3hr`, `day` and `mon` aren't supported (5.6).
 - The CLI and GUI start on `1hr` and show other frequencies only where `BARRA2_FREQS` lists them for the chosen
   domain.
 
@@ -151,16 +152,26 @@ All presets are defined at the `1hr` default. The last column shows what happens
 
 | Preset | Variables | Use | At `1hr` (default) | At AUST-04 `20min` (opt-in) |
 |---|---|---|---|---|
-| `wind` (default preset) | `uas`, `vas`, `ua/va` 50-250 m | Long-term reference | Yes, both domains | Yes |
-| `wind+density` | `wind` + `ps`, `tas`, `ta50m`…`ta250m`, `hurs` | Energy yield with density correction | Yes, both domains | No: `ps`, `hurs` missing (open question 4) |
+| `wind` | `uas`, `vas`, `ua/va` 50-250 m | Long-term reference | Yes, both domains | Yes |
+| `wind+density` (**default preset**) | `wind` + `ps`, `tas`, `ta50m`…`ta250m`, `hurs` | Energy yield with density correction | Yes, both domains | No: `ps`, `hurs` missing, so it raises an error (decision 4) |
 | `wind+stability` | `wind+density` + `zmla`, `hfss` | Shear/veer analysis | Yes, both domains | No |
 | `extremes` | `sfcWindmax`, `wsgsmax` | Site suitability screening | Yes, both domains | Partly: `wsgsmax` only |
 | `environment` | `pr`, `rsds`, `hurs`, `tas` | Icing, erosion, hybrid | Yes, both domains | Partly: `tas` only |
-| `site` | `orog`, `sftlf` | Node representativeness (fixed fields) | n/a (`fx`) | n/a (`fx`) |
+| `site` | `sftlf` | Coastal-node check (fixed field, on request) | n/a (`fx`) | n/a (`fx`) |
+
+`orog` isn't in any preset because it's fetched automatically with every point download (5.7).
 
 Presets are plain lists in `globals.py`, like `BARRA2_VAR_WIND_DEFAULT`. The CLI and GUI expose them by name.
-Requesting a preset at an opt-in frequency where some of its variables don't exist raises an error that names the
-missing variables and says they are available at `1hr`. It never quietly downloads part of the preset.
+
+- **Default preset.** `wind+density` is the default (decision 1). It replaces `BARRA2_VAR_WIND_DEFAULT` as the list
+  the CLI, GUI and examples use when the user picks nothing. `BARRA2_VAR_WIND_DEFAULT` stays as it is for scripts
+  that import it. Default downloads get larger: 20 variables instead of 9.
+- **Missing variables raise an error.** Requesting a preset at an opt-in frequency where some of its variables don't
+  exist raises an error. The error names the missing variables and says they are available at `1hr`. barra2-dl
+  never quietly downloads part of the preset, substitutes other variables, takes them from `1hr` or interpolates
+  (decision 4).
+- **Default preset at 20 minutes.** Because the default preset needs `ps` and `hurs`, a 20-minute request that keeps
+  the default preset fails with that error. The message should tell the user to choose `wind` for 20-minute data.
 
 ### 5.3 Variable inventory
 
@@ -177,7 +188,7 @@ it from the S3 listing with a small script in `scripts/` and check it in. Uses:
 
 Also record per-variable metadata needed downstream: units, and the cell method, i.e. whether the value is
 instantaneous (`time: point`), a mean or a maximum. RFC-003 needs this for time alignment (`pr`, `rsds` are hourly
-means stamped at :30) and section 5.6 needs it for wind.
+means stamped at :30).
 
 ### 5.4 Pressure levels
 
@@ -190,20 +201,31 @@ exact column matching already stops `ua200` pairing with `ua200m`. If they are e
 Adopt the useful conversions from the atl3b fork as an explicit, opt-in step: K → °C, Pa → hPa,
 kg m-2 s-1 → mm h-1. Keep SI by default in netCDF; CSV for wind software may prefer °C and hPa.
 
-### 5.6 Daily and monthly frequencies (deferred from RFC-001)
+### 5.6 Frequencies: `1hr` and `20min` only (deferred from RFC-001)
 
-The `day` and `mon` folders have the same height wind names as `1hr`, but each value is a time mean of the
-component. Wind speed computed from mean components is the speed of the mean wind vector. It is always at most the
-mean of the hourly speeds, and much lower when the direction varies. A daily or monthly `v<h>m` would therefore
-understate the wind resource.
+`BARRA2_FREQS` stays as RFC-001 shipped it: AUS-11 `1hr`, AUST-04 `1hr` and `20min`. `3hr`, `day` and `mon` aren't
+added (decision 3), because they aren't useful in wind analysis:
 
-Recommendation:
-- Add `day` and `mon` to `BARRA2_FREQS` for both domains as opt-in frequencies, so non-wind parameters (`tas`, `ps`,
-  `pr`, `z0` …) can be fetched for climate summaries. `1hr` stays the default (5.1).
-- `convert_wind_components` refuses mean components: it checks the cell method recorded in 5.3 and raises an error
-  that says to use `1hr` data and average the speeds instead.
-- For a daily or monthly mean wind speed, document `sfcWind` (10 m, a true mean speed) and recommend averaging
-  hourly `v<h>m` for other heights.
+- `3hr` has no height winds.
+- `day` and `mon` wind components are time means. Wind speed computed from mean components is the speed of the mean
+  wind vector, which understates the mean wind speed and so the resource.
+
+The only parameters lost are `tauu`/`tauv` (`3hr`) and `z0` (`day`/`mon`), which are marked out of scope in 4.3.
+A daily or monthly summary should be computed from `1hr` data instead. Since `day`/`mon` aren't supported,
+`convert_wind_components` needs no guard against mean components.
+
+### 5.7 Automatic node altitude (`orog`)
+
+Every point download also fetches `orog` for the node, once per node and domain (decision 2):
+
+- `point_data_urlfilenames` adds one `fx` request for `orog` alongside the monthly requests. Its cache file is
+  `{prefix}_{domain}_fx_orog.csv`. Like other downloads it is skipped when the file already exists, and an HTTP
+  failure is logged, not raised.
+- `orog` is a single value, not a time series, so it isn't merged into the per-time frame. It's reported with the
+  node coordinates: in the run summary now, and as a netCDF attribute in RFC-003.
+- `sftlf` is fetched only when the user asks for the `site` preset.
+- Before building, check that NCSS serves `fx` point requests in the same CSV form as time series. That hasn't been
+  verified yet.
 
 ## 6. Testing
 
@@ -211,16 +233,19 @@ Recommendation:
 - Unit tests that every preset is a subset of the inventory for each opt-in `(domain, freq)` it claims to support.
 - A preset requested at an opt-in frequency that lacks some of its variables raises an error naming them and
   pointing to `1hr`.
+- The default preset is `wind+density`.
+- `wind+density` at AUST-04 `20min` raises an error naming `ps` and `hurs`, and downloads nothing.
 - `point_data_urlfilenames` raises on an unknown variable, offline.
-- Every `(domain, freq)` in `BARRA2_FREQS` has an inventory entry.
-- `convert_wind_components` refuses `day`/`mon` mean components.
-- Live inventory drift test.
+- Every `(domain, freq)` in `BARRA2_FREQS` has an inventory entry, and `BARRA2_FREQS` holds only `1hr` and `20min`.
+- Every point download includes one `orog` request per node; `sftlf` appears only with the `site` preset.
+- Live inventory drift test, and a live check that an `fx` point request returns `orog`.
 
-## 7. Open questions
+## 7. Decisions
 
-1. Which presets do your users need on day one? `wind+density` is the strongest candidate for the default.
-2. Fetch `orog`/`sftlf` automatically with every point download, or only on request?
-3. Add `3hr`, `day` and `mon` to `BARRA2_FREQS` now (recommended for `day`/`mon`, with the wind guard in 5.6), or
-   keep to `1hr` and `20min`?
-4. For 20-minute density, which approach: `psl` reduced with `orog` plus `huss` (all 20-minute), or the hourly `ps`
-   and `hurs` interpolated to 20 minutes?
+The owner settled the open questions on 2026-10-30:
+
+1. **Default preset:** `wind+density` (5.2).
+2. **Site fields:** `orog` is fetched automatically with every point download; `sftlf` only on request (4.5, 5.7).
+3. **Frequencies:** keep `1hr` and `20min` only; `3hr`, `day` and `mon` aren't useful in wind analysis (5.6).
+4. **20-minute density:** raise an error. Don't fill the gap from other variables, download from `1hr` or
+   interpolate (4.2, 5.2).
