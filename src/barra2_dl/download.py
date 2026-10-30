@@ -4,6 +4,7 @@ import calendar
 import logging
 import sys
 import time
+import warnings
 from datetime import datetime, timedelta
 from multiprocessing import cpu_count
 from multiprocessing.pool import ThreadPool
@@ -11,6 +12,14 @@ from pathlib import Path
 
 import pandas as pd
 import requests
+
+from barra2_dl.globals import (
+    BARRA2_DOMAINS,
+    BARRA2_FREQS,
+    BARRA2_URL_AUS11_1HR,
+    BARRA2_URL_AUST04_1HR,
+    BARRA2_VAR_ALIASES,
+)
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
@@ -24,6 +33,12 @@ __all__ = [
 
 # region Constants and types
 type URLFilenamePair = tuple[str, str]
+
+# deprecated pre-filled url templates -> the (domain, freq) they are filled for
+_DEPRECATED_URLS = {
+    BARRA2_URL_AUS11_1HR: ('AUS-11', '1hr'),
+    BARRA2_URL_AUST04_1HR: ('AUST-04', '1hr'),
+}
 # endregion
 
 
@@ -37,30 +52,48 @@ def point_data_urlfilenames(
     end_datetime: str | datetime,
     fileout_prefix: str | None = None,
     fileout_type: str = 'csv_file',
+    *,
+    domain: str = 'AUS-11',
+    freq: str = '1hr',
 ) -> list[URLFilenamePair]:
     """Generate a list of URLs and Filenames for downloading barra2 point data.
 
     Uses nearest node for each var in barra2_vars for a given time period.
     List of URLs and filenames can be used to download files.
     URLs and filenames for each month between start and end datetime.
-    filenames as f'{fileout_prefix}_{var}_{time_start[:10]}_{time_end[:10]}.{fileout_type}'
+    filenames as f'{fileout_prefix}_{domain}_{freq}_{var}_{time_start[:10]}_{time_end[:10]}.{fileout_type}'
     Currently limited to csv file download only.
 
     Args:
-        barra2_url (str): Use from barra2-dl.globals
-        barra2_vars (list): Use from barra2-dl.globals or set explicitly
+        barra2_url (str): BARRA2_URL from barra2_dl.globals. The pre-filled BARRA2_URL_AUS11_1HR and
+            BARRA2_URL_AUST04_1HR still work but are deprecated; they set domain and freq themselves.
+        barra2_vars (list): Use from barra2-dl.globals or set explicitly. Aliases in BARRA2_VAR_ALIASES
+            (ua10m, va10m) are downloaded under their server name (uas, vas).
         latitude (float |int):  Point latitude.
         longitude (float |int):  Point longitude.
         start_datetime (str | datetime): Used to define start of inclusive download period
         end_datetime (str | datetime): Used to define end of inclusive download period
         fileout_prefix (str): Optional prefix for downloaded file. E.g. location reference
         fileout_type (str): Output file option, 'csv_file'
+        domain (str): BARRA2 domain, a key of BARRA2_DOMAINS. Default 'AUS-11'.
+        freq (str): BARRA2 frequency available for the domain in BARRA2_FREQS. Default '1hr'.
 
     Returns:
         point_data_urlfilenamepair(list[URLFilenamePair])
 
     Raises:
-        ValueError: If not csv file set for export.
+        ValueError: If not csv file set for export, or the domain and freq are not in BARRA2_FREQS.
+
+    Examples:
+        >>> from barra2_dl.globals import BARRA2_URL
+        >>> pairs = point_data_urlfilenames(
+        ...     BARRA2_URL, ['ua10m'], -33.88, 151.18, '2020-01-01', '2020-01-31', 'site',
+        ...     domain='AUST-04', freq='20min',
+        ... )
+        >>> pairs[0][1]
+        'site_AUST-04_20min_uas_20200101_20200131.csv'
+        >>> 'time_end=2020-01-31T23:40:00Z' in pairs[0][0]
+        True
 
     Todo:
         Add additional output types
@@ -76,24 +109,47 @@ def point_data_urlfilenames(
             logger.error(f'Unsupported fileout_type: {fileout_type}')
             raise ValueError(f'{fileout_type} is currently not supported.')
 
+    # a template without a {freq} placeholder is a deprecated pre-filled one, which fixes the domain and freq
+    if '{freq}' not in barra2_url:
+        warnings.warn(
+            'Pre-filled BARRA2 url templates such as BARRA2_URL_AUS11_1HR are deprecated; '
+            'pass BARRA2_URL with domain= and freq= instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        domain, freq = _DEPRECATED_URLS.get(barra2_url, (domain, freq))
+
+    if freq not in BARRA2_FREQS.get(domain, {}):
+        supported = ', '.join(f'{d} {f}' for d, freqs in BARRA2_FREQS.items() for f in freqs)
+        logger.error(f'Unsupported domain and freq: {domain} {freq}')
+        raise ValueError(f'{domain} {freq} is not supported. Supported: {supported}.')
+    model = BARRA2_DOMAINS[domain]
+    step = BARRA2_FREQS[domain][freq]
+
+    # resolve aliases to server names, dropping repeats such as uas and ua10m
+    server_vars = list(dict.fromkeys(BARRA2_VAR_ALIASES.get(var, var) for var in barra2_vars))
+
     # create empty list for url and filename
     point_data_urlfilenamepair = []
 
     # loop through each variable requested for download as each variable is saved in a separate url
-    for var in barra2_vars:
+    for var in server_vars:
         # loop through each month as each BARRA2 file is saved by month todo check index enumerate addition works
         for date in _list_months(start_datetime, end_datetime, freq='MS'):
             year = date.year
             month = date.month
             time_start = date
             time_start_str = date.isoformat() + 'Z'
-            # Get the number of days in the current month
+            # Get the number of days in the current month; the month ends one time step before the next month
             days_in_month = calendar.monthrange(year, month)[1]
-            time_end = date + timedelta(days=days_in_month) + timedelta(hours=-1)
+            time_end = date + timedelta(days=days_in_month) - step
             time_end_str = time_end.isoformat() + 'Z'
 
             # update thredds_base_url and set as url for request
             url = barra2_url.format(
+                domain=domain,
+                model=model,
+                freq=freq,
                 var=var,
                 year=year,
                 month=month,
@@ -104,9 +160,10 @@ def point_data_urlfilenames(
                 fileout_type=fileout_type,
             )
 
-            # set fileout_name
+            # set fileout_name, including domain and freq so different runs can share a cache folder
             fileout_name = (
-                f'{fileout_prefix}_{var}_{time_start.strftime("%Y%m%d")}_{time_end.strftime("%Y%m%d")}.{fileout_ext}'
+                f'{fileout_prefix}_{domain}_{freq}_{var}'
+                f'_{time_start.strftime("%Y%m%d")}_{time_end.strftime("%Y%m%d")}.{fileout_ext}'
             )
             # append url and filename as tuple
             point_data_urlfilenamepair.append((url, fileout_name))

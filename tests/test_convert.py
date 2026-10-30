@@ -170,7 +170,6 @@ def test_convert_wind_components_nothing_to_convert(columns):
     assert list(result.columns) == list(df.columns)
 
 
-@pytest.mark.xfail(strict=True, reason='uas/vas output is named vs[...] instead of v10m[...]; see docs backlog')
 def test_convert_wind_components_surface_wind_column_name():
     """The 10 m surface wind pair is converted to a height-named speed column."""
     df = pd.DataFrame({'uas[unit="m s-1"]': [3.0], 'vas[unit="m s-1"]': [4.0]})
@@ -178,6 +177,60 @@ def test_convert_wind_components_surface_wind_column_name():
     result = barra2_dl.convert.convert_wind_components(df)
 
     assert 'v10m[unit="m s-1"]' in result.columns
+
+
+def test_convert_wind_components_renames_surface_wind_to_alias():
+    """uas/vas come out as ua10m/va10m, beside v10m speed and direction, so every height is named alike."""
+    df = pd.DataFrame({'time': [1], 'uas[unit="m s-1"]': [3.0], 'vas[unit="m s-1"]': [4.0]})
+
+    result = barra2_dl.convert.convert_wind_components(df)
+
+    assert list(result.columns) == [
+        'time',
+        'ua10m[unit="m s-1"]',
+        'va10m[unit="m s-1"]',
+        'v10m[unit="m s-1"]',
+        'v10m_phi_met[unit="degrees"]',
+    ]
+    assert result['ua10m[unit="m s-1"]'].iloc[0] == 3.0
+    assert np.isclose(result['v10m[unit="m s-1"]'].iloc[0], 5.0)
+
+
+def test_convert_wind_components_exact_match_ignores_similar_names():
+    """The uas column is paired with vas, not with uasmax/vasmax, which are left as they are."""
+    df = pd.DataFrame(
+        {
+            'uasmax[unit="m s-1"]': [30.0],
+            'vasmax[unit="m s-1"]': [40.0],
+            'uas[unit="m s-1"]': [3.0],
+            'vas[unit="m s-1"]': [4.0],
+        }
+    )
+
+    result = barra2_dl.convert.convert_wind_components(df)
+
+    assert np.isclose(result['v10m[unit="m s-1"]'].iloc[0], 5.0)
+    assert 'uasmax[unit="m s-1"]' in result.columns
+    assert 'vasmax[unit="m s-1"]' in result.columns
+
+
+def test_convert_wind_components_pressure_level_not_matched_as_height():
+    """A pressure-level wind (ua200, hPa) is not mistaken for the 200 m height wind (ua200m)."""
+    df = pd.DataFrame({'ua200[unit="m s-1"]': [30.0], 'va200[unit="m s-1"]': [40.0], VA50: [4.0]})
+
+    result = barra2_dl.convert.convert_wind_components(df)
+
+    assert list(result.columns) == list(df.columns)
+
+
+def test_convert_wind_components_1500m():
+    """The 1500 m pair converts to v1500m columns."""
+    df = pd.DataFrame({'ua1500m[unit="m s-1"]': [6.0], 'va1500m[unit="m s-1"]': [8.0]})
+
+    result = barra2_dl.convert.convert_wind_components(df)
+
+    assert np.isclose(result['v1500m[unit="m s-1"]'].iloc[0], 10.0)
+    assert 'v1500m_phi_met[unit="degrees"]' in result.columns
 
 
 def test_convert_wind_components_does_not_modify_input():

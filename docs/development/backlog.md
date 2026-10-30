@@ -8,10 +8,8 @@ fail loudly once the bug is fixed, so remove the `xfail` in the same change.
 
 | Item | Detail | Pinned by |
 |---|---|---|
-| `ua300m` unit typo | `BARRA2_WIND_VARS` has `('ua300m', 'va300m', '30m[unit="m s-1"]')`; the height should be `300m`. The third tuple field is not used by `convert.py` today. | `tests/test_globals.py::test_wind_vars_pairs_are_consistent[ua300m]` |
 | Tuple bounds crash | `_generate_point_grid` validates a 4-tuple `(north, south, east, west)` as its docstring promises, then indexes it by key and raises `TypeError`. Unwired helper. | `tests/test_mapping.py::test_generate_point_grid_tuple` |
 | `None_` filename prefix | `point_data_urlfilenames(..., fileout_prefix=None)` produces filenames starting `None_`. | `tests/test_download.py::test_point_data_urlfilenames_default_prefix` |
-| `uas`/`vas` output name | `convert_wind_components` names the 10 m surface wind output `vs[unit="m s-1"]` (it slices the first two characters of `uas`). | `tests/test_convert.py::test_convert_wind_components_surface_wind_column_name` |
 
 ## Deferred features (from existing `Todo` notes)
 
