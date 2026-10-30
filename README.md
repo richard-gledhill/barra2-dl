@@ -182,7 +182,7 @@ The work is planned as a series of requirements documents (RFCs), set out in the
 |---|---|---|
 | 1 | [Fix the wind variable table](https://github.com/richard-gledhill/barra2-dl/blob/main/docs/development/requirements/wind-variables-bugfix-prd.md): real variables, heights, `ua10m`/`va10m` aliases | Done |
 | 2 | [Parameter review](https://github.com/richard-gledhill/barra2-dl/blob/main/docs/development/requirements/parameter-review-prd.md): presets, variable inventory, node altitude, unit conversion | Done |
-| 3 | [netCDF output, node averaging and area download](https://github.com/richard-gledhill/barra2-dl/blob/main/docs/development/requirements/netcdf-output-prd.md): a CF-style xarray Dataset from netCDF4 downloads or csv, with the nearest node, a four-node average and a `(time, lat, lon)` area download | Built; the RFC is still to be signed off |
+| 3 | [netCDF output, node averaging and area download](https://github.com/richard-gledhill/barra2-dl/blob/main/docs/development/requirements/netcdf-output-prd.md): a CF-style xarray Dataset from netCDF4 downloads or csv, with the nearest node, a four-node average and a `(time, lat, lon)` area download | Done |
 | 4 | [GUI](https://github.com/richard-gledhill/barra2-dl/blob/main/docs/development/requirements/gui-prd.md): a download engine with retries, a run summary and a multi-site project file, then a graphical app on top | Draft |
 | 5 | First PyPI release, and relicensing the code to MIT | After the GUI |
 | 6 | Export to wind-engineering software (Windographer, WAsP `.tab`, openWind, WindPRO) | To be drafted |

@@ -1,7 +1,7 @@
 # SPEC: netCDF output, four-node averaging and area download
 
-Requirement: [RFC-003](../requirements/netcdf-output-prd.md), decisions in its section 7. Style and gates:
-[conventions.md](../conventions.md), [constraints.md](../constraints.md).
+Requirement: [RFC-003](../../../requirements/netcdf-output-prd.md), decisions in its section 7. Style and gates:
+[conventions.md](../../../conventions.md), [constraints.md](../../../constraints.md).
 
 ## Scope
 
