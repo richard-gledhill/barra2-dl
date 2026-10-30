@@ -9,6 +9,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 import requests
+import xarray as xr
 from pandas import Timestamp
 
 import barra2_dl.download
@@ -27,7 +28,7 @@ from barra2_dl.globals import (
     BARRA2_VARS,
     BARRA2_WIND_VARS,
 )
-from barra2_dl.mapping import LatLonPoint
+from barra2_dl.mapping import LatLonBBox, LatLonPoint
 
 # region Test helpers
 # Tests that hit the real THREDDS server are opt-in: set BARRA2_LIVE=1 to run them.
@@ -466,6 +467,189 @@ def test_point_data_urlfilenames_netcdf4_is_served() -> None:
 
     assert response.status_code == 200
     assert response.content[1:4] == b'HDF'
+
+
+def test_point_data_urlfilenames_average4_requests_a_box_around_the_site() -> None:
+    """The four-node average is one bounding-box request per variable-month, a grid spacing either side of the site."""
+    pairs = barra2_dl.download.point_data_urlfilenames(
+        BARRA2_URL, ['ua50m'], -23.55, 133.40, '2023-01-01', '2023-01-31', 'demo', node_selection='average4'
+    )
+
+    url, name = pairs[0]
+    assert name == 'demo_AUS-11_1hr_average4_ua50m_20230101_20230131.nc'
+    assert 'north=-23.44&south=-23.66&east=133.51&west=133.29&horizStride=1' in url
+    assert 'latitude=' not in url
+    assert url.endswith('accept=netcdf4')
+    assert 'time_start=2023-01-01T00:00:00Z&time_end=2023-01-31T23:00:00Z' in url
+
+
+def test_point_data_urlfilenames_average4_box_follows_the_domain_grid_spacing() -> None:
+    """AUST-04 nodes are 0.04 degrees apart, so its box is smaller."""
+    (url, _), *_ = barra2_dl.download.point_data_urlfilenames(
+        BARRA2_URL,
+        ['ua50m'],
+        -33.88,
+        151.18,
+        '2020-01-01',
+        '2020-01-31',
+        'demo',
+        domain='AUST-04',
+        node_selection='average4',
+    )
+
+    assert 'north=-33.84&south=-33.92&east=151.22&west=151.14' in url
+
+
+def test_point_data_urlfilenames_average4_orog_is_requested_for_the_same_box() -> None:
+    """The automatic orog is a bounding-box request with no time range, cached under the average4 name."""
+    pairs = barra2_dl.download.point_data_urlfilenames(
+        BARRA2_URL, ['ua50m'], -23.55, 133.40, '2023-01-01', '2023-01-31', 'demo', node_selection='average4'
+    )
+
+    url, name = pairs[-1]
+    assert name == 'demo_AUS-11_fx_average4_orog.nc'
+    assert '/fx/orog/' in url
+    assert 'north=-23.44&south=-23.66&east=133.51&west=133.29' in url
+    assert 'time_start' not in url
+
+
+def test_point_data_urlfilenames_average4_cannot_be_csv() -> None:
+    """A grid doesn't fit csv, so asking for it is an error rather than a silent switch."""
+    with pytest.raises(ValueError, match='netcdf4'):
+        barra2_dl.download.point_data_urlfilenames(
+            BARRA2_URL,
+            ['ua50m'],
+            -23.5,
+            133.4,
+            '2023-01-01',
+            '2023-01-31',
+            'demo',
+            fileout_type='csv_file',
+            node_selection='average4',
+        )
+
+
+def test_point_data_urlfilenames_average4_names_do_not_clash_with_the_nearest_node() -> None:
+    """Nearest and average4 downloads for the same site and period can share a cache folder."""
+    args = (BARRA2_URL, ['ua50m'], -23.5, 133.4, '2023-01-01', '2023-01-31', 'demo')
+    nearest = {name for _, name in barra2_dl.download.point_data_urlfilenames(*args, fileout_type='netcdf4')}
+    average = {name for _, name in barra2_dl.download.point_data_urlfilenames(*args, node_selection='average4')}
+
+    assert nearest.isdisjoint(average)
+
+
+@pytest.mark.parametrize('node_selection', ['area', 'average9'])
+def test_point_data_urlfilenames_unsupported_node_selection(node_selection: str) -> None:
+    """A point request is for the nearest node or the four-node average; an area has its own function."""
+    with pytest.raises(ValueError, match='node_selection'):
+        barra2_dl.download.point_data_urlfilenames(
+            BARRA2_URL, ['ua50m'], -23.5, 133.4, '2023-01-01', '2023-01-31', 'demo', node_selection=node_selection
+        )
+
+
+@live_network
+@pytest.mark.parametrize(('domain', 'freq'), DOMAIN_FREQS)
+def test_point_data_urlfilenames_average4_box_returns_nodes_around_the_site(
+    domain: str, freq: str, tmp_path: Path
+) -> None:
+    """The live bounding-box response holds real nodes on both sides of the site, so the four can be picked."""
+    (url, _), *_ = barra2_dl.download.point_data_urlfilenames(
+        BARRA2_URL,
+        ['ua50m'],
+        -33.88,
+        151.18,
+        '2020-01-01',
+        '2020-01-02',
+        'live',
+        domain=domain,
+        freq=freq,
+        node_selection='average4',
+    )
+    response = requests.get(url, timeout=120)
+    (tmp_path / 'grid.nc').write_bytes(response.content)
+
+    with xr.open_dataset(tmp_path / 'grid.nc') as grid:
+        lats, lons = grid['lat'].to_numpy(), grid['lon'].to_numpy()
+
+    assert response.status_code == 200
+    assert lats.min() <= -33.88 <= lats.max()
+    assert lons.min() <= 151.18 <= lons.max()
+    assert lats.size >= 2
+    assert lons.size >= 2
+
+
+# endregion
+
+
+# region area_data_urlfilenames
+BOX = LatLonBBox(north=-23.4, south=-23.7, east=133.5, west=133.2)
+
+
+def test_area_data_urlfilenames_requests_the_box_with_the_box_in_the_name() -> None:
+    """One bounding-box request per variable-month for the given box, with the box in the cache filename."""
+    pairs = barra2_dl.download.area_data_urlfilenames(BOX, ['ua50m'], '2023-01-01', '2023-02-28', 'farm')
+
+    assert [name for _, name in pairs] == [
+        'farm_AUS-11_1hr_area_n-23.4_s-23.7_e133.5_w133.2_ua50m_20230101_20230131.nc',
+        'farm_AUS-11_1hr_area_n-23.4_s-23.7_e133.5_w133.2_ua50m_20230201_20230228.nc',
+        'farm_AUS-11_fx_area_n-23.4_s-23.7_e133.5_w133.2_orog.nc',
+    ]
+    assert 'north=-23.4&south=-23.7&east=133.5&west=133.2&horizStride=1' in pairs[0][0]
+    assert all(url.endswith('accept=netcdf4') for url, _ in pairs)
+
+
+def test_area_data_urlfilenames_different_boxes_have_different_cache_files() -> None:
+    """Changing the box must not reuse the previous box's cached files."""
+    other = LatLonBBox(north=-23.4, south=-23.7, east=133.6, west=133.2)
+    first = barra2_dl.download.area_data_urlfilenames(BOX, ['ua50m'], '2023-01-01', '2023-01-31', 'farm')
+    second = barra2_dl.download.area_data_urlfilenames(other, ['ua50m'], '2023-01-01', '2023-01-31', 'farm')
+
+    assert {name for _, name in first}.isdisjoint(name for _, name in second)
+
+
+def test_area_data_urlfilenames_resolves_aliases_and_domain_and_freq() -> None:
+    """Aliases are downloaded under server names, and the 20-minute month ends at 23:40."""
+    (url, name), *_ = barra2_dl.download.area_data_urlfilenames(
+        BOX, ['ua10m'], '2020-01-01', '2020-01-31', 'farm', domain='AUST-04', freq='20min'
+    )
+
+    assert '_20min_area_' in name
+    assert '/uas/' in url
+    assert 'time_end=2020-01-31T23:40:00Z' in url
+
+
+def test_area_data_urlfilenames_cannot_be_csv() -> None:
+    """A grid doesn't fit csv."""
+    with pytest.raises(ValueError, match='netcdf4'):
+        barra2_dl.download.area_data_urlfilenames(
+            BOX, ['ua50m'], '2023-01-01', '2023-01-31', 'farm', fileout_type='csv_file'
+        )
+
+
+def test_area_data_urlfilenames_unknown_variable_and_freq() -> None:
+    """Variables and the domain and frequency are validated before any URL is built."""
+    with pytest.raises(ValueError, match='Not available'):
+        barra2_dl.download.area_data_urlfilenames(BOX, ['ua999m'], '2023-01-01', '2023-01-31', 'farm')
+    with pytest.raises(ValueError, match='not supported'):
+        barra2_dl.download.area_data_urlfilenames(BOX, ['ua50m'], '2023-01-01', '2023-01-31', 'farm', freq='20min')
+
+
+@live_network
+def test_area_data_urlfilenames_box_returns_a_grid(tmp_path: Path) -> None:
+    """The live response for a box is a (time, lat, lon) grid covering it."""
+    (url, _), *_ = barra2_dl.download.area_data_urlfilenames(BOX, ['ua50m'], '2023-01-01', '2023-01-02', 'live')
+    response = requests.get(url, timeout=120)
+    (tmp_path / 'grid.nc').write_bytes(response.content)
+
+    with xr.open_dataset(tmp_path / 'grid.nc') as grid:
+        dims = grid['ua50m'].dims
+        lats = grid['lat'].to_numpy()
+
+    assert response.status_code == 200
+    assert dims == ('time', 'lat', 'lon')
+    # nodes whose grid cell overlaps the box are returned, so the edge nodes can sit just inside or outside it
+    assert -23.76 < lats.min() < -23.6
+    assert -23.5 < lats.max() < -23.35
 
 
 # endregion

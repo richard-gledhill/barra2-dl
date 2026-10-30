@@ -79,7 +79,13 @@ BARRA2_PRESET_DEFAULT = 'wind+density'
 # barra2_aus11_extents http://www.bom.gov.au/research/publications/researchreports/BRR-067.pdf
 # Todo BARRA2_AU11_LATLONBBOX = LatLonBBox(north=12.95, south=-57.97, east=207.39, west=88.48)
 
-# Todo BARRA2_AUS11_GRID_SPACING = 0.11
+# Grid spacing of each domain in degrees (about 11 km and 4 km). Sizes the box around a site for the four-node
+# average; the nodes themselves always come from the bounding-box response, never from this arithmetic.
+BARRA2_GRID_SPACING = {'AUS-11': 0.11, 'AUST-04': 0.04}
+
+# How the nodes for a site are chosen: the nearest node (point request), the four nodes around the site averaged, or
+# every node in a user-given box (netCDF only)
+BARRA2_NODE_SELECTIONS = ('nearest', 'average4', 'area')
 
 # default list of BARRA2 variables for wind analysis
 BARRA2_VAR_WIND_DEFAULT = ['uas', 'vas', 'ua50m', 'va50m', 'ua100m', 'va100m', 'ua150m', 'va150m', 'ta50m']
@@ -121,4 +127,29 @@ BARRA2_URL_FX = (
 BARRA2_URL_AUS11_1HR = BARRA2_URL.replace('{domain}', 'AUS-11').replace('{model}', 'BARRA-R2').replace('{freq}', '1hr')
 BARRA2_URL_AUST04_1HR = (
     BARRA2_URL.replace('{domain}', 'AUST-04').replace('{model}', 'BARRA-C2').replace('{freq}', '1hr')
+)
+
+# Bounding-box (grid) requests return a (time, lat, lon) grid of real nodes, as netCDF4 only. NCSS returns the
+# nodes whose grid cell overlaps the box, so a box of one grid spacing either side of a site returns a 3 x 3 grid.
+# Reference url:
+# https://thredds.nci.org.au/thredds/ncss/grid/ob53/output/reanalysis/AUS-11/BOM/ERA5/historical/hres/BARRA-R2/v1/
+# 1hr/ua50m/latest/ua50m_AUS-11_ERA5_historical_hres_BOM_BARRA-R2_v1_1hr_202301-202301.nc?
+# var=ua50m&north=-23.44&south=-23.66&east=133.51&west=133.29&horizStride=1
+# &time_start=2023-01-01T00:00:00Z&time_end=2023-01-31T23:00:00Z&accept=netcdf4
+BARRA2_URL_BBOX = (
+    'https://thredds.nci.org.au/thredds/ncss/grid/ob53/output/reanalysis/{domain}/BOM/ERA5'
+    '/historical/hres/{model}/v1/{freq}/{var}/latest/'
+    '{var}_{domain}_ERA5_historical_hres_BOM_{model}_v1_{freq}_{year}{month:02d}-{year}{month:02d}.nc'
+    '?var={var}&north={north}&south={south}&east={east}&west={west}&horizStride=1'
+    '&time_start={time_start_str}&time_end={time_end_str}'
+    '&accept={fileout_type}'
+)
+
+# The same for a fixed (fx) field, which has no time range
+BARRA2_URL_FX_BBOX = (
+    'https://thredds.nci.org.au/thredds/ncss/grid/ob53/output/reanalysis/{domain}/BOM/ERA5'
+    '/historical/hres/{model}/v1/fx/{var}/latest/'
+    '{var}_{domain}_ERA5_historical_hres_BOM_{model}_v1.nc'
+    '?var={var}&north={north}&south={south}&east={east}&west={west}&horizStride=1'
+    '&accept={fileout_type}'
 )

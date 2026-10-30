@@ -48,10 +48,19 @@ A named list of variables for a wind energy assessment task, e.g. `wind+density`
 `BARRA2_PRESET_DEFAULT`). Defined at `1hr`; `preset_variables` rejects a preset at a frequency missing any of its
 variables.
 
+**Node**:
+One point of the BARRA2 grid, with its own latitude, longitude and altitude (`orog`). The nodes are 0.11 degrees apart
+on AUS-11 and 0.04 on AUST-04 (`BARRA2_GRID_SPACING`). Always taken from the server's response, never computed.
+_Avoid_: Cell, grid point (a grid point is requested at a latitude and longitude; the node is what the server returns)
+
+**Node selection** (`BARRA2_NODE_SELECTIONS`):
+How the nodes for a site are chosen: `nearest` (the default point request), `average4` (the four nodes around the site,
+averaged) or `area` (every node in a box, netCDF only).
+
 **Point data**:
 The time series of one variable at the grid node nearest a latitude and longitude, fetched through the NetCDF
 Subset Service as CSV (`fileout_type='csv_file'`) or netCDF4 (`fileout_type='netcdf4'`).
-_Avoid_: Grid data (a gridded/bounding-box download is not implemented)
+_Avoid_: Grid data (a bounding-box download is a node selection: `average4` or `area`)
 
 ### Processing
 
@@ -74,6 +83,12 @@ _Avoid_: u / v in column names (the BARRA2 names are `ua*` and `va*`)
 A barra2-dl name for a server variable: `ua10m`/`va10m` for `uas`/`vas`. An alias is downloaded under the server
 name, and the converted output uses the alias so the 10 m wind is named like the other heights.
 _Avoid_: Treating `ua10m` as a server variable (the server has none)
+
+**Four-node average** (`average4`):
+The inverse-distance weighted mean of the four nodes surrounding a site, by the hybrid method: speed is the mean of the
+nodes' own speeds (scalar mean), direction comes from the mean `ua` and `va` (vector mean). The averaged speed is
+therefore not `hypot(ua, va)`. The four node series are written beside it.
+_Avoid_: Averaging bearings, or speed from averaged components
 
 **Wind speed** (`v*`):
 The magnitude of the `ua`/`va` pair, added as `v<height>[unit="m s-1"]`.

@@ -10,9 +10,10 @@
 - [ ] PR
 
 ## Slice 2: `feat/node-averaging-area` (phase 3)
-- [ ] `BARRA2_GRID_SPACING`, `average4` and `area` downloads
-- [ ] `node` dimension, hybrid averaging, `dataset_to_frames`
-- [ ] Docs, netCDF example, live tests, `make check`, `make test`, PR
+- [x] `BARRA2_GRID_SPACING`, `average4` and `area` downloads
+- [x] `node` dimension, hybrid averaging, `dataset_to_frames`, geo helpers in `mapping`
+- [x] Docs, netCDF example, live tests, `make check`, `make test`
+- [ ] PR
 
 ## Finish
 - [ ] Archive plan, RFC-003 Done, roadmap status (docs PR)

@@ -67,6 +67,8 @@ https://opus.nci.org.au/pages/viewpage.action?pageId=264241166
 
 - Point data download to closest node from BARRA2 AUS-11 (BARRA-R2) and AUST-04 (BARRA-C2) reanalysis data,
   1-hourly by default, and 20-minute on AUST-04
+- Node selection: the nearest node, an inverse-distance average of the four nodes around the site (with the four node
+  series written too), or every node in an area (netCDF only)
 - Wind at 10, 50, 100, 150, 200, 250 and 1500 m; the 10 m wind (`uas`/`vas`) is output as `ua10m`/`va10m` so every
   height is named alike
 - Variable presets for wind energy assessment: `wind`, `wind+density` (the default: winds plus pressure,
@@ -77,7 +79,8 @@ https://opus.nci.org.au/pages/viewpage.action?pageId=264241166
 - Merge the downloaded csv files into one DataFrame, and derive wind speed and direction from the u/v components
 - netCDF output: download netCDF4 (`fileout_type='netcdf4'`) and `merge.merge_netcdf_to_dataset` gives a CF-style
   xarray Dataset with a `height` dimension, units, the dataset version and the node altitude, ready for
-  `to_netcdf()`; `merge.to_dataset` does the same from csv files; timestamps are kept as served ([how to use](https://richard-gledhill.github.io/barra2-dl/how-to-use/))
+  `to_netcdf()`; `merge.to_dataset` does the same from csv files; `merge.dataset_to_frames` writes a four-node average as csv;
+  timestamps are kept as served ([how to use](https://richard-gledhill.github.io/barra2-dl/how-to-use/))
 - Optional unit conversion: K to °C, Pa to hPa, precipitation flux to mm/h
 - Fully typed with annotations and checked with mypy, [PEP561 compatible](https://www.python.org/dev/peps/pep-0561/)
 
@@ -169,7 +172,8 @@ For the DataFrame, csv and netCDF outputs and the timestamp convention, see the 
 ## Roadmap
 
 Implemented: AUS-11 at `1hr` and AUST-04 at `1hr` and `20min`; wind variables at 10 to 1500 m; variable presets and
-the checked variable inventory; the node altitude (`orog`); csv output.
+the checked variable inventory; the node altitude (`orog`); csv and netCDF output; the nearest node, a four-node
+average and an area download.
 
 The work is planned as a series of requirements documents (RFCs), set out in the
 [roadmap](https://github.com/richard-gledhill/barra2-dl/blob/main/docs/development/requirements/wind-engineering-roadmap-prd.md#4-rfc-roadmap). In delivery order:
@@ -178,7 +182,7 @@ The work is planned as a series of requirements documents (RFCs), set out in the
 |---|---|---|
 | 1 | [Fix the wind variable table](https://github.com/richard-gledhill/barra2-dl/blob/main/docs/development/requirements/wind-variables-bugfix-prd.md): real variables, heights, `ua10m`/`va10m` aliases | Done |
 | 2 | [Parameter review](https://github.com/richard-gledhill/barra2-dl/blob/main/docs/development/requirements/parameter-review-prd.md): presets, variable inventory, node altitude, unit conversion | Done |
-| 3 | [netCDF output, node averaging and area download](https://github.com/richard-gledhill/barra2-dl/blob/main/docs/development/requirements/netcdf-output-prd.md): a CF-style xarray Dataset from netCDF4 downloads (`merge_netcdf_to_dataset`) or csv (`to_dataset`) is in; a four-node average and a `(time, lat, lon)` area download are next | In progress |
+| 3 | [netCDF output, node averaging and area download](https://github.com/richard-gledhill/barra2-dl/blob/main/docs/development/requirements/netcdf-output-prd.md): a CF-style xarray Dataset from netCDF4 downloads or csv, with the nearest node, a four-node average and a `(time, lat, lon)` area download | Built; the RFC is still to be signed off |
 | 4 | [GUI](https://github.com/richard-gledhill/barra2-dl/blob/main/docs/development/requirements/gui-prd.md): a download engine with retries, a run summary and a multi-site project file, then a graphical app on top | Draft |
 | 5 | First PyPI release, and relicensing the code to MIT | After the GUI |
 | 6 | Export to wind-engineering software (Windographer, WAsP `.tab`, openWind, WindPRO) | To be drafted |

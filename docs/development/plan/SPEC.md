@@ -44,25 +44,35 @@ two by engine name, so deptry reports them unused; the owner approved a `DEP002`
   -> xr.Dataset`. Opens the NCSS point files, normalises the DSG `(station, obs)` layout to `time`, joins each
   variable's months, derives wind speed and direction on the Dataset, and returns the same layout as `to_dataset`.
   Fixed-field files are skipped. `read_fixed_fields` also reads `.nc` files.
-- Slice 3: `node` dimension (size 4; node `lat`/`lon`, `distance`, `weight`, `orog`) for `average4`, the hybrid
-  averaging of RFC-003 5.8 with `cell_methods` `node: mean (scalar)` on speed and `node: mean (vector)` on components,
-  and `lat`/`lon` dimensions for `area`. `dataset_to_frames(ds) -> dict[str, DataFrame]` gives the average plus one
-  frame per node, for CSV output.
+- Slice 2: `merge_netcdf_to_dataset(..., requested=None, node_selection='nearest', versions=None, fixed_pattern=None)`
+  takes `node_selection` `nearest`, `average4` or `area`; it keeps only the files of that kind, so a loose filename
+  pattern is safe in a shared cache. `average4` picks the four nodes that bracket the site in the response grid
+  (`mapping.bracket_index`), weights them by inverse haversine distance (`mapping.distance_km`,
+  `mapping.inverse_distance_weights`), and applies the hybrid method of RFC-003 5.8: speed is the weighted mean of node
+  speeds, `ua`/`va` the weighted means, direction from those. Each averaged variable gets a `<name>_node` twin on a
+  `node` dimension (size 4) with `node_lat`, `node_lon`, `node_distance`, `node_weight` and, from `fixed_pattern`,
+  `node_orog` coordinates; `cell_methods` says `node: mean (scalar)` on speed and `node: mean (vector)` on the components
+  and direction. `area` keeps every node with `lat`/`lon` dimensions and `orog` as a `(lat, lon)` variable.
+  `dataset_to_frames(ds) -> dict[str, DataFrame]` gives the csv frames: the series (or `average4`) plus `node1` to
+  `node4`; it refuses an area.
 
 ### `download.py`
 
 - Slice 1: `fileout_type='netcdf4'` (extension `.nc`, also for the `orog` fixed field);
   `resolve_variable_versions(variables, domain, freq) -> dict[str, str]` reads each variable's `variable_version`
   from its OPeNDAP `.das` attributes (the THREDDS catalogue lists only `latest`), falling back to `'latest'`.
-- Slice 3: `point_data_urlfilenames(..., node_selection='nearest' | 'average4')`; `average4` always downloads netCDF4
-  bounding-box files, sized from `BARRA2_GRID_SPACING`, with `average4` in the cache filename.
-  `area_data_urlfilenames(bbox, ...)` for `area`.
+- Slice 2: `point_data_urlfilenames(..., fileout_type=None, node_selection='nearest' | 'average4')`; `average4` is
+  netCDF4 only (csv is an error) and makes one bounding-box request per variable-month, a grid spacing either side of
+  the site, with `average4` in the cache filename and for the `orog` grid. `area_data_urlfilenames(bbox, vars, start,
+  end, prefix, fileout_type='netcdf4', *, domain, freq)` for `area`, with the box in the filename. `globals` gains
+  `BARRA2_GRID_SPACING`, `BARRA2_NODE_SELECTIONS`, `BARRA2_URL_BBOX` and `BARRA2_URL_FX_BBOX`.
 
 ### Fixtures
 
 `tests/data/` holds three days of AUS-11 1hr point files for `ua50m`, `va50m`, `tas`, `pr` and `orog`, each as netCDF4
-and csv, built from the live server by `scripts/build_test_fixtures.py`. Tests assert both routes give identical
-values. The bounding-box fixture arrives with slice 3.
+and csv, and the 3 x 3 bounding-box grids around the same site (`grid_*`), built from the live server by
+`scripts/build_test_fixtures.py`. Tests assert both point routes give identical values; the grids serve `average4`
+and, renamed as an area download names them, `area`.
 
 ### Output files
 

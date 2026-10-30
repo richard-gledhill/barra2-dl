@@ -64,6 +64,13 @@ domain = "AUS-11"  # or "AUST-04"
 freq = "1hr"  # or "20min" on AUST-04
 
 #%% md
+# Choose how the nodes are selected. "nearest" downloads the grid node nearest the point. "average4" downloads the
+# small grid around the point and averages the four nodes that surround it with inverse-distance weights, keeping
+# the four node series too. (For every node in an area, see area_data_urlfilenames and the how-to guide.)
+#%%
+node_selection = "nearest"  # or "average4"
+
+#%% md
 # Choose the variables with a preset. The default, wind+density, adds pressure, temperature and humidity to the wind
 # heights for air density work. preset_variables checks the preset is available for the domain and frequency: at
 # AUST-04 20min, choose the "wind" preset, as pressure and humidity aren't published every 20 minutes.
@@ -72,9 +79,8 @@ barra2_vars = barra2_dl.download.preset_variables(BARRA2_PRESET_DEFAULT, domain,
 print(barra2_vars)
 #%% md
 # ## Download point data
-# Use point_data_urlfilenames and download_multithread to download the closest node for the desired variables
-# into the target cache folder, as netCDF4 files (fileout_type='netcdf4'). The node altitude (orog) is downloaded too,
-# once per node.
+# Use point_data_urlfilenames and download_multithread to download the desired variables into the target cache folder,
+# as netCDF4 files (fileout_type='netcdf4'). The node altitude (orog) is downloaded too, once per node.
 #%%
 urlfilenames = barra2_dl.download.point_data_urlfilenames(
     barra2_url = BARRA2_URL,
@@ -87,6 +93,7 @@ urlfilenames = barra2_dl.download.point_data_urlfilenames(
     fileout_type = "netcdf4",
     domain = domain,
     freq = freq,
+    node_selection = node_selection,
 )
 # Use download_multithread with n-1 threads or download_serial with 1 thread
 barra2_dl.download.download_multithread(urlfilenames, cache_dir)
@@ -98,12 +105,19 @@ versions = barra2_dl.download.resolve_variable_versions(barra2_vars, domain, fre
 print(versions)
 #%% md
 # ## Combine data
-# The node altitude is a single value rather than a time series, so it is read separately. Then merge the downloaded
-# files into one Dataset. Timestamps are kept as served: variables averaged over the time step (such as pr and rsds,
-# stamped at :30) go on their own time_mean coordinate with time_bnds. Wind speed and direction are derived from the
-# ua and va components and, with them, sit on a height dimension.
+# Merge the downloaded files into one Dataset. Timestamps are kept as served: variables averaged over the time step
+# (such as pr and rsds, stamped at :30) go on their own time_mean coordinate with time_bnds. Wind speed and direction
+# are derived from the ua and va components and, with them, sit on a height dimension.
+#
+# For "nearest" the node altitude is read separately and passed in. For "average4" the downloaded altitude grid is
+# read at the four nodes, and the Dataset gets a node dimension holding the four node series beside the average. Its
+# wind speed is the weighted mean of the nodes' own speeds, and its direction comes from the weighted-mean components.
 #%%
-node_altitude = barra2_dl.merge.read_fixed_fields(cache_dir, f'{fileout_prefix}_{domain}_fx_*.nc')['orog[unit="m"]']
+fixed_tag = "" if node_selection == "nearest" else f"{node_selection}_"
+fixed_name = f"{fileout_prefix}_{domain}_fx_{fixed_tag}orog.nc"
+node_altitude = None
+if node_selection == "nearest":
+    node_altitude = barra2_dl.merge.read_fixed_fields(cache_dir, fixed_name)['orog[unit="m"]']
 ds = barra2_dl.merge.merge_netcdf_to_dataset(
     filein_folder = cache_dir,
     filename_pattern = f'{fileout_prefix}_{domain}_{freq}_*.nc',
@@ -111,15 +125,25 @@ ds = barra2_dl.merge.merge_netcdf_to_dataset(
     freq = freq,
     requested = lat_lon_point,
     orog = node_altitude,
+    node_selection = node_selection,
     versions = versions,
+    fixed_pattern = None if node_selection == "nearest" else fixed_name,
 )
 print(ds)
 #%% md
 # ## Write netCDF
 # Name the file for the site, as <prefix>_<domain>_<freq>_<selection>_<start>_<end>.nc.
 #%%
-ds.to_netcdf(Path(output_dir) / f"{fileout_prefix}_{domain}_{freq}_nearest_{start_datetime.strftime("%Y%m%d")}"
+ds.to_netcdf(Path(output_dir) / f"{fileout_prefix}_{domain}_{freq}_{node_selection}_{start_datetime.strftime("%Y%m%d")}"
                                 f"_{end_datetime.strftime("%Y%m%d")}.nc")
+#%% md
+# ## Write csv (optional)
+# The same data can be written as csv. dataset_to_frames returns a DataFrame for the series, and for "average4" one for
+# the average and one for each of the four nodes, each written to its own file.
+#%%
+for name, frame in barra2_dl.merge.dataset_to_frames(ds).items():
+    frame.to_csv(Path(output_dir) / f"{fileout_prefix}_{domain}_{freq}_{name}_{start_datetime.strftime("%Y%m%d")}"
+                                    f"_{end_datetime.strftime("%Y%m%d")}.csv", index=False)
 #%% md
 # The netCDF file is now ready to open with xarray, e.g. xarray.open_dataset(path), or any netCDF tool.
 # For example ds.wind_speed.sel(height=[50, 100]) selects two heights.
