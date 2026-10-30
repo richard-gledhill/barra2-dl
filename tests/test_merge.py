@@ -1,5 +1,7 @@
 """This module contains the barra2.merge test function(s)."""
 
+import shutil
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -13,6 +15,7 @@ from barra2_dl.mapping import LatLonPoint
 from barra2_dl.merge import (
     _merge_suffix_columns,
     _split_height,
+    dataset_to_frames,
     merge_csvs_to_df,
     merge_netcdf_to_dataset,
     read_fixed_fields,
@@ -455,7 +458,7 @@ def test_merge_netcdf_to_dataset_round_trip(tmp_path: Path) -> None:
 
 def test_merge_netcdf_to_dataset_no_files(tmp_path: Path) -> None:
     """A folder without matching files is an error."""
-    with pytest.raises(ValueError, match='No netCDF files'):
+    with pytest.raises(ValueError, match='No nearest netCDF files'):
         merge_netcdf_to_dataset(str(tmp_path), '*.nc', domain='AUS-11', freq='1hr', requested=SITE)
 
 
@@ -476,6 +479,418 @@ def test_merge_netcdf_to_dataset_rejects_files_without_one_variable(tmp_path: Pa
 
     with pytest.raises(ValueError, match='one data variable'):
         merge_netcdf_to_dataset(str(tmp_path), '*.nc', domain='AUS-11', freq='1hr', requested=SITE)
+
+
+# endregion
+
+
+# region merge_netcdf_to_dataset (average4)
+GRID_FILE = DATA / 'grid_AUS-11_1hr_average4_ua50m_20230101_20230103.nc'
+GRID_SITE = LatLonPoint(-23.55, 133.40)
+
+
+def _average4(
+    site: LatLonPoint = GRID_SITE, fixed_pattern: str | None = None, versions: dict[str, str] | None = None
+) -> xr.Dataset:
+    """The bounding-box fixtures merged as a four-node average around the site."""
+    return merge_netcdf_to_dataset(
+        str(DATA),
+        'grid_AUS-11_1hr_average4_*.nc',
+        domain='AUS-11',
+        freq='1hr',
+        requested=site,
+        node_selection='average4',
+        fixed_pattern=fixed_pattern,
+        versions=versions,
+    )
+
+
+def _write_grid(path: Path, name: str, values: np.ndarray, unit: str = 'm s-1') -> None:
+    """Write a tiny (time, lat, lon) bounding-box file on a 2 x 2 grid at 0 and 1 degrees."""
+    times = pd.date_range('2023-01-01', periods=values.shape[0], freq='h')
+    grid = xr.Dataset(
+        {name: (('time', 'lat', 'lon'), values, {'units': unit})},
+        coords={'time': times, 'lat': [0.0, 1.0], 'lon': [0.0, 1.0]},
+    )
+    grid.to_netcdf(path, engine='h5netcdf')
+
+
+def test_merge_netcdf_to_dataset_average4_uses_the_real_nodes_of_the_response() -> None:
+    """The four nodes are grid nodes from the file that surround the site, not computed positions."""
+    with xr.open_dataset(GRID_FILE) as grid:
+        file_lats, file_lons = grid['lat'].to_numpy(), grid['lon'].to_numpy()
+
+    ds = _average4()
+
+    assert ds.sizes['node'] == 4
+    assert set(ds['node_lat'].to_numpy()) <= set(file_lats)
+    assert set(ds['node_lon'].to_numpy()) <= set(file_lons)
+    assert len(set(zip(ds['node_lat'].to_numpy(), ds['node_lon'].to_numpy(), strict=True))) == 4
+    assert ds['node_lat'].min() <= GRID_SITE.lat <= ds['node_lat'].max()
+    assert ds['node_lon'].min() <= GRID_SITE.lon <= ds['node_lon'].max()
+
+
+def test_merge_netcdf_to_dataset_average4_weights_sum_to_one_and_favour_near_nodes() -> None:
+    """Inverse-distance weights sum to 1, and the nearest node weighs most."""
+    ds = _average4()
+
+    assert float(ds['node_weight'].sum()) == pytest.approx(1)
+    assert np.argmax(ds['node_weight'].to_numpy()) == np.argmin(ds['node_distance'].to_numpy())
+    assert ds['node_distance'].attrs['units'] == 'km'
+    assert (ds['node_distance'] > 0).all()
+
+
+def test_merge_netcdf_to_dataset_average4_speed_is_the_scalar_mean_of_node_speeds() -> None:
+    """Averaged speed is the weighted mean of each node's own speed."""
+    ds = _average4()
+
+    expected = (ds['wind_speed_node'] * ds['node_weight']).sum('node')
+    np.testing.assert_allclose(ds['wind_speed'].to_numpy(), expected.to_numpy())
+
+
+def test_merge_netcdf_to_dataset_average4_components_and_direction_are_the_vector_mean() -> None:
+    """Ua and va are weighted means, and the direction is taken from them."""
+    ds = _average4()
+
+    for component in ('ua', 'va'):
+        expected = (ds[f'{component}_node'] * ds['node_weight']).sum('node')
+        np.testing.assert_allclose(ds[component].to_numpy(), expected.to_numpy())
+    direction = np.mod(180 + np.rad2deg(np.arctan2(ds['ua'], ds['va'])), 360)
+    np.testing.assert_allclose(ds['wind_from_direction'].to_numpy(), direction.to_numpy())
+
+
+def test_merge_netcdf_to_dataset_average4_speed_is_not_the_speed_of_the_mean_vector() -> None:
+    """The averaged speed is at least hypot(ua, va), and larger where the nodes' winds differ in direction."""
+    ds = _average4()
+
+    vector_speed = np.hypot(ds['ua'], ds['va'])
+    assert (ds['wind_speed'] >= vector_speed - 1e-9).all()
+    assert (ds['wind_speed'] > vector_speed + 1e-6).any()
+
+
+def test_merge_netcdf_to_dataset_average4_opposed_winds_keep_their_speed(tmp_path: Path) -> None:
+    """Opposed 5 m/s winds average to 5 m/s by the scalar mean, not the 0 m/s of the mean vector."""
+    ua = np.tile(np.array([[5.0, -5.0], [5.0, -5.0]]), (2, 1, 1))
+    _write_grid(tmp_path / 'g_AUS-11_1hr_average4_ua50m_20230101_20230101.nc', 'ua50m', ua)
+    _write_grid(tmp_path / 'g_AUS-11_1hr_average4_va50m_20230101_20230101.nc', 'va50m', np.zeros_like(ua))
+
+    ds = merge_netcdf_to_dataset(
+        str(tmp_path),
+        '*.nc',
+        domain='AUS-11',
+        freq='1hr',
+        requested=LatLonPoint(0.5, 0.5),
+        node_selection='average4',
+    )
+
+    assert ds['wind_speed'].to_numpy() == pytest.approx(5.0)
+    assert abs(ds['ua'].to_numpy()).max() < 1e-9
+
+
+def test_merge_netcdf_to_dataset_average4_labels_the_means_in_cell_methods() -> None:
+    """The file says which mean each variable is: scalar for speed, vector for components and direction."""
+    ds = _average4()
+
+    assert ds['wind_speed'].attrs['cell_methods'] == 'node: mean (scalar)'
+    for name in ('ua', 'va', 'wind_from_direction'):
+        assert ds[name].attrs['cell_methods'] == 'node: mean (vector)'
+    assert ds['tas'].attrs['cell_methods'].endswith('node: mean')
+    assert 'node:' not in ds['wind_speed_node'].attrs.get('cell_methods', '')
+
+
+def test_merge_netcdf_to_dataset_average4_writes_the_node_series_beside_the_average() -> None:
+    """Every averaged variable has its four node series on a node dimension."""
+    ds = _average4()
+
+    assert ds['ua_node'].dims == ('node', 'time', 'height')
+    assert ds['tas_node'].dims == ('node', 'time')
+    assert ds['pr_node'].dims == ('node', 'time_mean')
+    assert ds['ua'].dims == ('time', 'height')
+    assert ds['ua_node'].attrs['units'] == 'm s-1'
+
+
+def test_merge_netcdf_to_dataset_average4_site_is_the_requested_one_and_timestamps_are_unshifted() -> None:
+    """Lat and lon are the requested site; instantaneous variables are at :00 and the mean pr at :30."""
+    ds = _average4()
+
+    assert (float(ds['lat']), float(ds['lon'])) == (GRID_SITE.lat, GRID_SITE.lon)
+    assert ds.attrs['node_selection'] == 'average4'
+    assert _minutes(ds['time'])[:2] == ['2023-01-01T00:00', '2023-01-01T01:00']
+    assert _minutes(ds['time_mean'])[:2] == ['2023-01-01T00:30', '2023-01-01T01:30']
+
+
+def test_merge_netcdf_to_dataset_average4_site_on_a_node_gives_that_nodes_values() -> None:
+    """A site exactly on a node gets that node's series, with all the weight."""
+    first = _average4()
+    index = int(np.argmin(first['node_distance'].to_numpy()))
+    on_node = LatLonPoint(float(first['node_lat'][index]), float(first['node_lon'][index]))
+
+    ds = _average4(on_node)
+
+    assert float(ds['node_weight'].max()) == 1.0
+    best = int(np.argmax(ds['node_weight'].to_numpy()))
+    np.testing.assert_allclose(ds['ua'].to_numpy(), ds['ua_node'].isel(node=best).to_numpy())
+    np.testing.assert_allclose(ds['wind_speed'].to_numpy(), ds['wind_speed_node'].isel(node=best).to_numpy())
+
+
+def test_merge_netcdf_to_dataset_average4_orog_is_per_node_and_weighted() -> None:
+    """With the orog grid, each node has its altitude and the dataset attribute is their weighted mean."""
+    ds = _average4(fixed_pattern='grid_AUS-11_fx_average4_orog.nc')
+
+    assert ds['node_orog'].dims == ('node',)
+    assert float(ds.attrs['orog']) == pytest.approx(float((ds['node_orog'] * ds['node_weight']).sum()))
+    assert ds['node_orog'].attrs['units'] == 'm'
+
+
+def test_merge_netcdf_to_dataset_average4_without_orog_grid_has_no_orog() -> None:
+    """No fixed_pattern means no altitude is written."""
+    ds = _average4()
+
+    assert 'node_orog' not in ds.coords
+    assert 'orog' not in ds.attrs
+
+
+def test_merge_netcdf_to_dataset_average4_records_versions() -> None:
+    """Versions reach the average, the node series and the global attribute."""
+    ds = _average4(versions={'ua50m': 'v20240516', 'va50m': 'v20240516', 'tas': 'v20231001'})
+
+    assert ds['tas'].attrs['barra2_version'] == 'v20231001'
+    assert ds['tas_node'].attrs['barra2_version'] == 'v20231001'
+    assert ds.attrs['barra2_version'] == 'v20231001, v20240516'
+
+
+def test_merge_netcdf_to_dataset_average4_round_trip(tmp_path: Path) -> None:
+    """Writing and reading back keeps the node dimension and values."""
+    ds = _average4(fixed_pattern='grid_AUS-11_fx_average4_orog.nc')
+    ds.to_netcdf(tmp_path / 'site.nc')
+
+    with xr.open_dataset(tmp_path / 'site.nc') as back:
+        np.testing.assert_allclose(back['ua_node'].to_numpy(), ds['ua_node'].to_numpy())
+        np.testing.assert_allclose(back['node_weight'].to_numpy(), ds['node_weight'].to_numpy())
+
+
+def test_merge_netcdf_to_dataset_average4_site_outside_the_grid() -> None:
+    """A site the downloaded grid doesn't surround can't be averaged."""
+    with pytest.raises(ValueError, match='outside'):
+        _average4(LatLonPoint(10.0, 133.4))
+
+
+@pytest.mark.parametrize('node_selection', ['nearest', 'average4'])
+def test_merge_netcdf_to_dataset_needs_the_site_unless_area(node_selection: str) -> None:
+    """The nearest node and the average need the requested site."""
+    with pytest.raises(ValueError, match='requested'):
+        merge_netcdf_to_dataset(
+            str(DATA), 'grid_AUS-11_1hr_average4_*.nc', domain='AUS-11', freq='1hr', node_selection=node_selection
+        )
+
+
+def test_merge_netcdf_to_dataset_a_loose_pattern_merges_only_the_kind_asked_for() -> None:
+    """With point, grid and fixed-field files in one folder, each node selection picks its own files."""
+    nearest = merge_netcdf_to_dataset(str(DATA), '*_AUS-11_*.nc', domain='AUS-11', freq='1hr', requested=SITE)
+    average = merge_netcdf_to_dataset(
+        str(DATA),
+        '*_AUS-11_*.nc',
+        domain='AUS-11',
+        freq='1hr',
+        requested=GRID_SITE,
+        node_selection='average4',
+    )
+
+    assert 'node' not in nearest.dims
+    assert average.sizes['node'] == 4
+
+
+def test_merge_netcdf_to_dataset_unknown_node_selection() -> None:
+    """Only nearest, average4 and area are node selections."""
+    with pytest.raises(ValueError, match='node_selection'):
+        merge_netcdf_to_dataset(
+            str(DATA), '*.nc', domain='AUS-11', freq='1hr', requested=SITE, node_selection='average9'
+        )
+
+
+def test_merge_netcdf_to_dataset_grid_file_that_is_not_a_grid(tmp_path: Path) -> None:
+    """A point file given as a grid is rejected."""
+    shutil.copy(DATA / 'fixture_AUS-11_1hr_ua50m_20230101_20230103.nc', tmp_path / 'point_average4_ua50m.nc')
+
+    with pytest.raises(ValueError, match=r'\(time, lat, lon\)'):
+        merge_netcdf_to_dataset(
+            str(tmp_path), '*.nc', domain='AUS-11', freq='1hr', requested=SITE, node_selection='average4'
+        )
+
+
+def test_merge_netcdf_to_dataset_grid_months_are_joined(tmp_path: Path) -> None:
+    """Two months of a grid variable are joined in time."""
+    with xr.open_dataset(GRID_FILE) as first:
+        first.load().to_netcdf(tmp_path / 'm1_average4_ua50m.nc')
+        shifted = first.assign_coords(time=first['time'] + np.timedelta64(31, 'D'))
+        shifted.load().to_netcdf(tmp_path / 'm2_average4_ua50m.nc')
+
+    ds = merge_netcdf_to_dataset(
+        str(tmp_path), '*.nc', domain='AUS-11', freq='1hr', requested=GRID_SITE, node_selection='average4'
+    )
+
+    assert ds.sizes['time'] == 2 * 72
+
+
+def test_merge_netcdf_to_dataset_fixed_pattern_without_files(tmp_path: Path) -> None:
+    """A fixed_pattern that matches nothing is an error, not a silently missing altitude."""
+    with pytest.raises(ValueError, match='No fixed-field files'):
+        _average4(fixed_pattern='nothing_*.nc')
+
+
+def test_merge_netcdf_to_dataset_fixed_file_that_is_not_a_grid() -> None:
+    """A fixed-field point file can't be the orog grid."""
+    with pytest.raises(ValueError, match=r'\(lat, lon\)'):
+        _average4(fixed_pattern='fixture_AUS-11_fx_orog.nc')
+
+
+# endregion
+
+
+# region merge_netcdf_to_dataset (area)
+@pytest.fixture
+def area(tmp_path: Path) -> Callable[..., xr.Dataset]:
+    """Merge the bounding-box fixtures as an area, after renaming them as an area download would name them."""
+    for file in DATA.glob('grid_*.nc'):
+        shutil.copy(file, tmp_path / file.name.replace('_average4_', '_area_'))
+
+    def merge(fixed_pattern: str | None = None, versions: dict[str, str] | None = None) -> xr.Dataset:
+        return merge_netcdf_to_dataset(
+            str(tmp_path),
+            'grid_AUS-11_1hr_area_*.nc',
+            domain='AUS-11',
+            freq='1hr',
+            node_selection='area',
+            fixed_pattern=fixed_pattern,
+            versions=versions,
+        )
+
+    return merge
+
+
+def test_merge_netcdf_to_dataset_area_has_lat_and_lon_dimensions(area: Callable[..., xr.Dataset]) -> None:
+    """Every node of the box is kept: lat and lon are dimensions of the variables."""
+    ds = area()
+
+    assert ds['ua'].dims == ('time', 'height', 'lat', 'lon')
+    assert ds['tas'].dims == ('time', 'lat', 'lon')
+    assert ds['pr'].dims == ('time_mean', 'lat', 'lon')
+    assert ds.sizes['lat'] == ds.sizes['lon'] == 3
+    assert 'node' not in ds.dims
+    assert ds.attrs['node_selection'] == 'area'
+    assert 'requested_lat' not in ds.coords
+
+
+def test_merge_netcdf_to_dataset_area_derives_wind_per_node(area: Callable[..., xr.Dataset]) -> None:
+    """Speed is hypot(ua, va) at each node, and direction a compass bearing."""
+    ds = area()
+
+    np.testing.assert_allclose(ds['wind_speed'].to_numpy(), ((ds['ua'] ** 2 + ds['va'] ** 2) ** 0.5).to_numpy())
+    assert ds['wind_from_direction'].min() >= 0
+    assert ds['wind_from_direction'].max() <= 360
+
+
+def test_merge_netcdf_to_dataset_area_matches_the_average4_node_series(area: Callable[..., xr.Dataset]) -> None:
+    """The area values at a node equal that node's series in the four-node average."""
+    area_ds, average = area(), _average4()
+    for node in range(4):
+        node_lat, node_lon = float(average['node_lat'][node]), float(average['node_lon'][node])
+        at_node = area_ds['ua'].sel(lat=node_lat, lon=node_lon, method='nearest')
+        np.testing.assert_allclose(at_node.to_numpy(), average['ua_node'].isel(node=node).to_numpy())
+
+
+def test_merge_netcdf_to_dataset_area_orog_is_a_grid_variable(area: Callable[..., xr.Dataset]) -> None:
+    """With the orog grid, orog is a (lat, lon) variable in m."""
+    ds = area(fixed_pattern='grid_AUS-11_fx_area_orog.nc')
+
+    assert ds['orog'].dims == ('lat', 'lon')
+    assert ds['orog'].attrs['units'] == 'm'
+
+
+def test_merge_netcdf_to_dataset_area_keeps_timestamps_and_records_versions(area: Callable[..., xr.Dataset]) -> None:
+    """Mean variables stay on time_mean at :30; versions are recorded per variable."""
+    ds = area(versions={'tas': 'v20231001', 'pr': 'v20240516', 'ua50m': 'v20231001'})
+
+    assert _minutes(ds['time_mean'])[:2] == ['2023-01-01T00:30', '2023-01-01T01:30']
+    assert _minutes(ds['time_bnds'].to_numpy()[0]) == ['2023-01-01T00:00', '2023-01-01T01:00']
+    assert ds['tas'].attrs['barra2_version'] == 'v20231001'
+    assert ds['ua'].attrs['barra2_version'] == 'v20231001'
+    assert ds.attrs['barra2_version'] == 'v20231001, v20240516'
+
+
+def test_merge_netcdf_to_dataset_area_of_one_instantaneous_scalar(tmp_path: Path) -> None:
+    """An area without winds or mean variables has just the scalar on (time, lat, lon)."""
+    _write_grid(tmp_path / 'g_AUS-11_1hr_area_tas_20230101_20230101.nc', 'tas', np.full((2, 2, 2), 290.0), 'K')
+
+    ds = merge_netcdf_to_dataset(str(tmp_path), '*.nc', domain='AUS-11', freq='1hr', node_selection='area')
+
+    assert list(ds.data_vars) == ['tas']
+    assert 'height' not in ds.coords
+    assert 'time_mean' not in ds.coords
+    assert ds['tas'].dims == ('time', 'lat', 'lon')
+
+
+def test_merge_netcdf_to_dataset_area_round_trip(area: Callable[..., xr.Dataset], tmp_path: Path) -> None:
+    """Writing and reading back keeps the grid and values."""
+    ds = area(fixed_pattern='grid_AUS-11_fx_area_orog.nc')
+    ds.to_netcdf(tmp_path / 'area.nc')
+
+    with xr.open_dataset(tmp_path / 'area.nc') as back:
+        np.testing.assert_allclose(back['wind_speed'].to_numpy(), ds['wind_speed'].to_numpy())
+        assert back.sizes['lat'] == 3
+
+
+# endregion
+
+
+# region dataset_to_frames
+def test_dataset_to_frames_nearest_matches_the_csv_route() -> None:
+    """A nearest-node Dataset gives the frame the csv route gives: same columns, values and timestamps."""
+    ds = merge_netcdf_to_dataset(str(DATA), 'fixture_AUS-11_1hr_*.nc', domain='AUS-11', freq='1hr', requested=SITE)
+    csv = convert_wind_components(merge_csvs_to_df(str(DATA), 'fixture_AUS-11_1hr_*.csv', BARRA2_INDEX))
+
+    frames = dataset_to_frames(ds)
+
+    assert list(frames) == ['nearest']
+    frame = frames['nearest']
+    assert set(frame.columns) == set(csv.columns)
+    assert list(frame.columns[:4]) == BARRA2_INDEX
+    merged = frame.merge(csv, on='time', suffixes=('_nc', '_csv'))
+    assert len(merged) == len(csv)
+    for column in csv.columns.difference(BARRA2_INDEX):
+        np.testing.assert_allclose(merged[f'{column}_nc'].to_numpy(), merged[f'{column}_csv'].to_numpy())
+
+
+def test_dataset_to_frames_average4_gives_the_average_and_one_frame_per_node() -> None:
+    """The average and the four node series each get a frame, so each can be written to its own file."""
+    ds = _average4()
+
+    frames = dataset_to_frames(ds)
+
+    assert list(frames) == ['average4', 'node1', 'node2', 'node3', 'node4']
+    assert frames['average4'].loc[0, 'station'] == 'average4'
+    assert frames['node2'].loc[0, 'station'] == 'node2'
+    assert frames['node2'].loc[0, BARRA2_INDEX[2]] == float(ds['node_lat'][1])
+    column = 'ua50m[unit="m s-1"]'
+    np.testing.assert_allclose(
+        frames['node3'][column].dropna().to_numpy(), ds['ua_node'].isel(node=2, height=0).to_numpy()
+    )
+    np.testing.assert_allclose(frames['average4'][column].dropna().to_numpy(), ds['ua'].isel(height=0).to_numpy())
+
+
+def test_dataset_to_frames_keeps_the_half_hour_rows() -> None:
+    """Mean variables keep their :30 timestamps in their own rows, with blanks, as in the csv route."""
+    frame = dataset_to_frames(_average4())['average4']
+
+    assert frame['time'].iloc[1] == '2023-01-01T00:30:00Z'
+    assert pd.isna(frame['ua50m[unit="m s-1"]'].iloc[1])
+    assert not pd.isna(frame['pr[unit="kg m-2 s-1"]'].iloc[1])
+
+
+def test_dataset_to_frames_refuses_an_area(area: Callable[..., xr.Dataset]) -> None:
+    """An area is a grid and can't be written as csv."""
+    with pytest.raises(ValueError, match='cannot be written as csv'):
+        dataset_to_frames(area())
 
 
 # endregion

@@ -13,6 +13,7 @@ from typing import Self, cast
 
 import numpy as np
 import pandas as pd
+from numpy.typing import ArrayLike
 
 
 class _Geodetic(float):
@@ -219,3 +220,73 @@ def _format_lat_lon(
     formatted_lon = f'{abs(longitude):.2f}'
 
     return [formatted_lat, formatted_lon]
+
+
+def distance_km(lat1: float, lon1: float, lat2: ArrayLike, lon2: ArrayLike) -> np.ndarray:
+    """Great-circle (haversine) distance in km from one point to another, or to each of several.
+
+    Args:
+        lat1 (float): Latitude of the first point in degrees.
+        lon1 (float): Longitude of the first point in degrees.
+        lat2 (ArrayLike): Latitude(s) of the other point(s) in degrees.
+        lon2 (ArrayLike): Longitude(s) of the other point(s) in degrees.
+
+    Returns:
+        np.ndarray: The distance(s) in km, using a mean Earth radius of 6371.0088 km.
+
+    Examples:
+        >>> round(float(distance_km(0, 0, 0, 1)), 1)
+        111.2
+    """
+    phi1, phi2 = np.radians(lat1), np.radians(lat2)
+    half_dlat, half_dlon = (phi2 - phi1) / 2, np.radians(np.asarray(lon2) - lon1) / 2
+    a = np.sin(half_dlat) ** 2 + np.cos(phi1) * np.cos(phi2) * np.sin(half_dlon) ** 2
+    return np.asarray(2 * 6371.0088 * np.arcsin(np.sqrt(a)))
+
+
+def bracket_index(values: np.ndarray, x: float, tolerance: float = 1e-6) -> int:
+    """Return the index i of the pair of neighbouring nodes (i, i + 1) on a sorted axis that surround x.
+
+    If x lies on a node, that node is the first of the pair, or the second when it is the last node. The axis must hold
+    at least two nodes, and x must lie within it.
+
+    Args:
+        values (np.ndarray): Node coordinates in ascending order, e.g. the lat or lon of a bounding-box grid.
+        x (float): The coordinate to surround.
+        tolerance (float): How far outside the axis x may be, and how close to a node counts as on it, in degrees.
+
+    Returns:
+        int: The index of the lower node of the pair.
+
+    Raises:
+        ValueError: If x is outside the axis.
+
+    Examples:
+        >>> bracket_index(np.array([0.0, 1.0, 2.0]), 1.5), bracket_index(np.array([0.0, 1.0, 2.0]), 2.0)
+        (1, 1)
+    """
+    if x < values[0] - tolerance or x > values[-1] + tolerance:
+        raise ValueError(f'{x} is outside the nodes {values[0]} to {values[-1]}.')
+    last_at_or_below = int(np.searchsorted(values, x + tolerance, side='right')) - 1
+    return min(max(last_at_or_below, 0), len(values) - 2)
+
+
+def inverse_distance_weights(distances: np.ndarray, tolerance: float = 1e-6) -> np.ndarray:
+    """Return weights proportional to 1 / distance, summing to 1; a node at the site takes all the weight.
+
+    Args:
+        distances (np.ndarray): Distance from the site to each node, in any one unit.
+        tolerance (float): A distance below this counts as zero.
+
+    Returns:
+        np.ndarray: One weight per node.
+
+    Examples:
+        >>> inverse_distance_weights(np.array([1.0, 3.0])).tolist()
+        [0.75, 0.25]
+        >>> inverse_distance_weights(np.array([0.0, 3.0])).tolist()
+        [1.0, 0.0]
+    """
+    on_node = distances < tolerance
+    weights = on_node.astype(float) if on_node.any() else 1 / distances
+    return weights / weights.sum()

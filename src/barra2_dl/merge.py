@@ -17,16 +17,18 @@ from barra2_dl.globals import (
     BARRA2_FIXED_FREQ,
     BARRA2_FREQS,
     BARRA2_INDEX,
+    BARRA2_NODE_SELECTIONS,
     BARRA2_VAR_ALIASES,
     BARRA2_VAR_INFO,
     BARRA2_WIND_VARS,
 )
-from barra2_dl.mapping import LatLonPoint
+from barra2_dl.mapping import LatLonPoint, bracket_index, distance_km, inverse_distance_weights
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
 __all__ = [
+    'dataset_to_frames',
     'merge_csvs_to_df',
     'merge_netcdf_to_dataset',
     'read_fixed_fields',
@@ -203,56 +205,91 @@ def merge_netcdf_to_dataset(
     *,
     domain: str,
     freq: str,
-    requested: LatLonPoint,
+    requested: LatLonPoint | None = None,
     orog: float | None = None,
     node_selection: str = 'nearest',
     versions: dict[str, str] | None = None,
+    fixed_pattern: str | None = None,
 ) -> xr.Dataset:
-    """Merge downloaded netCDF4 point files straight into a CF-style xarray Dataset, without a DataFrame.
+    """Merge downloaded netCDF4 files straight into a CF-style xarray Dataset, without a DataFrame.
 
-    The files come from point_data_urlfilenames(..., fileout_type='netcdf4'). Each variable's months are joined in time,
-    the variables are merged, and wind speed and direction are derived from the ua/va pairs present. The result has the
-    same layout as to_dataset, whose docstring describes it. Fixed-field files (with '_fx_' in the name) are skipped;
-    read the node altitude with read_fixed_fields and pass it as orog.
+    The files come from point_data_urlfilenames(..., fileout_type='netcdf4') for the nearest node, from
+    point_data_urlfilenames(..., node_selection='average4') for the four-node average, or from area_data_urlfilenames
+    for an area. Each variable's months are joined in time, the variables are merged, and wind speed and direction are
+    derived from the ua/va pairs present. Fixed-field files (with '_fx_' in the name) are skipped. The nearest node
+    has the layout described in to_dataset; the others are described below.
+
+    node_selection='average4' averages the four nodes that surround the requested point (not a boundary or area) with
+    inverse-distance weights, using the hybrid
+    method: wind speed is the weighted mean of each node's own speed (a scalar mean), direction comes from the
+    weighted-mean ua and va (a vector mean), and the averaged ua and va are written too. The averaged speed is
+    therefore not hypot(ua, va), which would be lower where the nodes' winds differ in direction. cell_methods says
+    which mean each variable is. The four node series are written beside the average as <name>_node variables on a
+    node dimension, with node_lat, node_lon, node_distance (km), node_weight and, if fixed_pattern is given, node_orog
+    coordinates. lat and lon are the requested site.
+
+    node_selection='area' keeps every node: lat and lon are dimensions, the variables are (time[, height], lat, lon),
+    and orog, if fixed_pattern is given, is a (lat, lon) variable. There is no requested site.
 
     Args:
         filein_folder (str): Folder holding the downloaded files, e.g. the cache folder.
-        filename_pattern (str): Filename matching pattern, e.g. f'{prefix}_AUS-11_1hr_*.nc'.
+        filename_pattern (str): Filename matching pattern, e.g. f'{prefix}_AUS-11_1hr_*.nc' for the nearest node or
+            f'{prefix}_AUS-11_1hr_average4_*.nc' for the four-node average.
         domain (str): BARRA2 domain the data came from, a key of BARRA2_DOMAINS.
         freq (str): BARRA2 frequency the data came from.
-        requested (LatLonPoint): The site that was requested.
-        orog (float | None): Node altitude in m. Written as an attribute.
-        node_selection (str): How the node was chosen, recorded as an attribute. Default 'nearest'.
+        requested (LatLonPoint | None): The site that was requested. Not used for an area.
+        orog (float | None): Node altitude in m, for the nearest node. Written as an attribute.
+        node_selection (str): 'nearest' (default), 'average4' or 'area'.
         versions (dict[str, str] | None): Dataset version of each variable, e.g. from
             download.resolve_variable_versions. Recorded as attributes; 'latest' where unknown.
+        fixed_pattern (str | None): Filename pattern of the downloaded orog grid for average4 and area, e.g.
+            f'{prefix}_AUS-11_fx_average4_orog.nc'.
 
     Returns:
         xr.Dataset: Ready for to_netcdf().
 
     Raises:
-        ValueError: If no file matches, a file isn't a single-variable point file, or the files hold more than one node.
+        ValueError: If node_selection is unknown, a site is needed and missing, no file matches, a file isn't a
+            single-variable file of the right kind, the files hold more than one node, or the site is outside the grid.
     """
-    files = [
-        file for file in sorted(Path(filein_folder).glob(filename_pattern)) if f'_{BARRA2_FIXED_FREQ}_' not in file.name
-    ]
-    if not files:
-        raise ValueError(f'No netCDF files matching <{filename_pattern}> in <{filein_folder}>.')
+    if node_selection not in BARRA2_NODE_SELECTIONS:
+        raise ValueError(f'node_selection <{node_selection}> must be one of {", ".join(BARRA2_NODE_SELECTIONS)}.')
+    if node_selection == 'area':
+        grids, units = _read_grids(_data_files(filein_folder, filename_pattern, node_selection))
+        return _area_dataset(grids, units, _read_fixed_grid(filein_folder, fixed_pattern), (domain, freq), versions)
+    site = _site(requested, node_selection)
+    files = _data_files(filein_folder, filename_pattern, node_selection)
+    if node_selection == 'nearest':
+        return _nearest_dataset(files, (domain, freq), site, orog, versions)
+    grids, units = _read_grids(files)
+    return _average4_dataset(
+        grids, units, _read_fixed_grid(filein_folder, fixed_pattern), (domain, freq), site, versions
+    )
 
-    pieces: dict[str, list[pd.Series]] = {}
-    units: dict[str, str] = {}
-    nodes: set[tuple[float, float]] = set()
-    for file in files:
-        name, unit, piece, node = _read_point_file(file)
-        pieces.setdefault(name, []).append(piece)
-        units[name] = unit
-        nodes.add(node)
-    if len(nodes) != 1:
-        raise ValueError(f'Expected one node in the files, found {len(nodes)}.')
 
-    series = {name: _clean(pd.concat(parts)) for name, parts in pieces.items()}
-    for name, derived in _derive_wind(series).items():
-        series[name], units[name] = derived
-    return _build_dataset(series, units, nodes.pop(), (domain, freq), requested, orog, node_selection, versions)
+def dataset_to_frames(ds: xr.Dataset) -> dict[str, pd.DataFrame]:
+    """Convert a point or four-node-average Dataset to DataFrames for csv output.
+
+    The frames have the same columns as the csv route (BARRA2_INDEX, then e.g. ua50m[unit="m s-1"], v50m ...), with
+    timestamps as served, so variables stamped at :30 get their own rows. A nearest-node Dataset gives one frame. A
+    four-node average gives the average, keyed 'average4', and one frame per node, keyed node1 to node4, so each can be
+    written to its own file.
+
+    Args:
+        ds (xr.Dataset): From merge_netcdf_to_dataset or to_dataset.
+
+    Returns:
+        dict[str, pd.DataFrame]: The frames by name.
+
+    Raises:
+        ValueError: If the Dataset is an area, which is a grid and doesn't fit csv.
+    """
+    if 'lat' in ds.dims:
+        raise ValueError('An area is a grid and cannot be written as csv; write it as netCDF.')
+    frames = {str(ds.attrs.get('node_selection', 'nearest')): _frame(ds, None)}
+    if 'node' in ds.dims:
+        frames |= {f'node{int(node) + 1}': _frame(ds, int(node)) for node in ds['node'].to_numpy()}
+    return frames
 
 
 # endregion
@@ -320,7 +357,7 @@ def _build_dataset(
     mean_names = [name for name in plain if _is_mean(domain, freq, name)]
     series_names = [name for name in series if name not in mean_names]
 
-    times = _union_times([series[name] for name in series_names])
+    times = _union_times([series[name].index for name in series_names])
     ds = xr.Dataset(coords={'time': times})
     ds['time'].attrs = {'standard_name': 'time', 'long_name': 'time as served, UTC'}
     if stacked:
@@ -338,10 +375,7 @@ def _build_dataset(
     ds['lat'].attrs = {'units': 'degrees_north', 'standard_name': 'latitude'}
     ds['lon'].attrs = {'units': 'degrees_east', 'standard_name': 'longitude'}
 
-    # one explicit unit for every time axis, so time_mean and time_bnds are encoded alike (CF) and exactly
-    for name in ('time', 'time_mean', 'time_bnds'):
-        if name in ds.variables:
-            ds[name].encoding['units'] = _TIME_UNITS
+    _set_time_encoding(ds)
     ds.attrs = _global_attrs(domain, freq, node_selection, orog, sorted(set(versions.values())))
     return ds
 
@@ -351,9 +385,9 @@ def _with_aliases(versions: dict[str, str]) -> dict[str, str]:
     return versions | {alias: versions[server] for alias, server in BARRA2_VAR_ALIASES.items() if server in versions}
 
 
-def _union_times(series: list[pd.Series]) -> pd.DatetimeIndex:
-    """Return the sorted union of the series' timestamps (empty if there are none)."""
-    return pd.DatetimeIndex(sorted(set().union(*(one.index for one in series))))
+def _union_times(indexes: list[pd.Index]) -> pd.DatetimeIndex:
+    """Return the sorted union of the timestamp indexes (empty if there are none)."""
+    return pd.DatetimeIndex(sorted(set().union(*indexes)))
 
 
 def _add_height_variables(
@@ -411,7 +445,7 @@ def _add_mean_variables(
     """Add the time_mean coordinate, its bounds (one step wide, centred on the stamp) and the mean variables."""
     domain, freq = domain_freq
     half_step = BARRA2_FREQS[domain][freq] / 2
-    mean_times = _union_times([series[name] for name in mean_names])
+    mean_times = _union_times([series[name].index for name in mean_names])
     ds = ds.assign_coords(time_mean=('time_mean', mean_times))
     ds['time_mean'].attrs = {'standard_name': 'time', 'bounds': 'time_bnds', 'long_name': 'middle of the mean period'}
     ds['time_bnds'] = (('time_mean', 'bnds'), np.column_stack([mean_times - half_step, mean_times + half_step]))
@@ -441,6 +475,345 @@ def _global_attrs(
     if orog is not None:
         attrs |= {'orog': float(orog), 'orog_units': 'm'}
     return attrs
+
+
+def _site(requested: LatLonPoint | None, node_selection: str) -> LatLonPoint:
+    """Return the requested site, which every node selection except area needs."""
+    if requested is None:
+        raise ValueError(f'requested (the site) is needed for node_selection <{node_selection}>.')
+    return requested
+
+
+def _data_files(folder: str, pattern: str, node_selection: str) -> list[Path]:
+    """Return the files matching the pattern that belong to the node selection; raise if there are none.
+
+    Fixed-field files are always left out. Grid files are named with average4 or area, so a loose pattern such as
+    f'{prefix}_AUS-11_1hr_*.nc' can match them all and still merge only the kind asked for.
+    """
+    grid_tags = {'average4': '_average4_', 'area': '_area_'}
+    files = []
+    for file in sorted(Path(folder).glob(pattern)):
+        wanted = grid_tags[node_selection] in file.name if node_selection in grid_tags else True
+        other_grid = node_selection == 'nearest' and any(tag in file.name for tag in grid_tags.values())
+        if wanted and not other_grid and f'_{BARRA2_FIXED_FREQ}_' not in file.name:
+            files.append(file)
+    if not files:
+        raise ValueError(f'No {node_selection} netCDF files matching <{pattern}> in <{folder}>.')
+    return files
+
+
+def _nearest_dataset(
+    files: list[Path],
+    domain_freq: tuple[str, str],
+    requested: LatLonPoint,
+    orog: float | None,
+    versions: dict[str, str] | None,
+) -> xr.Dataset:
+    """Merge NCSS point files for the nearest node into a Dataset."""
+    pieces: dict[str, list[pd.Series]] = {}
+    units: dict[str, str] = {}
+    nodes: set[tuple[float, float]] = set()
+    for file in files:
+        name, unit, piece, node = _read_point_file(file)
+        pieces.setdefault(name, []).append(piece)
+        units[name] = unit
+        nodes.add(node)
+    if len(nodes) != 1:
+        raise ValueError(f'Expected one node in the files, found {len(nodes)}.')
+
+    series = {name: _clean(pd.concat(parts)) for name, parts in pieces.items()}
+    _add_wind(series, units)
+    return _build_dataset(series, units, nodes.pop(), domain_freq, requested, orog, 'nearest', versions)
+
+
+def _add_wind(series: dict[str, pd.Series], units: dict[str, str]) -> None:
+    """Add the derived wind speed and direction series, and their units, in place."""
+    for name, derived in _derive_wind(series).items():
+        series[name], units[name] = derived
+
+
+def _read_grid_file(path: Path) -> tuple[str, str, xr.DataArray]:
+    """Read one NCSS bounding-box file: its variable name, unit and (time, lat, lon) array, loaded and sorted."""
+    with xr.open_dataset(path, engine='h5netcdf') as ds:
+        names = [name for name in ds.data_vars if ds[name].dims == ('time', 'lat', 'lon')]
+        if len(names) != 1:
+            raise ValueError(f'Expected one (time, lat, lon) data variable in <{path.name}>, found {len(names)}.')
+        name = str(names[0])
+        array = ds[name].load().reset_coords(drop=True).astype(float).sortby('lat').sortby('lon')
+        unit = str(ds[name].attrs.get('units', '1'))
+    return name, unit, array.drop_attrs()
+
+
+def _read_grids(files: list[Path]) -> tuple[dict[str, xr.DataArray], dict[str, str]]:
+    """Read bounding-box files into one (time, lat, lon) array per variable, joining its months in time."""
+    pieces: dict[str, list[xr.DataArray]] = {}
+    units: dict[str, str] = {}
+    for file in files:
+        name, unit, array = _read_grid_file(file)
+        pieces.setdefault(name, []).append(array)
+        units[name] = unit
+    grids = {}
+    for name, parts in pieces.items():
+        joined = xr.concat(parts, dim='time', join='exact').sortby('time')
+        grids[name] = joined.isel(time=~joined.get_index('time').duplicated())
+    return grids, units
+
+
+def _read_fixed_grid(folder: str, pattern: str | None) -> xr.DataArray | None:
+    """Read the orog (lat, lon) grid from the first fixed-field file matching the pattern, if there is a pattern."""
+    if pattern is None:
+        return None
+    files = sorted(Path(folder).glob(pattern))
+    if not files:
+        raise ValueError(f'No fixed-field files matching <{pattern}> in <{folder}>.')
+    with xr.open_dataset(files[0], engine='h5netcdf') as ds:
+        names = [name for name in ds.data_vars if ds[name].dims == ('lat', 'lon')]
+        if len(names) != 1:
+            raise ValueError(f'Expected one (lat, lon) data variable in <{files[0].name}>, found {len(names)}.')
+        return ds[names[0]].load().reset_coords(drop=True).astype(float).sortby('lat').sortby('lon').drop_attrs()
+
+
+def _node_series(grids: dict[str, xr.DataArray], lat_index: int, lon_index: int) -> dict[str, pd.Series]:
+    """Return the series of every variable at one grid node."""
+    return {
+        name: _clean(pd.Series(grid.isel(lat=lat_index, lon=lon_index).to_numpy(), index=grid.get_index('time')))
+        for name, grid in grids.items()
+    }
+
+
+def _average_series(per_node: list[dict[str, pd.Series]], weights: np.ndarray) -> dict[str, pd.Series]:
+    """Average the nodes' series with the weights, by the hybrid method.
+
+    Speed and every other variable are weighted means of the nodes' own values (the scalar mean), including ua and va
+    (the vector mean). Direction is then taken from the averaged ua and va, since averaging bearings is meaningless.
+    """
+    averaged: dict[str, pd.Series] = {}
+    for name in per_node[0]:
+        if not name.endswith('_phi_met'):
+            frame = pd.concat([node[name] for node in per_node], axis=1, join='inner')
+            averaged[name] = pd.Series(frame.to_numpy() @ weights, index=frame.index)
+    components = {name: series for name, series in averaged.items() if _split_height(name)[0] in ('ua', 'va')}
+    for name, (series, _) in _derive_wind(components).items():
+        if name.endswith('_phi_met'):
+            averaged[name] = series
+    return averaged
+
+
+def _average4_dataset(
+    grids: dict[str, xr.DataArray],
+    units: dict[str, str],
+    fixed: xr.DataArray | None,
+    domain_freq: tuple[str, str],
+    requested: LatLonPoint,
+    versions: dict[str, str] | None,
+) -> xr.Dataset:
+    """Average the four nodes around the requested site, and write the four node series beside the average."""
+    template = next(iter(grids.values()))
+    lats, lons = template['lat'].to_numpy(), template['lon'].to_numpy()
+    lat_index, lon_index = bracket_index(lats, float(requested.lat)), bracket_index(lons, float(requested.lon))
+    cells = [(a, b) for a in (lat_index, lat_index + 1) for b in (lon_index, lon_index + 1)]
+    node_lat, node_lon = np.array([lats[a] for a, _ in cells]), np.array([lons[b] for _, b in cells])
+    distances = distance_km(float(requested.lat), float(requested.lon), node_lat, node_lon)
+    weights = inverse_distance_weights(distances)
+    orogs = (
+        np.array(
+            [float(fixed.sel(lat=la, lon=lo, method='nearest')) for la, lo in zip(node_lat, node_lon, strict=True)]
+        )
+        if fixed is not None
+        else None
+    )
+
+    per_node = [_node_series(grids, a, b) for a, b in cells]
+    for series in per_node:
+        _add_wind(series, units)
+    site = (float(requested.lat), float(requested.lon))
+    mean_orog = float(weights @ orogs) if orogs is not None else None
+    ds = _build_dataset(
+        _average_series(per_node, weights), units, site, domain_freq, requested, mean_orog, 'average4', versions
+    )
+    ds = _label_node_means(ds)
+    node_datasets = [
+        _build_dataset(
+            per_node[k], units, (node_lat[k], node_lon[k]), domain_freq, requested, None, 'average4', versions
+        )
+        for k in range(len(cells))
+    ]
+    coords = {'node_lat': node_lat, 'node_lon': node_lon, 'node_distance': distances, 'node_weight': weights}
+    if orogs is not None:
+        coords['node_orog'] = orogs
+    return _add_nodes(ds, node_datasets, coords)
+
+
+def _label_node_means(ds: xr.Dataset) -> xr.Dataset:
+    """Add the node mean to each variable's cell_methods: scalar for speed, vector for the components and direction."""
+    labels = {'wind_speed': 'node: mean (scalar)', 'ua': 'node: mean (vector)', 'va': 'node: mean (vector)'}
+    labels['wind_from_direction'] = 'node: mean (vector)'
+    for name in ds.data_vars:
+        if name != 'time_bnds':
+            label = labels.get(str(name), 'node: mean')
+            existing = ds[name].attrs.get('cell_methods')
+            ds[name].attrs['cell_methods'] = f'{existing} {label}' if existing else label
+    return ds
+
+
+def _add_nodes(ds: xr.Dataset, node_datasets: list[xr.Dataset], coords: dict[str, np.ndarray]) -> xr.Dataset:
+    """Add the node dimension, its coordinates, and each variable's four node series as <name>_node variables."""
+    names = [str(name) for name in ds.data_vars if name != 'time_bnds']
+    node = np.arange(len(node_datasets))
+    units = {'node_lat': 'degrees_north', 'node_lon': 'degrees_east', 'node_distance': 'km', 'node_weight': '1'}
+    ds = ds.assign_coords({'node': ('node', node), **{key: ('node', value) for key, value in coords.items()}})
+    for key in coords:
+        ds[key].attrs = {'units': units.get(key, 'm')}
+    for name in names:
+        stacked = xr.concat([nd[name].reset_coords(drop=True) for nd in node_datasets], dim='node')
+        ds[f'{name}_node'] = stacked.assign_coords(node=node).assign_attrs(node_datasets[0][name].attrs)
+    return ds
+
+
+def _derive_wind_grids(grids: dict[str, xr.DataArray], units: dict[str, str]) -> None:
+    """Add wind speed and meteorological direction grids for every ua/va pair present, in place."""
+    for ua, va, height in BARRA2_WIND_VARS:
+        ua_name = ua if ua in grids else f'ua{height}m'
+        va_name = va if va in grids else f'va{height}m'
+        if ua_name in grids and va_name in grids:
+            u, v = grids[ua_name], grids[va_name]
+            direction = np.mod(180 + np.rad2deg(np.arctan2(u, v)), 360)
+            grids[f'v{height}m'] = (u**2 + v**2) ** 0.5
+            grids[f'v{height}m_phi_met'] = xr.where((u == 0) & (v == 0), 0.0, direction)
+            units[f'v{height}m'], units[f'v{height}m_phi_met'] = 'm s-1', 'degrees'
+
+
+def _area_dataset(
+    grids: dict[str, xr.DataArray],
+    units: dict[str, str],
+    fixed: xr.DataArray | None,
+    domain_freq: tuple[str, str],
+    versions: dict[str, str] | None,
+) -> xr.Dataset:
+    """Assemble an area Dataset: every node, with lat and lon as dimensions."""
+    domain, freq = domain_freq
+    versions = _with_aliases(versions or {})
+    _derive_wind_grids(grids, units)
+    stacked, plain = _group_by_height(list(grids))
+    mean_names = [name for name in plain if _is_mean(domain, freq, name)]
+    series_names = [name for name in grids if name not in mean_names]
+
+    template = next(iter(grids.values()))
+    times = _union_times([grids[name].get_index('time') for name in series_names])
+    ds = xr.Dataset(coords={'time': times, 'lat': template['lat'].to_numpy(), 'lon': template['lon'].to_numpy()})
+    ds['time'].attrs = {'standard_name': 'time', 'long_name': 'time as served, UTC'}
+    ds['lat'].attrs = {'units': 'degrees_north', 'standard_name': 'latitude'}
+    ds['lon'].attrs = {'units': 'degrees_east', 'standard_name': 'longitude'}
+    if stacked:
+        ds = _add_height_grids(ds, grids, units, stacked, versions)
+    for name in plain:
+        if name not in mean_names:
+            attrs = _variable_attrs(domain, freq, name, units[name], versions)
+            ds[name] = grids[name].reindex(time=times).transpose('time', 'lat', 'lon').assign_attrs(attrs)
+    if mean_names:
+        ds = _add_mean_grids(ds, grids, units, mean_names, domain_freq, versions)
+    if fixed is not None:
+        ds['orog'] = fixed.assign_attrs({'units': 'm', 'standard_name': 'surface_altitude', 'barra2_name': 'orog'})
+    _set_time_encoding(ds)
+    ds.attrs = _global_attrs(domain, freq, 'area', None, sorted(set(versions.values())))
+    return ds
+
+
+def _add_height_grids(
+    ds: xr.Dataset,
+    grids: dict[str, xr.DataArray],
+    units: dict[str, str],
+    stacked: dict[str, dict[int, str]],
+    versions: dict[str, str],
+) -> xr.Dataset:
+    """Add the height coordinate and one (time, height, lat, lon) variable per quantity; a missing height is NaN."""
+    heights = np.array(sorted({height for names in stacked.values() for height in names}), dtype=float)
+    ds = ds.assign_coords(height=('height', heights))
+    ds['height'].attrs = {'units': 'm', 'positive': 'up', 'long_name': 'height above ground'}
+    for quantity, names in stacked.items():
+        have = sorted(names)
+        parts = [grids[names[height]].reindex(time=ds['time']) for height in have]
+        stack = xr.concat(parts, dim=pd.Index([float(height) for height in have], name='height'))
+        attrs = {
+            'units': units[names[have[0]]],
+            'standard_name': _STANDARD_NAMES[quantity],
+            'barra2_name': ', '.join(names[height] for height in have),
+        }
+        found = sorted({versions[name] for name in names.values() if name in versions})
+        if found:
+            attrs['barra2_version'] = ', '.join(found)
+        ds[quantity] = stack.reindex(height=heights).transpose('time', 'height', 'lat', 'lon').assign_attrs(attrs)
+    return ds
+
+
+def _add_mean_grids(
+    ds: xr.Dataset,
+    grids: dict[str, xr.DataArray],
+    units: dict[str, str],
+    mean_names: list[str],
+    domain_freq: tuple[str, str],
+    versions: dict[str, str],
+) -> xr.Dataset:
+    """Add time_mean, its bounds and the mean variables as (time_mean, lat, lon)."""
+    domain, freq = domain_freq
+    half_step = BARRA2_FREQS[domain][freq] / 2
+    mean_times = _union_times([grids[name].get_index('time') for name in mean_names])
+    ds = ds.assign_coords(time_mean=('time_mean', mean_times))
+    ds['time_mean'].attrs = {'standard_name': 'time', 'bounds': 'time_bnds', 'long_name': 'middle of the mean period'}
+    ds['time_bnds'] = (('time_mean', 'bnds'), np.column_stack([mean_times - half_step, mean_times + half_step]))
+    for name in mean_names:
+        attrs = _variable_attrs(domain, freq, name, units[name], versions)
+        array = grids[name].reindex(time=mean_times).rename(time='time_mean')
+        ds[name] = array.transpose('time_mean', 'lat', 'lon').assign_attrs(attrs)
+    return ds
+
+
+def _set_time_encoding(ds: xr.Dataset) -> None:
+    """Give every time axis one explicit unit, so time_mean and time_bnds are encoded alike (CF) and exactly."""
+    for name in ('time', 'time_mean', 'time_bnds'):
+        if name in ds.variables:
+            ds[name].encoding['units'] = _TIME_UNITS
+
+
+def _csv_name(quantity: str, height: int) -> str:
+    """Return the csv-route column name of a height-stacked quantity, e.g. ('ua', 10) -> 'ua10m'."""
+    return {
+        'ua': f'ua{height}m',
+        'va': f'va{height}m',
+        'wind_speed': f'v{height}m',
+        'wind_from_direction': f'v{height}m_phi_met',
+    }[quantity]
+
+
+def _frame_columns(name: str, array: xr.DataArray, index: pd.Index) -> dict[str, pd.Series]:
+    """Return the csv columns of one variable: one per height for a stacked quantity, else one."""
+    unit = array.attrs.get('units', '1')
+    if 'height' not in array.dims:
+        return {f'{name}[unit="{unit}"]': pd.Series(array.to_numpy(), index=index)}
+    return {
+        f'{_csv_name(name, int(height))}[unit="{unit}"]': pd.Series(array.sel(height=height).to_numpy(), index=index)
+        for height in array['height'].to_numpy()
+    }
+
+
+def _frame(ds: xr.Dataset, node: int | None) -> pd.DataFrame:
+    """Build the csv-route frame of the main series (node None) or of one node's series."""
+    columns: dict[str, pd.Series] = {}
+    for variable in ds.data_vars:
+        name = str(variable)
+        if name == 'time_bnds' or name.endswith('_node') != (node is not None):
+            continue
+        array = ds[name].sel(node=node) if node is not None else ds[name]
+        index = ds.get_index('time_mean' if 'time_mean' in array.dims else 'time')
+        columns |= _frame_columns(name.removesuffix('_node'), array, index)
+    data = pd.concat(columns, axis=1).sort_index().dropna(axis=1, how='all')
+    lat = float(ds['node_lat'][node]) if node is not None else float(ds['lat'])
+    lon = float(ds['node_lon'][node]) if node is not None else float(ds['lon'])
+    label = f'node{node + 1}' if node is not None else str(ds.attrs.get('node_selection', 'nearest'))
+    index_columns = pd.DataFrame({BARRA2_INDEX[1]: label, BARRA2_INDEX[2]: lat, BARRA2_INDEX[3]: lon}, index=data.index)
+    frame = pd.concat([index_columns, data], axis=1)
+    frame.insert(0, BARRA2_INDEX[0], pd.DatetimeIndex(data.index).strftime('%Y-%m-%dT%H:%M:%SZ'))
+    return frame.reset_index(drop=True)
 
 
 def _variable_name(column: str) -> str:

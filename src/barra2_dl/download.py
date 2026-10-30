@@ -19,19 +19,24 @@ from barra2_dl.globals import (
     BARRA2_FIXED_FREQ,
     BARRA2_FIXED_VARS_AUTO,
     BARRA2_FREQS,
+    BARRA2_GRID_SPACING,
     BARRA2_PRESETS,
     BARRA2_URL,
     BARRA2_URL_AUS11_1HR,
     BARRA2_URL_AUST04_1HR,
+    BARRA2_URL_BBOX,
     BARRA2_URL_FX,
+    BARRA2_URL_FX_BBOX,
     BARRA2_VAR_ALIASES,
     BARRA2_VARS,
 )
+from barra2_dl.mapping import LatLonBBox
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
 __all__ = [
+    'area_data_urlfilenames',
     'download_multithread',
     'download_serial',
     'point_data_urlfilenames',
@@ -60,23 +65,31 @@ def point_data_urlfilenames(
     start_datetime: str | datetime,
     end_datetime: str | datetime,
     fileout_prefix: str | None = None,
-    fileout_type: str = 'csv_file',
+    fileout_type: str | None = None,
     *,
     domain: str = 'AUS-11',
     freq: str = '1hr',
+    node_selection: str = 'nearest',
 ) -> list[URLFilenamePair]:
     """Generate a list of URLs and Filenames for downloading barra2 point data.
 
-    Uses nearest node for each var in barra2_vars for a given time period.
+    Uses nearest node for each var in barra2_vars for a given time period, or with node_selection='average4' the grid
+    of nodes around the site, for merge.merge_netcdf_to_dataset to average.
     List of URLs and filenames can be used to download files.
     URLs and filenames for each month between start and end datetime.
     filenames as f'{fileout_prefix}_{domain}_{freq}_{var}_{time_start[:10]}_{time_end[:10]}.{fileout_type}'
-    fileout_type 'csv_file' (the default) downloads csv for merge_csvs_to_df; 'netcdf4' downloads netCDF4 (extension nc)
-    for merge.merge_netcdf_to_dataset. Both can share a cache folder.
+    fileout_type 'csv_file' (the default for the nearest node) downloads csv for merge_csvs_to_df; 'netcdf4' downloads
+    netCDF4 (extension nc) for merge.merge_netcdf_to_dataset. Both can share a cache folder.
 
     Every variable is checked against the inventory BARRA2_VARS before any URL is built. Fixed (fx) fields such as
     orog and sftlf have no time axis, so each gets one request, named f'{fileout_prefix}_{domain}_fx_{var}.csv'.
     The node altitude, orog, is added automatically whenever at least one variable is requested.
+
+    node_selection='average4' makes one small bounding-box request per variable-month around the point, sized from
+    BARRA2_GRID_SPACING, only to fetch the real nodes around it. The merge averages the four that surround the point
+    with inverse-distance weights and ignores the rest of the response.
+    A grid can't be written as csv, so it is always netCDF4, and its filenames carry average4:
+    f'{fileout_prefix}_{domain}_{freq}_average4_{var}_{time_start[:10]}_{time_end[:10]}.nc'.
 
     Args:
         barra2_url (str): BARRA2_URL from barra2_dl.globals. The pre-filled BARRA2_URL_AUS11_1HR and
@@ -88,16 +101,19 @@ def point_data_urlfilenames(
         start_datetime (str | datetime): Used to define start of inclusive download period
         end_datetime (str | datetime): Used to define end of inclusive download period
         fileout_prefix (str): Optional prefix for downloaded file. E.g. location reference
-        fileout_type (str): Download format, 'csv_file' (default) or 'netcdf4'.
+        fileout_type (str | None): Download format, 'csv_file' or 'netcdf4'. Default csv_file for the nearest node and
+            netcdf4 for average4.
         domain (str): BARRA2 domain, a key of BARRA2_DOMAINS. Default 'AUS-11'.
         freq (str): BARRA2 frequency available for the domain in BARRA2_FREQS. Default '1hr'.
+        node_selection (str): 'nearest' (default) or 'average4'. For an area use area_data_urlfilenames.
 
     Returns:
         point_data_urlfilenamepair(list[URLFilenamePair])
 
     Raises:
-        ValueError: If fileout_type is not 'csv_file' or 'netcdf4', the domain and freq are not in BARRA2_FREQS, or a
-            variable is not available at that domain and freq.
+        ValueError: If fileout_type is not 'csv_file' or 'netcdf4' (or is csv with average4), node_selection is not
+            'nearest' or 'average4', the domain and freq are not in BARRA2_FREQS, or a variable is not available at
+            that domain and freq.
 
     Examples:
         >>> from barra2_dl.globals import BARRA2_URL
@@ -109,101 +125,102 @@ def point_data_urlfilenames(
         ['site_AUST-04_20min_uas_20200101_20200131.csv', 'site_AUST-04_fx_orog.csv']
         >>> 'time_end=2020-01-31T23:40:00Z' in pairs[0][0]
         True
+        >>> pairs = point_data_urlfilenames(
+        ...     BARRA2_URL, ['ua10m'], -33.88, 151.18, '2020-01-01', '2020-01-31', 'site', node_selection='average4',
+        ... )
+        >>> [name for _, name in pairs]
+        ['site_AUS-11_1hr_average4_uas_20200101_20200131.nc', 'site_AUS-11_fx_average4_orog.nc']
+        >>> 'north=-33.77&south=-33.99&east=151.29&west=151.07' in pairs[0][0]
+        True
 
     Todo:
-        Implement grid netCDF download
         Set default fileout_prefix if not set by user
         Add option to name file_prefix using BARRA2 node if fileout_prefix is None
     """
-    # Set file extension based on fileout_type
-    match fileout_type:
-        case 'csv_file':
-            fileout_ext = 'csv'
-        case 'netcdf4':
-            fileout_ext = 'nc'
-        case _:
-            logger.error(f'Unsupported fileout_type: {fileout_type}')
-            raise ValueError(f'{fileout_type} is currently not supported.')
-
-    # a template without a {freq} placeholder is a deprecated pre-filled one, which fixes the domain and freq
-    if '{freq}' not in barra2_url:
-        warnings.warn(
-            'Pre-filled BARRA2 url templates such as BARRA2_URL_AUS11_1HR are deprecated; '
-            'pass BARRA2_URL with domain= and freq= instead.',
-            DeprecationWarning,
-            stacklevel=2,
+    if node_selection not in ('nearest', 'average4'):
+        raise ValueError(f'node_selection <{node_selection}> is not supported here; use nearest or average4.')
+    fileout_type = _resolve_fileout_type(fileout_type, node_selection)
+    domain, freq = _resolve_domain_freq(barra2_url, domain, freq)
+    if node_selection == 'nearest':
+        return _build_pairs(
+            (barra2_url, BARRA2_URL_FX),
+            {'latitude': latitude, 'longitude': longitude},
+            (barra2_vars, domain, freq, '', fileout_type),
+            (start_datetime, end_datetime, fileout_prefix),
         )
-        domain, freq = _DEPRECATED_URLS.get(barra2_url, (domain, freq))
-
-    _check_domain_freq(domain, freq)
-    model = BARRA2_DOMAINS[domain]
-    step = BARRA2_FREQS[domain][freq]
-
-    # resolve aliases to server names, dropping repeats such as uas and ua10m
-    server_vars = list(dict.fromkeys(BARRA2_VAR_ALIASES.get(var, var) for var in barra2_vars))
-
-    # split the time series from the fixed fields, and reject anything the server doesn't have, before any URL
-    fixed_available = BARRA2_VARS[(domain, BARRA2_FIXED_FREQ)]
-    series_vars = [var for var in server_vars if var not in fixed_available]
-    _check_variables(series_vars, domain, freq)
-    fixed_vars = (
-        list(dict.fromkeys([*BARRA2_FIXED_VARS_AUTO, *(var for var in server_vars if var in fixed_available)]))
-        if server_vars
-        else []
+    spacing = BARRA2_GRID_SPACING[domain]
+    box = {
+        'north': round(float(latitude) + spacing, 6),
+        'south': round(float(latitude) - spacing, 6),
+        'east': round(float(longitude) + spacing, 6),
+        'west': round(float(longitude) - spacing, 6),
+    }
+    return _build_pairs(
+        (BARRA2_URL_BBOX, BARRA2_URL_FX_BBOX),
+        box,
+        (barra2_vars, domain, freq, 'average4', fileout_type),
+        (start_datetime, end_datetime, fileout_prefix),
     )
 
-    # create empty list for url and filename
-    point_data_urlfilenamepair = []
 
-    # loop through each variable requested for download as each variable is saved in a separate url
-    for var in series_vars:
-        # loop through each month as each BARRA2 file is saved by month todo check index enumerate addition works
-        for date in _list_months(start_datetime, end_datetime, freq='MS'):
-            year = date.year
-            month = date.month
-            time_start = date
-            time_start_str = date.isoformat() + 'Z'
-            # Get the number of days in the current month; the month ends one time step before the next month
-            days_in_month = calendar.monthrange(year, month)[1]
-            time_end = date + timedelta(days=days_in_month) - step
-            time_end_str = time_end.isoformat() + 'Z'
+def area_data_urlfilenames(
+    bbox: LatLonBBox,
+    barra2_vars: list,
+    start_datetime: str | datetime,
+    end_datetime: str | datetime,
+    fileout_prefix: str | None = None,
+    fileout_type: str = 'netcdf4',
+    *,
+    domain: str = 'AUS-11',
+    freq: str = '1hr',
+) -> list[URLFilenamePair]:
+    """Generate a list of URLs and Filenames for downloading barra2 data for every node in a bounding box.
 
-            # update thredds_base_url and set as url for request
-            url = barra2_url.format(
-                domain=domain,
-                model=model,
-                freq=freq,
-                var=var,
-                year=year,
-                month=month,
-                latitude=latitude,
-                longitude=longitude,
-                time_start_str=time_start_str,
-                time_end_str=time_end_str,
-                fileout_type=fileout_type,
-            )
+    One bounding-box request per variable-month returns a (time, lat, lon) grid of real nodes; merge it with
+    merge.merge_netcdf_to_dataset(..., node_selection='area'). A grid can't be written as csv, so only netcdf4 is
+    supported. NCSS returns the nodes whose grid cell overlaps the box. The box is in the filename so a different area
+    has its own cache files:
+    f'{fileout_prefix}_{domain}_{freq}_area_n{north}_s{south}_e{east}_w{west}_{var}_{time_start[:10]}_{time_end[:10]}.nc'
 
-            # set fileout_name, including domain and freq so different runs can share a cache folder
-            fileout_name = (
-                f'{fileout_prefix}_{domain}_{freq}_{var}'
-                f'_{time_start.strftime("%Y%m%d")}_{time_end.strftime("%Y%m%d")}.{fileout_ext}'
-            )
-            # append url and filename as tuple
-            point_data_urlfilenamepair.append((url, fileout_name))
+    Variables are checked and fixed fields (orog added automatically) handled as in point_data_urlfilenames.
 
-    # fixed fields have one file per domain, so one request each with no time range
-    for var in fixed_vars:
-        url = BARRA2_URL_FX.format(
-            domain=domain,
-            model=model,
-            var=var,
-            latitude=latitude,
-            longitude=longitude,
-            fileout_type=fileout_type,
-        )
-        point_data_urlfilenamepair.append((url, f'{fileout_prefix}_{domain}_{BARRA2_FIXED_FREQ}_{var}.{fileout_ext}'))
+    Args:
+        bbox (LatLonBBox): The area, from barra2_dl.mapping.
+        barra2_vars (list): A preset from preset_variables, or set explicitly. Aliases are resolved as for points.
+        start_datetime (str | datetime): Used to define start of inclusive download period
+        end_datetime (str | datetime): Used to define end of inclusive download period
+        fileout_prefix (str): Optional prefix for downloaded file. E.g. wind farm reference
+        fileout_type (str): Download format; only 'netcdf4'.
+        domain (str): BARRA2 domain, a key of BARRA2_DOMAINS. Default 'AUS-11'.
+        freq (str): BARRA2 frequency available for the domain in BARRA2_FREQS. Default '1hr'.
 
-    return point_data_urlfilenamepair
+    Returns:
+        list[URLFilenamePair]
+
+    Raises:
+        ValueError: If fileout_type is not 'netcdf4', the domain and freq are not in BARRA2_FREQS, or a variable is not
+            available at that domain and freq.
+
+    Examples:
+        >>> from barra2_dl.mapping import LatLonBBox
+        >>> box = LatLonBBox(north=-23.4, south=-23.7, east=133.5, west=133.2)
+        >>> pairs = area_data_urlfilenames(box, ['ua50m'], '2020-01-01', '2020-01-31', 'farm')
+        >>> for _, name in pairs:
+        ...     print(name)
+        farm_AUS-11_1hr_area_n-23.4_s-23.7_e133.5_w133.2_ua50m_20200101_20200131.nc
+        farm_AUS-11_fx_area_n-23.4_s-23.7_e133.5_w133.2_orog.nc
+    """
+    if fileout_type != 'netcdf4':
+        raise ValueError(f'An area is a grid and can only be downloaded as netcdf4, not {fileout_type}.')
+    _check_domain_freq(domain, freq)
+    box = {'north': float(bbox.north), 'south': float(bbox.south), 'east': float(bbox.east), 'west': float(bbox.west)}
+    tag = f'area_n{box["north"]:g}_s{box["south"]:g}_e{box["east"]:g}_w{box["west"]:g}'
+    return _build_pairs(
+        (BARRA2_URL_BBOX, BARRA2_URL_FX_BBOX),
+        box,
+        (barra2_vars, domain, freq, tag, fileout_type),
+        (start_datetime, end_datetime, fileout_prefix),
+    )
 
 
 def preset_variables(
@@ -340,6 +357,102 @@ def download_multithread(
 
 
 # region Helpers
+def _resolve_fileout_type(fileout_type: str | None, node_selection: str) -> str:
+    """Return the download format: csv_file for the nearest node and netcdf4 for a grid, unless given; reject others."""
+    grid = node_selection != 'nearest'
+    fileout_type = fileout_type or ('netcdf4' if grid else 'csv_file')
+    if fileout_type not in ('csv_file', 'netcdf4'):
+        logger.error(f'Unsupported fileout_type: {fileout_type}')
+        raise ValueError(f'{fileout_type} is currently not supported.')
+    if grid and fileout_type != 'netcdf4':
+        raise ValueError(f'{node_selection} downloads a grid, which can only be netcdf4, not {fileout_type}.')
+    return fileout_type
+
+
+def _resolve_domain_freq(barra2_url: str, domain: str, freq: str) -> tuple[str, str]:
+    """Return the domain and freq, taking them from a deprecated pre-filled url template, and check them."""
+    # a template without a {freq} placeholder is a deprecated pre-filled one, which fixes the domain and freq
+    if '{freq}' not in barra2_url:
+        warnings.warn(
+            'Pre-filled BARRA2 url templates such as BARRA2_URL_AUS11_1HR are deprecated; '
+            'pass BARRA2_URL with domain= and freq= instead.',
+            DeprecationWarning,
+            stacklevel=3,
+        )
+        domain, freq = _DEPRECATED_URLS.get(barra2_url, (domain, freq))
+    _check_domain_freq(domain, freq)
+    return domain, freq
+
+
+def _build_pairs(
+    templates: tuple[str, str],
+    location: dict[str, float | int],
+    request: tuple[list, str, str, str, str],
+    period: tuple[str | datetime, str | datetime, str | None],
+) -> list[URLFilenamePair]:
+    """Build the (url, filename) pairs: one per variable-month, then one per fixed field.
+
+    templates are the series and fixed-field url templates; location the fields they take for the site or box;
+    request the variables, domain, freq, the filename tag for a grid ('' for a point) and the fileout_type; period the
+    start, end and filename prefix.
+    """
+    series_template, fixed_template = templates
+    barra2_vars, domain, freq, tag, fileout_type = request
+    start_datetime, end_datetime, fileout_prefix = period
+    fileout_ext = {'csv_file': 'csv', 'netcdf4': 'nc'}[fileout_type]
+    model = BARRA2_DOMAINS[domain]
+    step = BARRA2_FREQS[domain][freq]
+    tag_part = f'{tag}_' if tag else ''
+
+    # resolve aliases to server names, dropping repeats such as uas and ua10m
+    server_vars = list(dict.fromkeys(BARRA2_VAR_ALIASES.get(var, var) for var in barra2_vars))
+
+    # split the time series from the fixed fields, and reject anything the server doesn't have, before any URL
+    fixed_available = BARRA2_VARS[(domain, BARRA2_FIXED_FREQ)]
+    series_vars = [var for var in server_vars if var not in fixed_available]
+    _check_variables(series_vars, domain, freq)
+    fixed_vars = (
+        list(dict.fromkeys([*BARRA2_FIXED_VARS_AUTO, *(var for var in server_vars if var in fixed_available)]))
+        if server_vars
+        else []
+    )
+
+    pairs: list[URLFilenamePair] = []
+
+    # each variable is saved in a separate url, and each BARRA2 file is saved by month
+    for var in series_vars:
+        for date in _list_months(start_datetime, end_datetime, freq='MS'):
+            # the month ends one time step before the next month
+            time_end = date + timedelta(days=calendar.monthrange(date.year, date.month)[1]) - step
+            url = series_template.format(
+                domain=domain,
+                model=model,
+                freq=freq,
+                var=var,
+                year=date.year,
+                month=date.month,
+                time_start_str=date.isoformat() + 'Z',
+                time_end_str=time_end.isoformat() + 'Z',
+                fileout_type=fileout_type,
+                **location,
+            )
+            # the filename includes domain and freq so different runs can share a cache folder
+            pairs.append(
+                (
+                    url,
+                    f'{fileout_prefix}_{domain}_{freq}_{tag_part}{var}'
+                    f'_{date.strftime("%Y%m%d")}_{time_end.strftime("%Y%m%d")}.{fileout_ext}',
+                )
+            )
+
+    # fixed fields have one file per domain, so one request each with no time range
+    for var in fixed_vars:
+        url = fixed_template.format(domain=domain, model=model, var=var, fileout_type=fileout_type, **location)
+        pairs.append((url, f'{fileout_prefix}_{domain}_{BARRA2_FIXED_FREQ}_{tag_part}{var}.{fileout_ext}'))
+
+    return pairs
+
+
 def _check_domain_freq(domain: str, freq: str) -> None:
     """Raise ValueError if the domain and freq are not a supported combination in BARRA2_FREQS."""
     if freq not in BARRA2_FREQS.get(domain, {}):
