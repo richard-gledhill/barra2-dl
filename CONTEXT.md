@@ -39,7 +39,7 @@ The variables BARRA2 publishes for each domain and frequency, with their units a
 
 **Fixed field**:
 A time-invariant variable in the `fx` folder, such as `orog` (model surface altitude) or `sftlf` (land fraction).
-One request per node, cached as `<prefix>_<domain>_fx_<var>.csv`, and read with `read_fixed_fields` rather than
+One request per node, cached as `<prefix>_<domain>_fx_<var>.csv` (or `.nc`), and read with `read_fixed_fields` rather than
 merged. `orog` comes with every point download.
 _Avoid_: Static variable
 
@@ -50,7 +50,7 @@ variables.
 
 **Point data**:
 The time series of one variable at the grid node nearest a latitude and longitude, fetched through the NetCDF
-Subset Service as CSV.
+Subset Service as CSV (`fileout_type='csv_file'`) or netCDF4 (`fileout_type='netcdf4'`).
 _Avoid_: Grid data (a gridded/bounding-box download is not implemented)
 
 ### Processing
@@ -81,3 +81,17 @@ The magnitude of the `ua`/`va` pair, added as `v<height>[unit="m s-1"]`.
 **Meteorological direction** (`v*_phi_met`):
 The direction the wind blows from, in degrees clockwise from north, added as `v<height>_phi_met[unit="degrees"]`.
 _Avoid_: Direction of travel (the opposite convention)
+
+### Output
+
+**Dataset**:
+The xarray form of the merged data, from `merge.merge_netcdf_to_dataset` (netCDF4 downloads) or `merge.to_dataset`
+(a csv DataFrame), written with `to_netcdf()`: wind quantities on a `height`
+dimension, units and cell methods as attributes, the node altitude and provenance as global attributes. One file per
+site, named `<prefix>_<domain>_<freq>_<selection>_<start>_<end>.nc`.
+_Avoid_: Treating a Dataset as a grid (a gridded download is not implemented)
+
+**time_mean**:
+The time coordinate of variables averaged over the time step (cell methods `time: mean`, such as `pr`), stamped mid-period
+(:30 at `1hr`) and kept as served; `time_bnds` gives the period. Instantaneous variables use `time`.
+_Avoid_: Shifting or resampling the timestamps

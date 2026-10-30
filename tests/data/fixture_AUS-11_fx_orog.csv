@@ -1,0 +1,2 @@
+time,station,latitude[unit="degrees_north"],longitude[unit="degrees_east"],orog[unit="m"]
+1970-01-01T00:00:00Z,GridPointRequestedAt[23.550S_133.400E],-23.540,133.360,747.6107

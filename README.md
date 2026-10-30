@@ -42,8 +42,8 @@ However, BARRA2 is structured with data for each variable saved in separate fold
 Therefore, for the purpose of downloading a subset of variables for a specific location,
 a recursive web request is required using the NetcdfSubset Data Access to get subsetted data.
 
-This package and example scripts provides examples to recursively download data in csv (for point data) relevant to wind farm resource analysis for
-specific locations and time periods.
+This package and its example scripts download point data as csv, relevant to wind farm resource analysis for
+specific locations and time periods, and can write the result as csv or netCDF.
 
 The following links provide an example of the urls:
 
@@ -75,12 +75,15 @@ https://opus.nci.org.au/pages/viewpage.action?pageId=264241166
 - The node altitude (`orog`) comes with every point download; land fraction (`sftlf`) on request
 - Parallel, resumable download: files already in the cache folder are skipped
 - Merge the downloaded csv files into one DataFrame, and derive wind speed and direction from the u/v components
+- netCDF output: download netCDF4 (`fileout_type='netcdf4'`) and `merge.merge_netcdf_to_dataset` gives a CF-style
+  xarray Dataset with a `height` dimension, units, the dataset version and the node altitude, ready for
+  `to_netcdf()`; `merge.to_dataset` does the same from csv files; timestamps are kept as served ([how to use](https://richard-gledhill.github.io/barra2-dl/how-to-use/))
 - Optional unit conversion: K to °C, Pa to hPa, precipitation flux to mm/h
 - Fully typed with annotations and checked with mypy, [PEP561 compatible](https://www.python.org/dev/peps/pep-0561/)
 
 ## Installation
 
-barra2-dl is not published on PyPI. Install it from GitHub (Python 3.12 or later):
+barra2-dl is not published on PyPI yet (a release is planned after the GUI, see the roadmap). Install it from GitHub (Python 3.12 or later):
 
 ```bash
 pip install git+https://github.com/richard-gledhill/barra2-dl.git
@@ -102,6 +105,7 @@ from pathlib import Path
 
 import barra2_dl
 from barra2_dl.globals import BARRA2_INDEX, BARRA2_PRESET_DEFAULT, BARRA2_URL
+from barra2_dl.mapping import LatLonPoint
 
 cache_dir = Path('cache')
 cache_dir.mkdir(exist_ok=True)  # the download folder must already exist
@@ -136,7 +140,17 @@ node_fields = barra2_dl.merge.read_fixed_fields(str(cache_dir), 'Demo_AUS-11_fx_
 # 5. Add wind speed (v*) and meteorological direction (v*_phi_met) columns from ua*/va*, and optionally convert units
 df_converted = barra2_dl.convert.convert_wind_components(df_merged)
 df_converted = barra2_dl.convert.convert_units(df_converted)
+
+# 6. Optionally write a netCDF file from the csv data
+node_altitude = node_fields['orog[unit="m"]']
+ds = barra2_dl.merge.to_dataset(
+    df_converted, domain='AUS-11', freq='1hr', requested=LatLonPoint(-23.5527472, 133.3961111), orog=node_altitude
+)
+ds.to_netcdf(Path('Demo_AUS-11_1hr_nearest_20230101_20230331.nc'))
 ```
+
+To go straight to netCDF, download with `fileout_type='netcdf4'` in step 2 and use `merge_netcdf_to_dataset` in place
+of steps 4 to 6; it is smaller, quicker and carries the dataset version. See the how-to guide below.
 
 Presets are defined at 1-hourly data. At AUST-04 20-minute data use the `wind` preset: pressure and humidity
 aren't published every 20 minutes, so `wind+density` raises an error rather than downloading part of it.
@@ -145,7 +159,7 @@ Cache files are named `<prefix>_<domain>_<freq>_<var>_<start>_<end>.csv`, so run
 frequencies can share a cache folder. `BARRA2_URL_AUS11_1HR` and `BARRA2_URL_AUST04_1HR` still work in place of
 `BARRA2_URL` but are deprecated.
 
-Also refer to the example Jupyter Notebook and script in `scripts/`.
+For the DataFrame, csv and netCDF outputs and the timestamp convention, see the [how-to guide](https://richard-gledhill.github.io/barra2-dl/how-to-use/). Runnable examples, as scripts and Jupyter notebooks, are in `scripts/`: `example_barra2_dl_csv` and `example_barra2_dl_netcdf`.
 
 ## License
 
@@ -153,12 +167,25 @@ Also refer to the example Jupyter Notebook and script in `scripts/`.
 
 
 ## Roadmap
-1) Currently, AUS-11 1hr, AUST-04 1hr and AUST-04 20min are implemented.
-2) Add option for AUS-22
-3) Implement bulk download for netCDF (for gridded data)
-4) Add download progress bar
-5) Multi-location download
-6) CLI interface
+
+Implemented: AUS-11 at `1hr` and AUST-04 at `1hr` and `20min`; wind variables at 10 to 1500 m; variable presets and
+the checked variable inventory; the node altitude (`orog`); csv output.
+
+The work is planned as a series of requirements documents (RFCs), set out in the
+[roadmap](https://github.com/richard-gledhill/barra2-dl/blob/main/docs/development/requirements/wind-engineering-roadmap-prd.md#4-rfc-roadmap). In delivery order:
+
+| Order | Work | Status |
+|---|---|---|
+| 1 | [Fix the wind variable table](https://github.com/richard-gledhill/barra2-dl/blob/main/docs/development/requirements/wind-variables-bugfix-prd.md): real variables, heights, `ua10m`/`va10m` aliases | Done |
+| 2 | [Parameter review](https://github.com/richard-gledhill/barra2-dl/blob/main/docs/development/requirements/parameter-review-prd.md): presets, variable inventory, node altitude, unit conversion | Done |
+| 3 | [netCDF output, node averaging and area download](https://github.com/richard-gledhill/barra2-dl/blob/main/docs/development/requirements/netcdf-output-prd.md): a CF-style xarray Dataset from netCDF4 downloads (`merge_netcdf_to_dataset`) or csv (`to_dataset`) is in; a four-node average and a `(time, lat, lon)` area download are next | In progress |
+| 4 | [GUI](https://github.com/richard-gledhill/barra2-dl/blob/main/docs/development/requirements/gui-prd.md): a download engine with retries, a run summary and a multi-site project file, then a graphical app on top | Draft |
+| 5 | First PyPI release, and relicensing the code to MIT | After the GUI |
+| 6 | Export to wind-engineering software (Windographer, WAsP `.tab`, openWind, WindPRO) | To be drafted |
+
+Also under consideration, not yet scheduled (see the roadmap above and the [backlog](https://github.com/richard-gledhill/barra2-dl/blob/main/docs/development/backlog.md)): a command-line tool, derived variables
+(air density, shear, veer, hub-height speed), a data-quality summary report, and downloading only new data.
+The AUS-22 domain is not currently planned.
 
 ## Contributing
 Refer to [Contributing.md](https://github.com/richard-gledhill/barra2-dl/blob/main/CONTRIBUTING.md)

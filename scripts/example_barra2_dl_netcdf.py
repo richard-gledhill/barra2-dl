@@ -1,9 +1,10 @@
 #%% md
-# # barra2-dl point data demo
-# This script uses barra2-dl to download BARRA2 AUS11 and AUST04 files for a list of variables. Individual data files
-# will be
-# saved as csv files in a cache folder, then merged into a single pandas dataframe. As a final step the wind ua and va
-# components are converted to v and phi_met, before saving to a new csv file in an output folder.
+# # barra2-dl point data demo: netCDF output
+# This script uses barra2-dl to download BARRA2 AUS11 and AUST04 files for a list of variables as netCDF4. Individual
+# data files are saved in a cache folder, then merged straight into a CF-style xarray Dataset, with wind speed and
+# direction derived from the ua and va components, before saving to a netCDF file in an output folder.
+#
+# To download and write csv files instead, see example_barra2_dl_csv.py.
 #
 # The first step is to import the necessary python packages and modules from barra2_dl. Also from barra2_dl.globals we
 # import some pre-configured default variables to download.
@@ -28,8 +29,11 @@ print('Default preset: ' + BARRA2_PRESET_DEFAULT)
 # ## Set variables
 # Set the cache and output folders.
 #%%
-cache_dir = 'scripts/cache'
-output_dir = 'scripts/output'
+cache_dir = 'cache'
+output_dir = 'output'
+# the folders are git-ignored, so create them on a fresh clone
+for folder in (cache_dir, output_dir):
+    Path(folder).mkdir(parents=True, exist_ok=True)
 #%% md
 # Set the location point for downloading. This can either be set explicitly as a Dictionary, or using the
 # pre-configured LatLonPoint class in barra2_dl.mapping module. Point data is downloaded to the nearest node.
@@ -69,7 +73,8 @@ print(barra2_vars)
 #%% md
 # ## Download point data
 # Use point_data_urlfilenames and download_multithread to download the closest node for the desired variables
-# into the target cache folder. The node altitude (orog) is downloaded too, once per node.
+# into the target cache folder, as netCDF4 files (fileout_type='netcdf4'). The node altitude (orog) is downloaded too,
+# once per node.
 #%%
 urlfilenames = barra2_dl.download.point_data_urlfilenames(
     barra2_url = BARRA2_URL,
@@ -79,38 +84,42 @@ urlfilenames = barra2_dl.download.point_data_urlfilenames(
     start_datetime= start_datetime,
     end_datetime = end_datetime,
     fileout_prefix = fileout_prefix,
+    fileout_type = "netcdf4",
     domain = domain,
     freq = freq,
 )
 # Use download_multithread with n-1 threads or download_serial with 1 thread
 barra2_dl.download.download_multithread(urlfilenames, cache_dir)
 #%% md
+# THREDDS serves only the latest data, so record which dataset version each variable came from. This makes one small
+# request per variable, and falls back to "latest" for any it can't read.
+#%%
+versions = barra2_dl.download.resolve_variable_versions(barra2_vars, domain, freq)
+print(versions)
+#%% md
 # ## Combine data
-# Merge downloaded csvs into a new dataframe. Optionally export merged data to a new csv.
+# The node altitude is a single value rather than a time series, so it is read separately. Then merge the downloaded
+# files into one Dataset. Timestamps are kept as served: variables averaged over the time step (such as pr and rsds,
+# stamped at :30) go on their own time_mean coordinate with time_bnds. Wind speed and direction are derived from the
+# ua and va components and, with them, sit on a height dimension.
 #%%
-df_merged = barra2_dl.merge.merge_csvs_to_df(
-    filein_folder= cache_dir,
-    filename_pattern=f'{fileout_prefix}_{domain}_{freq}_*.csv',
-    index_for_join=BARRA2_INDEX,
+node_altitude = barra2_dl.merge.read_fixed_fields(cache_dir, f'{fileout_prefix}_{domain}_fx_*.nc')['orog[unit="m"]']
+ds = barra2_dl.merge.merge_netcdf_to_dataset(
+    filein_folder = cache_dir,
+    filename_pattern = f'{fileout_prefix}_{domain}_{freq}_*.nc',
+    domain = domain,
+    freq = freq,
+    requested = lat_lon_point,
+    orog = node_altitude,
+    versions = versions,
 )
-print(df_merged.head())
+print(ds)
 #%% md
-# The node altitude is a single value rather than a time series, so it isn't merged; read it separately.
+# ## Write netCDF
+# Name the file for the site, as <prefix>_<domain>_<freq>_<selection>_<start>_<end>.nc.
 #%%
-print(barra2_dl.merge.read_fixed_fields(cache_dir, f'{fileout_prefix}_{domain}_fx_*.csv'))
-#%%
-df_merged.to_csv(Path(output_dir) / f"{fileout_prefix}_merged_{start_datetime.strftime("%Y%m%d")}"
-                                    f"_{end_datetime.strftime("%Y%m%d")}.csv", index=False)
+ds.to_netcdf(Path(output_dir) / f"{fileout_prefix}_{domain}_{freq}_nearest_{start_datetime.strftime("%Y%m%d")}"
+                                f"_{end_datetime.strftime("%Y%m%d")}.nc")
 #%% md
-# ## Convert wind speed components
-# Using the merged dataframe, convert ua and va to v and phi_met, and export to new csv file
-#%%
-df_converted = barra2_dl.convert.convert_wind_components(df_merged)
-# optional: convert K to degC, Pa to hPa and precipitation flux to mm h-1
-df_converted = barra2_dl.convert.convert_units(df_converted)
-print(df_converted.head())
-#%%
-df_converted.to_csv(Path(output_dir) / f"{fileout_prefix}_converted_{start_datetime.strftime("%Y%m%d")}"
-                                       f"_{end_datetime.strftime("%Y%m%d")}.csv", index=False)
-#%% md
-# The merged and converted data is now ready to import into your favourite wind analysis program...
+# The netCDF file is now ready to open with xarray, e.g. xarray.open_dataset(path), or any netCDF tool.
+# For example ds.wind_speed.sel(height=[50, 100]) selects two heights.
