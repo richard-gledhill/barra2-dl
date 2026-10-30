@@ -219,7 +219,8 @@ def merge_netcdf_to_dataset(
     derived from the ua/va pairs present. Fixed-field files (with '_fx_' in the name) are skipped. The nearest node
     has the layout described in to_dataset; the others are described below.
 
-    node_selection='average4' averages the four nodes around the site with inverse-distance weights, using the hybrid
+    node_selection='average4' averages the four nodes that surround the requested point (not a boundary or area) with
+    inverse-distance weights, using the hybrid
     method: wind speed is the weighted mean of each node's own speed (a scalar mean), direction comes from the
     weighted-mean ua and va (a vector mean), and the averaged ua and va are written too. The averaged speed is
     therefore not hypot(ua, va), which would be lower where the nodes' winds differ in direction. cell_methods says

@@ -138,7 +138,7 @@ come from the server's response, never from arithmetic on the grid spacing.
 | Selection | What you get | csv | netCDF |
 |---|---|---|---|
 | `nearest` (default) | The nearest node | Yes | Yes |
-| `average4` | The four nodes around the site, averaged, plus the four node series | Yes | Yes |
+| `average4` | The four nodes around the point, averaged, plus the four node series | Yes | Yes |
 | `area` | Every node in a box you give | No | Yes |
 
 ### Four-node average
@@ -157,9 +157,14 @@ ds = barra2_dl.merge.merge_netcdf_to_dataset(
 ds.to_netcdf('Demo_AUS-11_1hr_average4_20230101_20230331.nc')
 ```
 
-One small bounding-box request is made per variable-month, a grid spacing (0.11 degrees on AUS-11, 0.04 on AUST-04)
-either side of the site. The four nodes that surround the site are weighted by the inverse of their distance. A site
-exactly on a node gets that node's values.
+You give one point. The average is of the four grid nodes that surround that point (the node either side of it in
+latitude and either side in longitude), weighted by the inverse of each node's distance from it. There is no site
+boundary and no averaging over an area: the same point always gives the same four nodes. A point exactly on a node gets
+that node's values.
+
+To find those nodes, one small download window is requested per variable-month, a grid spacing (0.11 degrees on
+AUS-11, 0.04 on AUST-04) either side of the point. The server returns a grid of real nodes for it, typically 3 x 3.
+The window is only how the nodes are fetched: the four that surround the point are used and the others are ignored.
 
 **How the average is made.** Speed and direction are averaged differently, on purpose:
 
@@ -176,8 +181,8 @@ uses for buoy winds, and what Copernicus Marine recommends when both speed and d
 
 **The four node series** are written beside the average. In the netCDF each averaged variable has a `<name>_node`
 twin on a `node` dimension (size 4), with `node_lat`, `node_lon`, `node_distance` (km), `node_weight` and, with
-`fixed_pattern`, `node_orog` as coordinates. `lat` and `lon` are the site you asked for, and the `orog` attribute is the
-weighted mean. Comparing the node series shows which node best represents the site.
+`fixed_pattern`, `node_orog` as coordinates. `lat` and `lon` are the point you asked for, and the `orog` attribute is the
+weighted mean. Comparing the node series shows which node best represents the point.
 
 **csv output.** `dataset_to_frames(ds)` returns a DataFrame for the average (key `average4`) and one for each node
 (`node1` to `node4`), with the same columns as the csv route. Write each to its own file:

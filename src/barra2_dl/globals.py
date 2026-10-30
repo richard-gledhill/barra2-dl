@@ -79,11 +79,11 @@ BARRA2_PRESET_DEFAULT = 'wind+density'
 # barra2_aus11_extents http://www.bom.gov.au/research/publications/researchreports/BRR-067.pdf
 # Todo BARRA2_AU11_LATLONBBOX = LatLonBBox(north=12.95, south=-57.97, east=207.39, west=88.48)
 
-# Grid spacing of each domain in degrees (about 11 km and 4 km). Sizes the box around a site for the four-node
-# average; the nodes themselves always come from the bounding-box response, never from this arithmetic.
+# Grid spacing of each domain in degrees (about 11 km and 4 km). Sizes the download window around a point for the
+# four-node average; the nodes themselves always come from the bounding-box response, never from this arithmetic.
 BARRA2_GRID_SPACING = {'AUS-11': 0.11, 'AUST-04': 0.04}
 
-# How the nodes for a site are chosen: the nearest node (point request), the four nodes around the site averaged, or
+# How the nodes for a point are chosen: the nearest node (point request), the four nodes around the point averaged, or
 # every node in a user-given box (netCDF only)
 BARRA2_NODE_SELECTIONS = ('nearest', 'average4', 'area')
 

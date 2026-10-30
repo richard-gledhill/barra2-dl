@@ -85,8 +85,9 @@ def point_data_urlfilenames(
     orog and sftlf have no time axis, so each gets one request, named f'{fileout_prefix}_{domain}_fx_{var}.csv'.
     The node altitude, orog, is added automatically whenever at least one variable is requested.
 
-    node_selection='average4' makes one small bounding-box request per variable-month around the site, sized from
-    BARRA2_GRID_SPACING. The response holds the real nodes, which the merge averages with inverse-distance weights.
+    node_selection='average4' makes one small bounding-box request per variable-month around the point, sized from
+    BARRA2_GRID_SPACING, only to fetch the real nodes around it. The merge averages the four that surround the point
+    with inverse-distance weights and ignores the rest of the response.
     A grid can't be written as csv, so it is always netCDF4, and its filenames carry average4:
     f'{fileout_prefix}_{domain}_{freq}_average4_{var}_{time_start[:10]}_{time_end[:10]}.nc'.
 

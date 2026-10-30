@@ -54,8 +54,8 @@ on AUS-11 and 0.04 on AUST-04 (`BARRA2_GRID_SPACING`). Always taken from the ser
 _Avoid_: Cell, grid point (a grid point is requested at a latitude and longitude; the node is what the server returns)
 
 **Node selection** (`BARRA2_NODE_SELECTIONS`):
-How the nodes for a site are chosen: `nearest` (the default point request), `average4` (the four nodes around the site,
-averaged) or `area` (every node in a box, netCDF only).
+How the nodes for a point are chosen: `nearest` (the default point request), `average4` (the four nodes around the
+point, averaged) or `area` (every node in a box, netCDF only).
 
 **Point data**:
 The time series of one variable at the grid node nearest a latitude and longitude, fetched through the NetCDF
@@ -85,7 +85,8 @@ name, and the converted output uses the alias so the 10 m wind is named like the
 _Avoid_: Treating `ua10m` as a server variable (the server has none)
 
 **Four-node average** (`average4`):
-The inverse-distance weighted mean of the four nodes surrounding a site, by the hybrid method: speed is the mean of the
+The inverse-distance weighted mean of the four nodes surrounding the one point the user gave (not a site boundary or
+area), by the hybrid method: speed is the mean of the
 nodes' own speeds (scalar mean), direction comes from the mean `ua` and `va` (vector mean). The averaged speed is
 therefore not `hypot(ua, va)`. The four node series are written beside it.
 _Avoid_: Averaging bearings, or speed from averaged components
