@@ -1,4 +1,4 @@
-Status: Draft
+Status: Accepted
 
 # RFC-003: netCDF output, node averaging and area download
 
