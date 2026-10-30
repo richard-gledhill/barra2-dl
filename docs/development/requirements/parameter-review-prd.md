@@ -1,4 +1,4 @@
-Status: Draft
+Status: Done
 
 # RFC-002: Review supported BARRA2 parameters against wind energy assessment needs
 
