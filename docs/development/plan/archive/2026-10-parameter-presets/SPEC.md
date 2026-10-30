@@ -1,7 +1,7 @@
 # SPEC: parameter presets, variable inventory and fixed fields
 
-Requirement: [RFC-002](../requirements/parameter-review-prd.md). Style and gates: [conventions.md](../conventions.md),
-[constraints.md](../constraints.md).
+Requirement: [RFC-002](../../../requirements/parameter-review-prd.md). Style and gates: [conventions.md](../../../conventions.md),
+[constraints.md](../../../constraints.md).
 
 ## Scope
 
