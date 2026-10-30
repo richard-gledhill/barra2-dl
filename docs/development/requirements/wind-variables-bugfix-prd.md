@@ -1,4 +1,4 @@
-Status: Draft
+Status: Done
 
 # RFC-001: Fix the BARRA2 wind variable table and support all wind frequencies
 
