@@ -1,6 +1,8 @@
 """This module contains global or default variables required to download barra2-dl data from thredds.nci.org.au."""
 
+import csv
 from datetime import timedelta
+from importlib.resources import files
 
 # Todo from .mapping import LatLonBBox
 
@@ -37,6 +39,43 @@ BARRA2_FREQS = {
     'AUST-04': {'1hr': timedelta(hours=1), '20min': timedelta(minutes=20)},
 }
 
+# Frequency folder of the fixed (time-invariant) fields such as orog and sftlf, fetched once per node
+BARRA2_FIXED_FREQ = 'fx'
+
+
+def _read_inventory() -> list[dict[str, str]]:
+    """Read the BARRA2 variable inventory shipped in barra2_dl/data, built by scripts/build_barra2_inventory.py."""
+    text = files('barra2_dl').joinpath('data', 'barra2_variables.csv').read_text(encoding='utf-8')
+    return list(csv.DictReader(text.splitlines()))
+
+
+# Variables barra2-dl can download, per (domain, freq), including the fixed fields under (domain, 'fx')
+BARRA2_VARS: dict[tuple[str, str], frozenset[str]] = {}
+# Units, cell methods and long name of each variable, per (domain, freq, var)
+BARRA2_VAR_INFO: dict[tuple[str, str, str], dict[str, str]] = {}
+for _row in _read_inventory():
+    _key = (_row['domain'], _row['freq'])
+    BARRA2_VARS[_key] = BARRA2_VARS.get(_key, frozenset()) | {_row['var']}
+    BARRA2_VAR_INFO[(*_key, _row['var'])] = {k: _row[k] for k in ('units', 'cell_methods', 'long_name')}
+
+# Fixed fields added to every point download, once per node
+BARRA2_FIXED_VARS_AUTO = ['orog']
+
+# Named variable presets for wind energy assessment (RFC-002). All are available at 1hr on both domains.
+_WIND = ['uas', 'vas', 'ua50m', 'va50m', 'ua100m', 'va100m', 'ua150m', 'va150m', 'ua200m', 'va200m', 'ua250m', 'va250m']
+_DENSITY = ['ps', 'tas', 'ta50m', 'ta100m', 'ta150m', 'ta200m', 'ta250m', 'hurs']
+BARRA2_PRESETS = {
+    'wind': _WIND,
+    'wind+density': _WIND + _DENSITY,
+    'wind+stability': _WIND + _DENSITY + ['zmla', 'hfss'],
+    'extremes': ['sfcWindmax', 'wsgsmax'],
+    'environment': ['pr', 'rsds', 'hurs', 'tas'],
+    'site': ['sftlf'],
+}
+
+# Preset used when the user picks none
+BARRA2_PRESET_DEFAULT = 'wind+density'
+
 # barra2_aus11_extents http://www.bom.gov.au/research/publications/researchreports/BRR-067.pdf
 # Todo BARRA2_AU11_LATLONBBOX = LatLonBBox(north=12.95, south=-57.97, east=207.39, west=88.48)
 
@@ -62,6 +101,19 @@ BARRA2_URL = (
     '?var={var}&latitude={latitude}&longitude={longitude}'
     '&time_start={time_start_str}&time_end={time_end_str}'
     '&timeStride=&vertCoord='
+    '&accept={fileout_type}'
+)
+
+# Fixed (fx) fields have one file per domain, with no month in the name and no time range
+# Reference url:
+# https://thredds.nci.org.au/thredds/ncss/grid/ob53/output/reanalysis/AUS-11/BOM/ERA5/historical/hres/BARRA-R2/v1/
+# fx/orog/latest/orog_AUS-11_ERA5_historical_hres_BOM_BARRA-R2_v1.nc?
+# var=orog&latitude=-33.88&longitude=151.18&accept=csv
+BARRA2_URL_FX = (
+    'https://thredds.nci.org.au/thredds/ncss/grid/ob53/output/reanalysis/{domain}/BOM/ERA5'
+    '/historical/hres/{model}/v1/fx/{var}/latest/'
+    '{var}_{domain}_ERA5_historical_hres_BOM_{model}_v1.nc'
+    '?var={var}&latitude={latitude}&longitude={longitude}'
     '&accept={fileout_type}'
 )
 

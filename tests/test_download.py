@@ -14,12 +14,17 @@ from pandas import Timestamp
 import barra2_dl.download
 import barra2_dl.globals
 from barra2_dl.globals import (
+    BARRA2_DOMAINS,
+    BARRA2_FIXED_FREQ,
     BARRA2_FREQS,
+    BARRA2_PRESET_DEFAULT,
+    BARRA2_PRESETS,
     BARRA2_URL,
     BARRA2_URL_AUS11_1HR,
     BARRA2_URL_AUST04_1HR,
     BARRA2_VAR_WIND_50,
     BARRA2_VAR_WIND_DEFAULT,
+    BARRA2_VARS,
     BARRA2_WIND_VARS,
 )
 from barra2_dl.mapping import LatLonPoint
@@ -75,6 +80,7 @@ def test_point_data_urlfilenames_mid_month_start() -> None:
     assert [filename for _, filename in urlfilenames] == [
         'demo_AUS-11_1hr_ua50m_20230101_20230131.csv',
         'demo_AUS-11_1hr_ua50m_20230201_20230228.csv',
+        'demo_AUS-11_fx_orog.csv',
     ]
 
 
@@ -135,6 +141,10 @@ def test_point_data_urlfilenames_mid_month_start() -> None:
                     'https://thredds.nci.org.au/thredds/ncss/grid/ob53/output/reanalysis/AUS-11/BOM/ERA5/historical/hres/BARRA-R2/v1/1hr/ta50m/latest/ta50m_AUS-11_ERA5_historical_hres_BOM_BARRA-R2_v1_1hr_202303-202303.nc?var=ta50m&latitude=-23.5527472&longitude=133.3961111&time_start=2023-03-01T00:00:00Z&time_end=2023-03-31T23:00:00Z&timeStride=&vertCoord=&accept=csv_file',
                     'demo_AUS-11_1hr_ta50m_20230301_20230331.csv',
                 ),
+                (
+                    'https://thredds.nci.org.au/thredds/ncss/grid/ob53/output/reanalysis/AUS-11/BOM/ERA5/historical/hres/BARRA-R2/v1/fx/orog/latest/orog_AUS-11_ERA5_historical_hres_BOM_BARRA-R2_v1.nc?var=orog&latitude=-23.5527472&longitude=133.3961111&accept=csv_file',
+                    'demo_AUS-11_fx_orog.csv',
+                ),
             ],
         ),
     ],
@@ -171,7 +181,10 @@ def test_point_data_urlfilenames_leap_february() -> None:
         BARRA2_URL, ['ua50m'], -23.5, 133.4, '2024-02-01', '2024-02-29', 'demo'
     )
 
-    assert [name for _, name in urlfilenames] == ['demo_AUS-11_1hr_ua50m_20240201_20240229.csv']
+    assert [name for _, name in urlfilenames] == [
+        'demo_AUS-11_1hr_ua50m_20240201_20240229.csv',
+        'demo_AUS-11_fx_orog.csv',
+    ]
     assert 'time_end=2024-02-29T23:00:00Z' in urlfilenames[0][0]
 
 
@@ -205,7 +218,11 @@ def test_point_data_urlfilenames_aust04_20min() -> None:
         (
             'https://thredds.nci.org.au/thredds/ncss/grid/ob53/output/reanalysis/AUST-04/BOM/ERA5/historical/hres/BARRA-C2/v1/20min/ua50m/latest/ua50m_AUST-04_ERA5_historical_hres_BOM_BARRA-C2_v1_20min_202001-202001.nc?var=ua50m&latitude=-33.88&longitude=151.18&time_start=2020-01-01T00:00:00Z&time_end=2020-01-31T23:40:00Z&timeStride=&vertCoord=&accept=csv_file',
             'site_AUST-04_20min_ua50m_20200101_20200131.csv',
-        )
+        ),
+        (
+            'https://thredds.nci.org.au/thredds/ncss/grid/ob53/output/reanalysis/AUST-04/BOM/ERA5/historical/hres/BARRA-C2/v1/fx/orog/latest/orog_AUST-04_ERA5_historical_hres_BOM_BARRA-C2_v1.nc?var=orog&latitude=-33.88&longitude=151.18&accept=csv_file',
+            'site_AUST-04_fx_orog.csv',
+        ),
     ]
 
 
@@ -241,6 +258,7 @@ def test_point_data_urlfilenames_alias_downloads_server_name() -> None:
     assert [name for _, name in urlfilenames] == [
         'demo_AUS-11_1hr_uas_20230101_20230131.csv',
         'demo_AUS-11_1hr_vas_20230101_20230131.csv',
+        'demo_AUS-11_fx_orog.csv',
     ]
     assert all('ua10m' not in url and 'va10m' not in url for url, _ in urlfilenames)
 
@@ -254,6 +272,7 @@ def test_point_data_urlfilenames_alias_and_server_name_download_once() -> None:
     assert [name for _, name in urlfilenames] == [
         'demo_AUS-11_1hr_uas_20230101_20230131.csv',
         'demo_AUS-11_1hr_uas_20230201_20230228.csv',
+        'demo_AUS-11_fx_orog.csv',
     ]
 
 
@@ -316,6 +335,147 @@ def test_point_data_urlfilenames_default_prefix() -> None:
     )
 
     assert not name.startswith('None')
+
+
+def test_point_data_urlfilenames_unknown_variable() -> None:
+    """A variable the server doesn't have is rejected before any URL is built."""
+    with pytest.raises(ValueError, match=re.escape('Not available at AUS-11 1hr: ua20m, notavar.')):
+        barra2_dl.download.point_data_urlfilenames(
+            BARRA2_URL, ['ua50m', 'ua20m', 'notavar'], -23.5, 133.4, '2023-01-01', '2023-01-31', 'demo'
+        )
+
+
+def test_point_data_urlfilenames_variable_missing_at_20min_points_to_1hr() -> None:
+    """The variables ps and hurs aren't published at 20min; the error names them and says they exist at 1hr."""
+    with pytest.raises(
+        ValueError, match=re.escape('Not available at AUST-04 20min: ps, hurs. Available at 1hr: ps, hurs.')
+    ):
+        barra2_dl.download.point_data_urlfilenames(
+            BARRA2_URL,
+            ['ua50m', 'ps', 'hurs'],
+            -33.88,
+            151.18,
+            '2020-01-01',
+            '2020-01-31',
+            'demo',
+            domain='AUST-04',
+            freq='20min',
+        )
+
+
+def test_point_data_urlfilenames_orog_once_per_node() -> None:
+    """Every point download includes exactly one orog request, after the monthly files."""
+    urlfilenames = barra2_dl.download.point_data_urlfilenames(
+        BARRA2_URL, BARRA2_PRESETS[BARRA2_PRESET_DEFAULT], -23.5, 133.4, '2023-01-01', '2023-03-31', 'demo'
+    )
+    names = [name for _, name in urlfilenames]
+
+    assert names.count('demo_AUS-11_fx_orog.csv') == 1
+    assert names[-1] == 'demo_AUS-11_fx_orog.csv'
+    assert len(names) == len(BARRA2_PRESETS[BARRA2_PRESET_DEFAULT]) * 3 + 1
+
+
+def test_point_data_urlfilenames_sftlf_only_on_request() -> None:
+    """The land fraction sftlf is downloaded once, with the site preset, and never without it."""
+    without = barra2_dl.download.point_data_urlfilenames(
+        BARRA2_URL, ['ua50m'], -23.5, 133.4, '2023-01-01', '2023-01-31', 'demo'
+    )
+    with_site = barra2_dl.download.point_data_urlfilenames(
+        BARRA2_URL, ['ua50m', *BARRA2_PRESETS['site']], -23.5, 133.4, '2023-01-01', '2023-01-31', 'demo'
+    )
+
+    assert not any('sftlf' in name for _, name in without)
+    assert [name for _, name in with_site][-2:] == ['demo_AUS-11_fx_orog.csv', 'demo_AUS-11_fx_sftlf.csv']
+
+
+def test_point_data_urlfilenames_fixed_field_url_has_no_time_range() -> None:
+    """Fixed fields use the fx file, with no month and no time range."""
+    (url, name), *_ = barra2_dl.download.point_data_urlfilenames(
+        BARRA2_URL, ['sftlf'], -33.88, 151.18, '2023-01-01', '2023-03-31', 'site', domain='AUST-04'
+    )
+
+    assert name == 'site_AUST-04_fx_orog.csv'
+    assert url == (
+        'https://thredds.nci.org.au/thredds/ncss/grid/ob53/output/reanalysis/AUST-04/BOM/ERA5/historical/hres/'
+        'BARRA-C2/v1/fx/orog/latest/orog_AUST-04_ERA5_historical_hres_BOM_BARRA-C2_v1.nc'
+        '?var=orog&latitude=-33.88&longitude=151.18&accept=csv_file'
+    )
+
+
+@live_network
+@pytest.mark.parametrize(('domain', 'freq'), [*DOMAIN_FREQS, *((d, BARRA2_FIXED_FREQ) for d in BARRA2_DOMAINS)])
+def test_inventory_matches_server(domain: str, freq: str) -> None:
+    """The checked-in inventory lists the same variables as the THREDDS catalogue (rebuild it if this fails)."""
+    url = (
+        f'https://thredds.nci.org.au/thredds/catalog/ob53/output/reanalysis/{domain}/BOM/ERA5/historical/hres/'
+        f'{BARRA2_DOMAINS[domain]}/v1/{freq}/catalog.xml'
+    )
+    titles = re.findall(r'xlink:title="([^"]+)"', requests.get(url, timeout=120).text)
+    served = {t for t in titles if re.fullmatch(r'[A-Za-z0-9]+', t) and t not in {'Licence', 'Readme'}}
+
+    assert served == BARRA2_VARS[(domain, freq)]
+
+
+@live_network
+@pytest.mark.parametrize('domain', BARRA2_DOMAINS)
+def test_point_data_urlfilenames_orog_is_served(domain: str) -> None:
+    """The fx point request returns one orog value as CSV."""
+    url, _ = barra2_dl.download.point_data_urlfilenames(
+        BARRA2_URL, ['ua50m'], -33.88, 151.18, '2020-01-01', '2020-01-31', 'live', domain=domain
+    )[-1]
+
+    df = pd.read_csv(io.StringIO(requests.get(url, timeout=120).text))
+
+    assert len(df) == 1
+    assert 'orog[unit="m"]' in df.columns
+
+
+# endregion
+
+
+# region preset_variables
+@pytest.mark.parametrize('domain', BARRA2_DOMAINS)
+@pytest.mark.parametrize('preset', BARRA2_PRESETS)
+def test_preset_variables_default_frequency(preset: str, domain: str) -> None:
+    """Every preset resolves at the 1hr default on both domains."""
+    assert barra2_dl.download.preset_variables(preset, domain) == BARRA2_PRESETS[preset]
+
+
+def test_preset_variables_wind_at_20min() -> None:
+    """The wind preset works at AUST-04 20min."""
+    assert barra2_dl.download.preset_variables('wind', 'AUST-04', '20min') == BARRA2_PRESETS['wind']
+
+
+def test_preset_variables_default_preset_at_20min_points_to_wind() -> None:
+    """wind+density at 20min fails naming ps and hurs, says they exist at 1hr, and offers the wind preset."""
+    with pytest.raises(ValueError, match=r'needs ps, hurs.*available at 1hr.*Presets available at AUST-04 20min: wind'):
+        barra2_dl.download.preset_variables(BARRA2_PRESET_DEFAULT, 'AUST-04', '20min')
+
+
+@pytest.mark.parametrize(('preset', 'missing'), [('extremes', 'sfcWindmax'), ('environment', 'pr, rsds, hurs')])
+def test_preset_variables_partial_presets_at_20min(preset: str, missing: str) -> None:
+    """Presets only partly published at 20min are rejected, never downloaded in part."""
+    with pytest.raises(ValueError, match=re.escape(f'needs {missing}, which are not available at AUST-04 20min')):
+        barra2_dl.download.preset_variables(preset, 'AUST-04', '20min')
+
+
+def test_preset_variables_unknown_preset() -> None:
+    """An unknown preset name lists the presets."""
+    with pytest.raises(ValueError, match=re.escape('Unknown preset <windy>. Presets: wind, wind+density')):
+        barra2_dl.download.preset_variables('windy')
+
+
+def test_preset_variables_unsupported_freq() -> None:
+    """A frequency the domain doesn't have is rejected."""
+    with pytest.raises(ValueError, match='AUS-11 20min is not supported'):
+        barra2_dl.download.preset_variables('wind', 'AUS-11', '20min')
+
+
+def test_preset_variables_returns_a_copy() -> None:
+    """Changing the returned list doesn't change the preset."""
+    barra2_dl.download.preset_variables('wind').append('ps')
+
+    assert 'ps' not in BARRA2_PRESETS['wind']
 
 
 # endregion

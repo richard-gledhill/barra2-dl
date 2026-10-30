@@ -69,8 +69,13 @@ https://opus.nci.org.au/pages/viewpage.action?pageId=264241166
   1-hourly by default, and 20-minute on AUST-04
 - Wind at 10, 50, 100, 150, 200, 250 and 1500 m; the 10 m wind (`uas`/`vas`) is output as `ua10m`/`va10m` so every
   height is named alike
+- Variable presets for wind energy assessment: `wind`, `wind+density` (the default: winds plus pressure,
+  temperature and humidity for air density), `wind+stability`, `extremes`, `environment` and `site`
+- Variable names are checked against the BARRA2 inventory before anything is downloaded
+- The node altitude (`orog`) comes with every point download; land fraction (`sftlf`) on request
 - Parallel, resumable download: files already in the cache folder are skipped
 - Merge the downloaded csv files into one DataFrame, and derive wind speed and direction from the u/v components
+- Optional unit conversion: K to °C, Pa to hPa, precipitation flux to mm/h
 - Fully typed with annotations and checked with mypy, [PEP561 compatible](https://www.python.org/dev/peps/pep-0561/)
 
 ## Installation
@@ -96,15 +101,18 @@ from datetime import datetime
 from pathlib import Path
 
 import barra2_dl
-from barra2_dl.globals import BARRA2_INDEX, BARRA2_URL, BARRA2_VAR_WIND_DEFAULT
+from barra2_dl.globals import BARRA2_INDEX, BARRA2_PRESET_DEFAULT, BARRA2_URL
 
 cache_dir = Path('cache')
 cache_dir.mkdir(exist_ok=True)  # the download folder must already exist
 
-# 1. Build one (url, filename) pair per variable per month
+# 1. Choose the variables with a preset; wind+density is the default
+barra2_vars = barra2_dl.download.preset_variables(BARRA2_PRESET_DEFAULT, domain='AUS-11', freq='1hr')
+
+# 2. Build one (url, filename) pair per variable per month, plus one for the node altitude (orog)
 urlfilenames = barra2_dl.download.point_data_urlfilenames(
     barra2_url=BARRA2_URL,
-    barra2_vars=BARRA2_VAR_WIND_DEFAULT,
+    barra2_vars=barra2_vars,
     latitude=-23.5527472,
     longitude=133.3961111,
     start_datetime=datetime(2023, 1, 1),
@@ -114,19 +122,24 @@ urlfilenames = barra2_dl.download.point_data_urlfilenames(
     freq='1hr',  # or '20min' on AUST-04
 )
 
-# 2. Download the csv files into the cache folder (files already there are skipped)
+# 3. Download the csv files into the cache folder (files already there are skipped)
 barra2_dl.download.download_multithread(urlfilenames, cache_dir)
 
-# 3. Merge the csv files into one DataFrame
+# 4. Merge the time series into one DataFrame; the node altitude is read separately
 df_merged = barra2_dl.merge.merge_csvs_to_df(
     filein_folder=str(cache_dir),
-    filename_pattern='Demo*.csv',
+    filename_pattern='Demo_AUS-11_1hr_*.csv',
     index_for_join=BARRA2_INDEX,
 )
+node_fields = barra2_dl.merge.read_fixed_fields(str(cache_dir), 'Demo_AUS-11_fx_*.csv')  # {'orog[unit="m"]': ...}
 
-# 4. Add wind speed (v*) and meteorological direction (v*_phi_met) columns from ua*/va*
+# 5. Add wind speed (v*) and meteorological direction (v*_phi_met) columns from ua*/va*, and optionally convert units
 df_converted = barra2_dl.convert.convert_wind_components(df_merged)
+df_converted = barra2_dl.convert.convert_units(df_converted)
 ```
+
+Presets are defined at 1-hourly data. At AUST-04 20-minute data use the `wind` preset: pressure and humidity
+aren't published every 20 minutes, so `wind+density` raises an error rather than downloading part of it.
 
 Cache files are named `<prefix>_<domain>_<freq>_<var>_<start>_<end>.csv`, so runs for different domains or
 frequencies can share a cache folder. `BARRA2_URL_AUS11_1HR` and `BARRA2_URL_AUST04_1HR` still work in place of

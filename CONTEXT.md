@@ -32,6 +32,22 @@ _Avoid_: Resolution (that is the grid spacing)
 One BARRA2 field such as `ua50m` or `ta50m`. BARRA2 stores each variable-month as a separate remote file.
 _Avoid_: Column (that is the same data after download and merge)
 
+**Inventory** (`BARRA2_VARS`):
+The variables BARRA2 publishes for each domain and frequency, with their units and cell methods
+(`BARRA2_VAR_INFO`). Checked in as `barra2_dl/data/barra2_variables.csv` and rebuilt with
+`scripts/build_barra2_inventory.py`. A variable name not in it is rejected before download.
+
+**Fixed field**:
+A time-invariant variable in the `fx` folder, such as `orog` (model surface altitude) or `sftlf` (land fraction).
+One request per node, cached as `<prefix>_<domain>_fx_<var>.csv`, and read with `read_fixed_fields` rather than
+merged. `orog` comes with every point download.
+_Avoid_: Static variable
+
+**Preset** (`BARRA2_PRESETS`):
+A named list of variables for a wind energy assessment task, e.g. `wind+density` (the default,
+`BARRA2_PRESET_DEFAULT`). Defined at `1hr`; `preset_variables` rejects a preset at a frequency missing any of its
+variables.
+
 **Point data**:
 The time series of one variable at the grid node nearest a latitude and longitude, fetched through the NetCDF
 Subset Service as CSV.

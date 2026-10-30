@@ -243,3 +243,43 @@ def test_convert_wind_components_does_not_modify_input():
 
 
 # endregion
+
+
+# region convert_units
+def test_convert_units_temperature_pressure_precipitation():
+    """K, Pa and kg m-2 s-1 columns are converted and their unit suffix renamed."""
+    df = pd.DataFrame(
+        {
+            'tas[unit="K"]': [293.15],
+            'ta50m[unit="K"]': [273.15],
+            'ps[unit="Pa"]': [101325.0],
+            'pr[unit="kg m-2 s-1"]': [0.001],
+        }
+    )
+
+    result = barra2_dl.convert.convert_units(df)
+
+    assert list(result.columns) == ['tas[unit="degC"]', 'ta50m[unit="degC"]', 'ps[unit="hPa"]', 'pr[unit="mm h-1"]']
+    assert np.allclose(result.iloc[0].tolist(), [20.0, 0.0, 1013.25, 3.6])
+
+
+def test_convert_units_leaves_other_columns():
+    """Columns with other or no units are unchanged."""
+    df = pd.DataFrame({'time': ['2023-01-01T00:00:00Z'], UA50: [3.0], 'hurs[unit="%"]': [80.0]})
+
+    result = barra2_dl.convert.convert_units(df)
+
+    assert result.equals(df)
+
+
+def test_convert_units_does_not_modify_input():
+    """The input frame keeps its SI values and names."""
+    df = pd.DataFrame({'tas[unit="K"]': [293.15]})
+
+    barra2_dl.convert.convert_units(df)
+
+    assert list(df.columns) == ['tas[unit="K"]']
+    assert df.iloc[0, 0] == 293.15
+
+
+# endregion
