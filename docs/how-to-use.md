@@ -129,10 +129,100 @@ Here the units are those in the DataFrame, so a frame passed through `convert_un
   you downloaded (for example `v20240516`), per variable and overall, and `downloaded` says when. Without
   `versions` it reads `latest`.
 
+## Choosing the nodes
+
+By default each series comes from the BARRA2 grid node nearest the point (`nearest`). Two other selections download a
+small grid of real nodes instead (`fileout_type='netcdf4'` is implied, because a grid doesn't fit csv). The nodes always
+come from the server's response, never from arithmetic on the grid spacing.
+
+| Selection | What you get | csv | netCDF |
+|---|---|---|---|
+| `nearest` (default) | The nearest node | Yes | Yes |
+| `average4` | The four nodes around the point, averaged, plus the four node series | Yes | Yes |
+| `area` | Every node in a box you give | No | Yes |
+
+### Four-node average
+
+```python
+urlfilenames = barra2_dl.download.point_data_urlfilenames(
+    BARRA2_URL, variables, point.lat, point.lon, datetime(2023, 1, 1), datetime(2023, 3, 31),
+    fileout_prefix='Demo', domain='AUS-11', freq='1hr', node_selection='average4',
+)
+barra2_dl.download.download_multithread(urlfilenames, cache_dir)
+
+ds = barra2_dl.merge.merge_netcdf_to_dataset(
+    str(cache_dir), 'Demo_AUS-11_1hr_*.nc', domain='AUS-11', freq='1hr', requested=point,
+    node_selection='average4', fixed_pattern='Demo_AUS-11_fx_average4_orog.nc',
+)
+ds.to_netcdf('Demo_AUS-11_1hr_average4_20230101_20230331.nc')
+```
+
+You give one point. The average is of the four grid nodes that surround that point (the node either side of it in
+latitude and either side in longitude), weighted by the inverse of each node's distance from it. There is no site
+boundary and no averaging over an area: the same point always gives the same four nodes. A point exactly on a node gets
+that node's values.
+
+To find those nodes, one small download window is requested per variable-month, a grid spacing (0.11 degrees on
+AUS-11, 0.04 on AUST-04) either side of the point. The server returns a grid of real nodes for it, typically 3 x 3.
+The window is only how the nodes are fetched: the four that surround the point are used and the others are ignored.
+
+**How the average is made.** Speed and direction are averaged differently, on purpose:
+
+- **Speed** is the weighted mean of each node's own speed (a scalar mean). Averaging the components first would give a
+  lower speed wherever the nodes' winds point in different directions, and wind power goes with the cube of speed.
+- **Direction** comes from the weighted-mean `ua` and `va` (a vector mean). Averaging bearings directly would fail at
+  north, where 350 and 10 degrees would average to 180.
+- **`ua` and `va`** are the weighted means, and are written too.
+
+So the averaged `wind_speed` is **not** `hypot(ua, va)`: recomputing speed from the averaged components gives the
+lower vector-mean value. The file says which mean each variable is in its `cell_methods` (`node: mean (scalar)` or
+`node: mean (vector)`). Scalar variables such as `tas` are plain weighted means. This is the same method NOAA's NDBC
+uses for buoy winds, and what Copernicus Marine recommends when both speed and direction matter.
+
+**The four node series** are written beside the average. In the netCDF each averaged variable has a `<name>_node`
+twin on a `node` dimension (size 4), with `node_lat`, `node_lon`, `node_distance` (km), `node_weight` and, with
+`fixed_pattern`, `node_orog` as coordinates. `lat` and `lon` are the point you asked for, and the `orog` attribute is the
+weighted mean. Comparing the node series shows which node best represents the point.
+
+**csv output.** `dataset_to_frames(ds)` returns a DataFrame for the average (key `average4`) and one for each node
+(`node1` to `node4`), with the same columns as the csv route. Write each to its own file:
+
+```python
+for name, frame in barra2_dl.merge.dataset_to_frames(ds).items():
+    frame.to_csv(f'Demo_AUS-11_1hr_{name}_20230101_20230331.csv', index=False)
+```
+
+### Area
+
+```python
+from barra2_dl.mapping import LatLonBBox
+
+box = LatLonBBox(north=-23.4, south=-23.7, east=133.5, west=133.2)
+urlfilenames = barra2_dl.download.area_data_urlfilenames(
+    box, variables, datetime(2023, 1, 1), datetime(2023, 3, 31), fileout_prefix='Farm', domain='AUS-11', freq='1hr'
+)
+barra2_dl.download.download_multithread(urlfilenames, cache_dir)
+
+ds = barra2_dl.merge.merge_netcdf_to_dataset(
+    str(cache_dir), 'Farm_AUS-11_1hr_*.nc', domain='AUS-11', freq='1hr', node_selection='area',
+    fixed_pattern='Farm_AUS-11_fx_area_*orog.nc',
+)
+ds.to_netcdf('Farm_AUS-11_1hr_area_20230101_20230331.nc')
+```
+
+The Dataset keeps every node of the box: `lat` and `lon` are dimensions, so the variables are
+`(time, height, lat, lon)` and orog is a `(lat, lon)` variable. The server returns the nodes whose grid cell overlaps the
+box, so the edge nodes can sit just outside it. An area can't be written as csv.
+
+**Sharing a cache folder.** Point, `average4` and `area` files are named differently (`average4` or `area` and the box
+are in the name), so they can share a cache folder. `merge_netcdf_to_dataset` picks only the files of the node
+selection you ask for, so a loose pattern such as `Demo_AUS-11_1hr_*.nc` is safe. For the nearest node, read the node
+altitude from its exact name (`Demo_AUS-11_fx_orog.nc`), because `read_fixed_fields` reads every file the pattern matches.
+
 ## Timestamps: :00 and :30
 
 barra2-dl keeps every timestamp exactly as the server returned it, in the cache, the DataFrame, the csv and the
-netCDF. It never shifts or resamples.
+netCDF, for every node selection. It never shifts or resamples.
 
 BARRA2 stamps instantaneous variables (winds, `tas`, `ps`) at the top of the time step, for example 01:00. Variables
 averaged over the step (cell methods `time: mean`, such as `pr` and `rsds`) are stamped in the middle of the period they

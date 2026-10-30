@@ -2,6 +2,7 @@
 
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -13,6 +14,9 @@ from barra2_dl.mapping import (
     _find_nearest_point,
     _format_lat_lon,
     _generate_point_grid,
+    bracket_index,
+    distance_km,
+    inverse_distance_weights,
 )
 
 
@@ -187,6 +191,66 @@ def test_find_nearest_point_outside_grid(lat: float, lon: float) -> None:
 def test_format_lat_lon(latitude: float, longitude: float, expected: list[str]) -> None:
     """Latitudes are formatted to two decimals, with an S prefix when negative."""
     assert _format_lat_lon(latitude, longitude) == expected
+
+
+# endregion
+
+
+# region distance_km
+def test_distance_km_one_degree_of_latitude() -> None:
+    """One degree of latitude is about 111.2 km."""
+    assert distance_km(0, 0, 1, 0) == pytest.approx(111.195, abs=0.01)
+
+
+def test_distance_km_same_point_is_zero() -> None:
+    """A point is no distance from itself."""
+    assert distance_km(-33.88, 151.18, -33.88, 151.18) == 0
+
+
+def test_distance_km_array_and_longitude_shrinks_with_latitude() -> None:
+    """Several points at once; a degree of longitude is shorter away from the equator."""
+    result = distance_km(60, 0, np.array([60.0, 60.0]), np.array([1.0, 2.0]))
+
+    assert result[1] == pytest.approx(2 * result[0], rel=1e-3)
+    assert result[0] == pytest.approx(111.195 / 2, rel=5e-3)
+
+
+# endregion
+
+
+# region bracket_index
+@pytest.mark.parametrize(
+    ('x', 'expected'),
+    [(0.0, 0), (0.5, 0), (1.0, 1), (1.5, 1), (2.0, 2), (3.0, 2), (3.0000004, 2), (-0.0000004, 0)],
+)
+def test_bracket_index_pairs_around_x(x: float, expected: int) -> None:
+    """The pair is (i, i + 1); a node at x starts the pair, except the last node, which ends it."""
+    assert bracket_index(np.array([0.0, 1.0, 2.0, 3.0]), x) == expected
+
+
+@pytest.mark.parametrize('x', [-0.1, 3.1])
+def test_bracket_index_outside_axis(x: float) -> None:
+    """A coordinate beyond the nodes can't be surrounded."""
+    with pytest.raises(ValueError, match='outside'):
+        bracket_index(np.array([0.0, 1.0, 2.0, 3.0]), x)
+
+
+# endregion
+
+
+# region inverse_distance_weights
+def test_inverse_distance_weights_sum_to_one_and_favour_near_nodes() -> None:
+    """Weights are proportional to 1 / distance."""
+    weights = inverse_distance_weights(np.array([1.0, 2.0, 4.0, 4.0]))
+
+    assert weights.sum() == pytest.approx(1)
+    assert weights[0] > weights[1] > weights[2]
+    assert weights[0] / weights[1] == pytest.approx(2)
+
+
+def test_inverse_distance_weights_node_at_the_site_takes_all() -> None:
+    """A node at the site has all the weight, so the others are ignored."""
+    assert inverse_distance_weights(np.array([0.0, 5.0, 5.0, 5.0])).tolist() == [1.0, 0.0, 0.0, 0.0]
 
 
 # endregion

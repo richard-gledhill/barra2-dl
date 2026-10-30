@@ -1,18 +1,15 @@
-# Todo: netCDF output
+# Todo: cache validation and csv metadata header (RFC-007)
 
-## Slice 1: `feat/netcdf-dataset` (phases 1 and 2)
-- [x] Add `xarray`, `h5netcdf`, `h5py` to dependencies; `uv lock`; deptry DEP002 ignore (owner-approved)
-- [x] `merge.to_dataset` and tests
-- [x] `fileout_type='netcdf4'`, `resolve_variable_versions`
-- [x] `merge_netcdf_to_dataset`, `read_fixed_fields` for `.nc`, `tests/data/` fixtures, equality test
-- [x] Separate csv and netCDF examples, `docs/how-to-use.md`, README, `CONTEXT.md`
-- [x] `make check`, `make test`, live tests, scratch end-to-end runs
+## Next: RFC-007 (`fix/cache-validation-csv-header`)
+- [x] Owner decisions on RFC-007 section 8 (2026-10-31)
+- [x] Read Windographer WIS and Configure Dataset pages; write `SPEC.md` (2026-10-31)
+- [x] Owner approves the SPEC's decisions (2026-10-31)
+- [ ] `CacheMismatchError`, `_cached_file_problem`, `_check_cache` before any request; tests
+- [ ] Atomic write and empty-response failure; tests
+- [ ] `write_csv` / `read_csv` with metadata header; tests
+- [ ] netCDF example pair, how-to-use, `CONTEXT.md`, README, ADR-003
+- [ ] Live test; `make check`, `make test`, `make docs-test`; manual Windographer import
 - [ ] PR
 
-## Slice 2: `feat/node-averaging-area` (phase 3)
-- [ ] `BARRA2_GRID_SPACING`, `average4` and `area` downloads
-- [ ] `node` dimension, hybrid averaging, `dataset_to_frames`
-- [ ] Docs, netCDF example, live tests, `make check`, `make test`, PR
-
-## Finish
-- [ ] Archive plan, RFC-003 Done, roadmap status (docs PR)
+## Then: RFC-005 (parked in `parked/2026-10-gui/`)
+- [ ] Archive RFC-007 plan; move RFC-005 files back; apply their parked note; resume slice 1

@@ -45,11 +45,11 @@ section 4.
 | 3 | **PyPI release** | High | S | `barra2-dl` is free on PyPI. See 3.2. |
 | 4 | **Wind-software export formats** | High | M | See 3.3. The main differentiator. RFC-006. |
 | 5 | Supported parameters and derived variables | High | M | See 3.4. [RFC-002](parameter-review-prd.md). |
-| 6 | netCDF output | Medium-High | M | [RFC-003](netcdf-output-prd.md). |
+| 6 | netCDF output | Medium-High | M | [RFC-003](netcdf-output-prd.md). Done (#135, #137). |
 | 7 | GUI | High | M-L | [RFC-005](gui-prd.md), with the engine and project file. Builds on 5 and 6. |
 | 8 | Multi-site project file | Medium | S | A TOML listing masts and shared settings; used by the GUI and the example script ([RFC-005](gui-prd.md) 5.5). |
 | 9 | Data-quality and summary report | Medium | M | Data recovery %, monthly/annual means, 12×24 diurnal-monthly table, wind rose PNG, inter-annual variability. Helps decide if a node is representative. |
-| 10 | Gridded / area download | Medium | L | Existing backlog; via NCSS bbox or OPeNDAP. Feeds mesoscale maps and multi-node checks. |
+| 10 | Gridded / area download | Medium | L | Done in RFC-003 (#137) as the `area` node selection, via an NCSS bounding box. Feeds mesoscale maps and multi-node checks. |
 | 11 | Python ecosystem bridges | Medium | S | See 3.5. |
 | 12 | Documentation for analysts | Medium | S | A "BARRA2 for MCP" tutorial, variable/height table, citation and licence guidance, known limits of reanalysis (no TI, smoothed extremes). |
 | 13 | conda-forge package | Low | S | After PyPI is stable. |
@@ -164,18 +164,20 @@ files in `tests/data/` pin each format.
 
 Delivery order set by the owner: fix first, then decide the parameters, then netCDF output, then the GUI, and export
 to wind software last. Each RFC builds on the ones before it. RFC-004 (CLI) was dropped and its number retired, so
-the merged RFCs' references to RFC-005 and RFC-006 stay valid.
+the merged RFCs' references to RFC-005 and RFC-006 stay valid. RFC-007 was added on 2026-10-31, after the
+[package structure review](package-structure-review-prd.md), and goes before the GUI, so its number is out of order.
 
 | Order | RFC | Scope | Status |
 |---|---|---|---|
 | 1 | [RFC-001 Fix the wind variable table](wind-variables-bugfix-prd.md) | Remove placeholder variables, numeric heights, exact column matching, `ua10m`/`va10m` aliases for `uas`/`vas` with height-named converted output (`ua10m`, `v10m`). Clears two backlog bugs. | Done (#128) |
 | 2 | [RFC-002 Parameter review](parameter-review-prd.md) | Which BARRA2 parameters to support (pressure, humidity, temperature at height, stability, gusts, site fields), presets, checked variable inventory. Derived variables (density, shear, veer) follow from it. | Done (#133) |
-| 3 | [RFC-003 netCDF output, node averaging and area download](netcdf-output-prd.md) | xarray Dataset with a `height` dimension and CF metadata; native netCDF download; nearest node, four-node average and area download. | Draft, decisions recorded |
+| 3 | [RFC-003 netCDF output, node averaging and area download](netcdf-output-prd.md) | xarray Dataset with a `height` dimension and CF metadata; native netCDF download; nearest node, four-node average and area download. | Done (#135, #137) |
 | 4 | ~~RFC-004 CLI~~ | Dropped 2026-10-30. Engine, project file, retries and run summary moved to RFC-005; the command-line tool is in the backlog. | Dropped |
-| 5 | [RFC-005 GUI](gui-prd.md) | Engine (`run_site`), TOML project file (also used by the example script), retries and run summary, then a fresh-build GUI on top (toolkit by spikes, Streamlit preferred). Includes the atl3b fork review. First PyPI release and MIT relicence follow it (3.2). | Draft, decisions recorded |
-| 6 | RFC-006 Export to wind software | Windographer, WAsP `.tab`, openWind first, then WindPRO and others (section 3.3). Last, once the parameters, netCDF output and GUI are settled. | To draft |
+| 5 | [RFC-007 Cache validation and csv metadata header](cache-validation-csv-metadata-prd.md) | A cached file is reused only if its contents match the request, so a moved site isn't served the old location's data; atomic writes; output csv files open with a metadata header mirroring the netCDF attributes, which Windographer strips and reads. | Draft, next |
+| 6 | [RFC-005 GUI](gui-prd.md) | Engine (`run_site`), TOML project file (also used by the example script), retries and run summary, then a fresh-build GUI on top (toolkit by spikes, Streamlit preferred). Includes the atl3b fork review and the package layout for the GUI and a later CLI (5.7). First PyPI release and MIT relicence follow it (3.2). | Draft, decisions recorded; plan parked until RFC-007 ships |
+| 7 | RFC-006 Export to wind software | Windographer, WAsP `.tab`, openWind first, then WindPRO and others (section 3.3). Last, once the parameters, netCDF output and GUI are settled. | To draft |
 
-Retries, back-off and the run summary (section 2) land with RFC-005's engine. Area download is now part of
+Retries, back-off and the run summary (section 2) land with RFC-005's engine. Area download shipped with
 RFC-003. The summary report comes after RFC-006 unless reprioritised.
 
 ## 5. Open questions for the owner
