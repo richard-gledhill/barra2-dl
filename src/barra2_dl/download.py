@@ -1,6 +1,7 @@
 """This module contains the barra2 download function(s)."""
 
 import calendar
+import csv
 import logging
 import re
 import sys
@@ -10,9 +11,12 @@ from datetime import datetime, timedelta
 from multiprocessing import cpu_count
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
+import numpy as np
 import pandas as pd
 import requests
+import xarray as xr
 
 from barra2_dl.globals import (
     BARRA2_DOMAINS,
@@ -30,12 +34,13 @@ from barra2_dl.globals import (
     BARRA2_VAR_ALIASES,
     BARRA2_VARS,
 )
-from barra2_dl.mapping import LatLonBBox
+from barra2_dl.mapping import LatLonBBox, bracket_index
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
 __all__ = [
+    'CacheMismatchError',
     'area_data_urlfilenames',
     'download_multithread',
     'download_serial',
@@ -53,6 +58,31 @@ _DEPRECATED_URLS = {
     BARRA2_URL_AUS11_1HR: ('AUS-11', '1hr'),
     BARRA2_URL_AUST04_1HR: ('AUST-04', '1hr'),
 }
+
+# how far a cached point's requested location may differ from the request, in degrees: NCSS writes 3 decimals
+_POINT_TOLERANCE = 0.0005
+_STATION_PATTERN = re.compile(r'GridPointRequestedAt\[(\d+(?:\.\d+)?)([NS])_(\d+(?:\.\d+)?)([EW])\]')
+# endregion
+
+
+# region Errors
+class CacheMismatchError(ValueError):
+    """Cached files that don't match the request, or can't be read; raised before any request is made.
+
+    Attributes:
+        problems (list[tuple[str, str]]): The (filename, reason) of each failing file.
+    """
+
+    def __init__(self, problems: list[tuple[str, str]], folder_path: str | Path) -> None:
+        """Build the message listing each failing file and how to fix it."""
+        self.problems = problems
+        listing = '\n'.join(f'  {name}: {reason}' for name, reason in problems)
+        super().__init__(
+            f"Cached files don't match the request:\n{listing}\n"
+            f'Rename the site (the filename prefix) or delete these files from {folder_path}, then run again.'
+        )
+
+
 # endregion
 
 
@@ -202,7 +232,7 @@ def area_data_urlfilenames(
             available at that domain and freq.
 
     Examples:
-        >>> from barra2_dl.mapping import LatLonBBox
+        >>> from barra2_dl.mapping import LatLonBBox, bracket_index
         >>> box = LatLonBBox(north=-23.4, south=-23.7, east=133.5, west=133.2)
         >>> pairs = area_data_urlfilenames(box, ['ua50m'], '2020-01-01', '2020-01-31', 'farm')
         >>> for _, name in pairs:
@@ -310,12 +340,15 @@ def download_serial(
 
     Returns: None
 
-    Raises: None
+    Raises:
+        CacheMismatchError: If a file already in folder_path holds another location than the url requests, or can't be
+            read. Raised before any request, with every failing file listed.
 
     References:
         https://opensourceoptions.com/use-python-to-download-multiple-files-or-urls-in-parallel/
         https://medium.com/towards-data-science/use-python-to-download-multiple-files-or-urls-in-parallel-1759da9d6535
     """
+    _check_cache(urlfilenames, folder_path)
     # download multiple files in loop
     t0 = time.time()
     for url, filename in urlfilenames:
@@ -337,12 +370,15 @@ def download_multithread(
 
     Returns: None
 
-    Raises: None
+    Raises:
+        CacheMismatchError: If a file already in folder_path holds another location than the url requests, or can't be
+            read. Raised before any request, with every failing file listed.
 
     References:
         https://opensourceoptions.com/use-python-to-download-multiple-files-or-urls-in-parallel/
         https://medium.com/towards-data-science/use-python-to-download-multiple-files-or-urls-in-parallel-1759da9d6535
     """
+    _check_cache(urlfilenames, folder_path)
     # download multiple files in parallel
     workers = max(1, cpu_count() - 1)
     t0 = time.time()
@@ -596,23 +632,113 @@ def _download_file(
 
     # Check if the file already exists else download the url to the file
     if folder_file.exists():
-        logger.info(f'<{file_name}> already exists in the <{folder_path}>. File not downloaded.')
-        sys.stdout.write(f'<{file_name}> already exists in the folder <{folder_path}>. File not downloaded.')
-        sys.stdout.write('\n')
+        _report(f'<{file_name}> already exists in the folder <{folder_path}>. File not downloaded.')
+        return
+    response = requests.get(url, timeout=20)
+    # a failed status or an empty body is not a file: write nothing, so the next run asks for it again
+    if response.status_code != 200:
+        _report(f'<{file_name}> Failed to download. Status code: {response.status_code}')
+    elif not response.content:
+        _report(f'<{file_name}> Failed to download. The response was empty.')
     else:
-        response = requests.get(url, timeout=20)
-        # check file is not empty or contains server error 'FileNotFound: No such file or directory'
-        # Check if the request was successful
-        if response.status_code == 200:
-            # write content to folder_file
-            folder_file.write_bytes(response.content)
-            logger.info(f'<{file_name}> downloaded to <{folder_path}>')
-            sys.stdout.write(f'<{file_name}> downloaded to <{folder_path}>')
-            sys.stdout.write('\n')
-        else:
-            logger.info(f'<{file_name}> Failed to download. Status code: {response.status_code}')
-            sys.stdout.write(f'<{file_name}> Failed to download. Status code: {response.status_code}')
-            sys.stdout.write('\n')
+        # the final name only ever holds a complete response: write beside it, then rename
+        part_file = folder / f'{file_name}.part'
+        part_file.write_bytes(response.content)
+        part_file.replace(folder_file)
+        _report(f'<{file_name}> downloaded to <{folder_path}>')
+
+
+def _report(message: str) -> None:
+    """Log a progress message and write it to stdout, the dual pattern the modules share."""
+    logger.info(message)
+    sys.stdout.write(f'{message}\n')
+
+
+def _check_cache(urlfilenames: list[URLFilenamePair], folder_path: str | Path) -> None:
+    """Raise CacheMismatchError, before any request, if a cached file doesn't match its url or can't be read."""
+    folder = Path(folder_path)
+    problems: list[tuple[str, str]] = []
+    for url, filename in urlfilenames:
+        if (folder / filename).is_file() and (problem := _cached_file_problem(folder / filename, url)):
+            problems.append((filename, problem))
+            logger.error(f'<{filename}> {problem}')
+            sys.stdout.write(f'<{filename}> {problem}\n')
+    if problems:
+        raise CacheMismatchError(problems, folder_path)
+
+
+def _cached_file_problem(path: Path, url: str) -> str | None:
+    """Return why the cached file doesn't match the request in url, or None if it does.
+
+    The request is the location in the url query: a point (latitude, longitude) or a box (north, south, east, west).
+    A url with neither isn't a BARRA2 request and isn't checked.
+    """
+    query = {key: values[0] for key, values in parse_qs(urlsplit(url).query).items()}
+    try:
+        if {'latitude', 'longitude'} <= query.keys():
+            requested = (float(query['latitude']), float(query['longitude']))
+            holds = _csv_point(path) if query.get('accept') == 'csv_file' else _netcdf_point(path)
+            return _point_problem(holds, requested)
+        if {'north', 'south', 'east', 'west'} <= query.keys():
+            box = {key: float(query[key]) for key in ('north', 'south', 'east', 'west')}
+            with xr.open_dataset(path) as ds:
+                return _grid_problem(ds, box, '_average4_' in path.name)
+    except (OSError, ValueError, KeyError, IndexError, csv.Error):
+        return "can't be read"
+    return None
+
+
+def _csv_point(path: Path) -> tuple[float, float]:
+    """Return the requested (lat, lon) in the station column of a point csv, reading only its first two lines."""
+    with path.open(newline='', encoding='utf-8') as file:
+        reader = csv.reader(file)
+        header, first_row = next(reader, []), next(reader, [])
+    return _parse_station(first_row[header.index('station')])
+
+
+def _netcdf_point(path: Path) -> tuple[float, float]:
+    """Return the requested (lat, lon) in station_description of a point netCDF."""
+    with xr.open_dataset(path) as ds:
+        value = ds['station_description'].values.flat[0]
+    return _parse_station(value.decode() if isinstance(value, bytes) else str(value))
+
+
+def _parse_station(station: str) -> tuple[float, float]:
+    """Return (lat, lon) from 'GridPointRequestedAt[23.550S_133.400E]', south and west negative."""
+    found = _STATION_PATTERN.fullmatch(station)
+    if found is None:
+        raise ValueError(f'No requested location in <{station}>.')
+    lat, lat_hemisphere, lon, lon_hemisphere = found.groups()
+    return float(lat) * (-1 if lat_hemisphere == 'S' else 1), float(lon) * (-1 if lon_hemisphere == 'W' else 1)
+
+
+def _point_problem(holds: tuple[float, float], requested: tuple[float, float]) -> str | None:
+    """Return the mismatch of a cached point's requested location, or None within _POINT_TOLERANCE."""
+    # longitudes are compared on -180 to 180, since AUS-11 reaches 207.39 E
+    wrap = [(lon + 180) % 360 - 180 for lon in (holds[1], requested[1])]
+    lon_difference = abs((wrap[0] - wrap[1] + 180) % 360 - 180)
+    if abs(holds[0] - requested[0]) <= _POINT_TOLERANCE and lon_difference <= _POINT_TOLERANCE:
+        return None
+    return f'holds {holds[0]:.3f}, {holds[1]:.3f}; requested {requested[0]:.3f}, {requested[1]:.3f}'
+
+
+def _grid_problem(ds: xr.Dataset, box: dict[str, float], average4: bool) -> str | None:
+    """Return why a cached grid doesn't serve the box, or None. average4 serves the box centre, an area the box."""
+    if average4:
+        centre = ((box['north'] + box['south']) / 2, (box['east'] + box['west']) / 2)
+        try:
+            bracket_index(np.sort(ds['lat'].values), centre[0])
+            bracket_index(np.sort(ds['lon'].values), centre[1])
+        except ValueError:
+            return f"its nodes don't surround {centre[0]:.3f}, {centre[1]:.3f}"
+        return None
+    covers = (
+        ds.attrs['geospatial_lat_min'] <= box['south']
+        and ds.attrs['geospatial_lat_max'] >= box['north']
+        and ds.attrs['geospatial_lon_min'] <= box['west']
+        and ds.attrs['geospatial_lon_max'] >= box['east']
+    )
+    return None if covers else "doesn't cover the box"
 
 
 # endregion

@@ -9,17 +9,21 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from barra2_dl.convert import convert_wind_components
+from barra2_dl.convert import convert_units, convert_wind_components
 from barra2_dl.globals import BARRA2_INDEX
-from barra2_dl.mapping import LatLonPoint
+from barra2_dl.mapping import LatLonPoint, distance_km
 from barra2_dl.merge import (
+    _csv_header,
     _merge_suffix_columns,
     _split_height,
     dataset_to_frames,
     merge_csvs_to_df,
     merge_netcdf_to_dataset,
+    read_csv,
     read_fixed_fields,
     to_dataset,
+    write_csv,
+    write_df_csv,
 )
 
 # region Test helpers
@@ -891,6 +895,258 @@ def test_dataset_to_frames_refuses_an_area(area: Callable[..., xr.Dataset]) -> N
     """An area is a grid and can't be written as csv."""
     with pytest.raises(ValueError, match='cannot be written as csv'):
         dataset_to_frames(area())
+
+
+# endregion
+
+
+# region write_csv
+def _nearest() -> xr.Dataset:
+    """The nearest-node fixtures with an altitude and versions, for the header."""
+    return _fixture_dataset(orog=747.6, versions={'ua50m': 'v20240516', 'va50m': 'v20240516', 'tas': 'v20231001'})
+
+
+def _average_with_orog() -> xr.Dataset:
+    """The four-node average with the orog grid, for the header."""
+    return _average4(fixed_pattern='grid_AUS-11_fx_average4_orog.nc')
+
+
+def test_write_csv_names_files_by_frame_and_dates(tmp_path: Path) -> None:
+    """One file per frame, named for the site, domain, time step, frame and the Dataset's first and last dates."""
+    paths = write_csv(_average_with_orog(), tmp_path, 'site')
+
+    assert [path.name for path in paths] == [
+        f'site_AUS-11_1hr_{name}_20230101_20230103.csv' for name in ('average4', 'node1', 'node2', 'node3', 'node4')
+    ]
+    assert all(path.exists() and path.parent == tmp_path for path in paths)
+
+
+@pytest.mark.parametrize('dataset', [_nearest, _average_with_orog], ids=['nearest', 'average4'])
+def test_write_csv_round_trips_each_frame_and_header(dataset: Callable[[], xr.Dataset], tmp_path: Path) -> None:
+    """read_csv gives back each frame of dataset_to_frames and the header written for it."""
+    ds = dataset()
+    frames = dataset_to_frames(ds)
+
+    paths = write_csv(ds, tmp_path, 'site')
+
+    assert len(paths) == len(frames)
+    for path, (name, frame) in zip(paths, frames.items(), strict=True):
+        read, header = read_csv(path)
+        pd.testing.assert_frame_equal(read, frame)
+        assert header == dict(_csv_header(ds, name))
+
+
+def test_write_csv_nearest_header_values_come_from_the_dataset(tmp_path: Path) -> None:
+    """The header repeats the Dataset's attributes and coordinates, and the nearest node's distance."""
+    ds = _nearest()
+
+    (path,) = write_csv(ds, tmp_path, 'site')
+    _, header = read_csv(path)
+
+    assert list(header) == [
+        'File',
+        'Source',
+        'Domain',
+        'Time step',
+        'Node selection',
+        'Latitude',
+        'Longitude',
+        'Elevation',
+        'Elevation units',
+        'Requested latitude',
+        'Requested longitude',
+        'Distance to node',
+        'Distance units',
+        'Time zone',
+        'Time stamp',
+        'Dataset versions',
+        'Downloaded',
+        'Created by',
+        'License',
+        'References',
+        'Header lines',
+    ]
+    assert header['Source'] == ds.attrs['source']
+    assert (header['Domain'], header['Time step'], header['Node selection']) == ('AUS-11', '1hr', 'nearest')
+    assert float(header['Latitude']) == float(ds['lat'])
+    assert float(header['Longitude']) == float(ds['lon'])
+    assert float(header['Elevation']) == 747.6
+    assert (header['Elevation units'], header['Distance units'], header['Time zone']) == ('m', 'km', 'UTC')
+    assert float(header['Requested latitude']) == SITE.lat
+    assert float(header['Requested longitude']) == SITE.lon
+    assert float(header['Distance to node']) == pytest.approx(
+        float(distance_km(SITE.lat, SITE.lon, float(ds['lat']), float(ds['lon'])))
+    )
+    assert header['Dataset versions'] == ds.attrs['barra2_version'] == 'v20231001, v20240516'
+    assert header['Downloaded'] == ds.attrs['downloaded']
+    assert header['Created by'].startswith('barra2-dl ')
+    assert (header['License'], header['References']) == (ds.attrs['license'], ds.attrs['references'])
+    assert header['Header lines'] == '22'
+
+
+def test_write_csv_average_and_node_files_have_their_own_positions(tmp_path: Path) -> None:
+    """The average sits at the requested site with four Node lines; each node file has its node's position."""
+    ds = _average_with_orog()
+
+    paths = write_csv(ds, tmp_path, 'site')
+    headers = [read_csv(path)[1] for path in paths]
+
+    average = headers[0]
+    assert float(average['Latitude']) == float(ds['lat']) == GRID_SITE.lat
+    assert float(average['Elevation']) == float(ds.attrs['orog'])
+    assert average['Distance to node'] == ''
+    assert average['Header lines'] == '26'
+    assert [key for key in average if key.startswith('Node ') and key != 'Node selection'] == [
+        'Node 1',
+        'Node 2',
+        'Node 3',
+        'Node 4',
+    ]
+    for k, header in enumerate(headers[1:]):
+        assert (float(header['Latitude']), float(header['Longitude'])) == (
+            float(ds['node_lat'][k]),
+            float(ds['node_lon'][k]),
+        )
+        assert float(header['Elevation']) == float(ds['node_orog'][k])
+        assert float(header['Distance to node']) == float(ds['node_distance'][k])
+        assert (header['Requested latitude'], header['Header lines']) == (average['Requested latitude'], '22')
+        assert not any(key.startswith('Node ') and key != 'Node selection' for key in header)
+        node_line = average[f'Node {k + 1}']
+        assert node_line.startswith(f'lat {float(ds["node_lat"][k])!r}; lon {float(ds["node_lon"][k])!r}; distance ')
+        assert f'weight {float(ds["node_weight"][k])!r}; orog {float(ds["node_orog"][k])!r} m' in node_line
+
+
+def test_write_csv_unknown_values_are_empty_and_the_layout_is_stable(tmp_path: Path) -> None:
+    """Without an orog grid the Elevation value is empty, but the keys are the same."""
+    with_orog, without = _average_with_orog(), _average4()
+
+    header_with = read_csv(write_csv(with_orog, tmp_path, 'a')[0])[1]
+    header_without = read_csv(write_csv(without, tmp_path, 'b')[0])[1]
+
+    assert list(header_without) == list(header_with)
+    assert header_without['Elevation'] == ''
+    assert 'orog  m' in header_without['Node 1']
+
+
+def test_write_csv_header_lines_skips_to_the_frame_in_plain_pandas(tmp_path: Path) -> None:
+    """Pandas with skiprows=Header lines reads the same frame as read_csv."""
+    for ds in (_nearest(), _average_with_orog()):
+        path = write_csv(ds, tmp_path, 'site')[0]
+        frame, header = read_csv(path)
+
+        pd.testing.assert_frame_equal(pd.read_csv(path, skiprows=int(header['Header lines'])), frame)
+
+
+def test_write_csv_header_false_writes_the_bare_frame(tmp_path: Path) -> None:
+    """header=False is byte for byte what frame.to_csv(path, index=False) writes, and reads back with no header."""
+    ds = _nearest()
+    expected = tmp_path / 'expected.csv'
+    dataset_to_frames(ds)['nearest'].to_csv(expected, index=False)
+
+    (path,) = write_csv(ds, tmp_path, 'site', header=False)
+    frame, header = read_csv(path)
+
+    assert path.read_bytes() == expected.read_bytes()
+    assert header == {}
+    pd.testing.assert_frame_equal(frame, dataset_to_frames(ds)['nearest'])
+
+
+def test_write_csv_refuses_an_area(area: Callable[..., xr.Dataset], tmp_path: Path) -> None:
+    """An area is a grid and can't be written as csv; nothing is written."""
+    with pytest.raises(ValueError, match='cannot be written as csv'):
+        write_csv(area(), tmp_path, 'site')
+
+    assert list(tmp_path.glob('*.csv')) == []
+
+
+# endregion
+
+
+# region write_df_csv
+def _converted_fixtures() -> pd.DataFrame:
+    """The csv fixtures merged, with wind and units converted, as the csv example writes them."""
+    df = merge_csvs_to_df(str(DATA), 'fixture_AUS-11_1hr_*.csv', BARRA2_INDEX)
+    return convert_units(convert_wind_components(df))
+
+
+def test_write_df_csv_has_the_header_the_netcdf_route_gives(tmp_path: Path) -> None:
+    """The csv route's file opens with the same header as write_csv gives the same data and inputs."""
+    versions = {'ua50m': 'v20240516', 'va50m': 'v20240516', 'tas': 'v20231001'}
+    path = write_df_csv(
+        _converted_fixtures(), tmp_path / 'a.csv', domain='AUS-11', freq='1hr', requested=SITE, orog=747.6,
+        versions=versions,
+    )  # fmt: skip
+    (netcdf_path,) = write_csv(_nearest(), tmp_path, 'b')
+
+    assert read_csv(path)[1] == read_csv(netcdf_path)[1]
+    assert read_csv(path)[1]['Header lines'] == '22'
+
+
+def test_write_df_csv_writes_the_frame_unchanged(tmp_path: Path) -> None:
+    """The columns, units and rows after the header are the frame's own, converted units included."""
+    df = _converted_fixtures()
+
+    path = write_df_csv(df, tmp_path / 'a.csv', domain='AUS-11', freq='1hr', requested=SITE)
+    frame, header = read_csv(path)
+
+    pd.testing.assert_frame_equal(frame, df)
+    assert 'tas[unit="degC"]' in frame.columns
+    assert header['Elevation'] == ''
+    assert header['Dataset versions'] == 'latest'
+
+
+def test_write_df_csv_rejects_more_than_one_node(tmp_path: Path) -> None:
+    """A frame of two nodes can't take one node's header; nothing is written."""
+    df = pd.concat(
+        [_frame(['2023-01-01T00:00:00Z'], x=[1.0]), _frame(['2023-01-01T01:00:00Z'], x=[2.0])], ignore_index=True
+    )
+    df.loc[df.index[-1], 'latitude[unit="degrees_north"]'] = -30.0
+
+    with pytest.raises(ValueError, match='Expected one node'):
+        write_df_csv(df, tmp_path / 'a.csv', domain='AUS-11', freq='1hr', requested=SITE)
+
+    assert list(tmp_path.iterdir()) == []
+
+
+# endregion
+
+
+# region read_csv
+def test_read_csv_without_header_gives_an_empty_dict(tmp_path: Path) -> None:
+    """A csv route file, which starts with the time column, is read whole."""
+    path = tmp_path / 'a.csv'
+    pd.DataFrame({'time': ['2023-01-01T00:00:00Z'], 'x': [1.5]}).to_csv(path, index=False)
+
+    frame, header = read_csv(path)
+
+    assert header == {}
+    assert frame.to_dict('list') == {'time': ['2023-01-01T00:00:00Z'], 'x': [1.5]}
+
+
+def test_read_csv_reads_quoted_values_and_the_frame_after_the_blank_line(tmp_path: Path) -> None:
+    """Values with commas are unquoted, a key with no value is empty, and the frame starts after the blank line."""
+    path = tmp_path / 'a.csv'
+    path.write_text('File,barra2-dl output\nSource,"BARRA2, via NCI"\nElevation,\n\ntime,x\n2023-01-01T00:00:00Z,2.5\n')
+
+    frame, header = read_csv(path)
+
+    assert header == {'File': 'barra2-dl output', 'Source': 'BARRA2, via NCI', 'Elevation': ''}
+    assert frame.to_dict('list') == {'time': ['2023-01-01T00:00:00Z'], 'x': [2.5]}
+
+
+def test_read_csv_header_without_a_frame_raises(tmp_path: Path) -> None:
+    """A header that never reaches its blank line leaves no frame to read."""
+    path = tmp_path / 'a.csv'
+    path.write_text('File,barra2-dl output\nSource,BARRA2\n')
+
+    with pytest.raises(pd.errors.EmptyDataError):
+        read_csv(path)
+
+
+def test_read_csv_missing_file(tmp_path: Path) -> None:
+    """A missing file raises FileNotFoundError."""
+    with pytest.raises(FileNotFoundError):
+        read_csv(tmp_path / 'missing.csv')
 
 
 # endregion

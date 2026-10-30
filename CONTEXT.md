@@ -69,6 +69,11 @@ The folder the per-variable-month CSVs are downloaded into. Existing files are s
 resumes.
 _Avoid_: Output folder (the merged result is written elsewhere)
 
+**Cache mismatch**:
+A cached file that holds another location than the request, or can't be read. Found by checking every cached file
+before any request, and raised as `CacheMismatchError`; fixed by renaming the site or deleting the listed files.
+_Avoid_: Stale cache (the file isn't old, it is for another request)
+
 **Index** (`BARRA2_INDEX`):
 The columns `time`, `station`, latitude and longitude that the per-variable CSVs are outer-joined on.
 _Avoid_: Key
@@ -106,6 +111,12 @@ The xarray form of the merged data, from `merge.merge_netcdf_to_dataset` (netCDF
 dimension, units and cell methods as attributes, the node altitude and provenance as global attributes. One file per
 site, named `<prefix>_<domain>_<freq>_<selection>_<start>_<end>.nc`.
 _Avoid_: Treating a Dataset as a grid (a gridded download is not implemented)
+
+**Metadata header**:
+The `key,value` block at the top of a csv written by `merge.write_csv` or `merge.write_df_csv`, ending in a blank line: source, node, elevation,
+requested point, time zone, dataset versions and download date, mirroring the Dataset attributes. `merge.read_csv`
+returns it as a dict. The csv route's merged file has none; its converted file has it.
+_Avoid_: Header row (that is the column names)
 
 **time_mean**:
 The time coordinate of variables averaged over the time step (cell methods `time: mean`, such as `pr`), stamped mid-period
