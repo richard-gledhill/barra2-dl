@@ -22,6 +22,12 @@ fail loudly once the bug is fixed, so remove the `xfail` in the same change.
 - Checks for mismatched or multiple suffixed columns in `_merge_suffix_columns`, and for missing `ua`/`va` pairs in
   `convert_wind_components`.
 
+## Deferred features (from the RFC roadmap)
+
+- Command-line tool (`barra2-dl point …`, `barra2-dl run project.toml`), from the dropped RFC-004. The design notes
+  are in the roadmap's section 3.1: `argparse`, subcommands, `--dry-run` and exit codes. Build it on RFC-005's engine
+  (`run_site`, `load_project`) if users need headless or scheduled runs, for example on NCI Gadi.
+
 ## Tooling and process (from the scratch-cookiecutter-uv template review)
 
 - Set a coverage threshold (`fail_under`) now that coverage is 100%.
