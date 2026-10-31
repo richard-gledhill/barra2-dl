@@ -41,9 +41,8 @@ by pattern); the jupytext sync of the notebook must not reformat unrelated cells
    whose area is a rectangle): a `Polygon` type in `mapping` (bounding box, point-in-polygon, node mask); readers for
    standard files (GeoJSON and KML with the standard library; shapefile only if the owner approves a dependency such
    as `pyshp`); WGS84 only. An area download fetches the polygon's bounding box and keeps the nodes inside it.
-   `Site` gains an optional `polygon` and the project file a `polygon = "farm.geojson"` key. Open, and reviewed
-   with the owner before coding (SPEC, "Open design questions"): the default output for a boundary, an optional
-   weighted site mean, the node inclusion rule, and polygons smaller than one grid cell.
+   `Site` gains an optional `polygon` and the project file a `polygon = "farm.geojson"` key. Detailed in the SPEC
+   "Slice 2b addendum" (awaiting owner review): cell-overlap mask, opt-in area-weighted mean, netCDF only.
 3. **Toolkit spikes** (`docs/gui-toolkit-adr`): time-boxed Streamlit, NiceGUI, Panel, Dash (Plotly) and Flet builds of
    the same thin slice (RFC 5.2); an ADR records the choice. Spike code is throwaway and not merged. Drawing a polygon on the map is a spike criterion. The owner added
    Dash and Flet to the RFC's list on 2026-10-30; Flet also shows what freezing a desktop-native build would cost.

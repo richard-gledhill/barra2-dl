@@ -32,7 +32,11 @@ Resumed 2026-10-31 after RFC-007 shipped. The owner answered RFC section 9 on 20
 - [x] `make check`, `make test`, `make docs-test`, live tests, end-to-end run of the example project; PR
 
 ## Slice 2b: `feat/polygon-boundary` (beyond RFC-005; owner request)
-- [ ] SPEC addendum; `mapping.Polygon`, file readers, node mask, `Site.polygon`, project-file key; tests; PR
+- [x] SPEC addendum written (PR `docs: slice 2b SPEC addendum (polygon boundary)`); owner review pending
+- [ ] Owner answers the five questions at the end of the addendum
+- [ ] `mapping.Polygon`, readers, `cell_overlap`; tests
+- [ ] `merge` polygon mask and `_site_mean`; `project` `Site.polygon`, validation, summary; tests
+- [ ] Example boundary, docs, live tests; `make check`, `make test`, `make docs-test`; PR
 
 ## Slice 3: toolkit spikes and ADR
 - [ ] SPEC addendum; five spikes (Streamlit, NiceGUI, Panel, Dash, Flet), tkinter on paper; ADR; PR
