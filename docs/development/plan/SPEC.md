@@ -8,7 +8,7 @@ Style and gates: [conventions.md](../conventions.md), [constraints.md](../constr
 Resumed 2026-10-31 after [RFC-007](../requirements/cache-validation-csv-metadata-prd.md) shipped (#143). RFC-007 already
 did the cache check (`_check_cache`, `CacheMismatchError`), the atomic `.part` write and the empty-response failure in
 `download.py`, and the csv metadata header (`merge.write_csv`). Slice 1 builds on them and adds the RFC-005 5.7 engine
-additions, which are proposed and need the owner's answers to RFC section 9 (see "Decisions for approval").
+additions, which the owner approved on 2026-10-31 with the answers to RFC section 9 (see "Decisions").
 
 RFC-005 in six slices, one PR each (section 7 of the RFC). **This SPEC details slice 1.** Slices 2-6 are outlined in
 [plan.md](plan.md) and get their own SPEC addendum before they start.
@@ -47,7 +47,7 @@ changes to `mapping.py` other than its `__all__`.
 @dataclass(frozen=True)
 class Settings:   # defaults from the earlier RFCs
     domain: str = 'AUS-11'; freq: str = '1hr'; preset: str = 'wind+density'
-    node_selection: str = 'nearest'; format: str = 'csv'
+    node_selection: str = 'nearest'; format: str = 'csv'; download: str = 'netcdf4'   # or 'csv', point sites only
     start: date; end: date                      # required in a project file
     cache: Path = Path('cache'); out: Path = Path('output'); workers: int = 4
 
@@ -73,7 +73,7 @@ class ProjectError(ValueError):                 # .problems: list[Problem], one 
 class Problem:  site: str | None; key: str; message: str
 ```
 
-Proposed from RFC-005 5.7, so a form, flags and a file share one path (pending section 9, item 2):
+From RFC-005 5.7 (approved, section 9 item 2), so a form, flags and a file share one path:
 
 - `project_from_dict(data, base_dir) -> Project` and `site_from_dict(data, settings) -> Site` build the dataclasses
   from plain data; `load_project(path)` is `tomllib` plus `project_from_dict`.
@@ -95,15 +95,18 @@ Proposed from RFC-005 5.7, so a form, flags and a file share one path (pending s
   prefix); lat/lon range; a box with `north > south` and `east > west`; both or neither of point and box;
   domain/freq (`BARRA2_FREQS`), the preset at that frequency (`preset_variables`), `node_selection` and `format`
   values; `start <= end`; `workers >= 1`. A box site is an `area` download unless it names another selection (an error);
-  a point site with `area` is an error; `area` with `csv` is an error. Every message says what to change.
+  a point site with `area` is an error; `area` with `csv` is an error; `download = "csv"` is an error unless the site
+  is a point with `nearest` and `format = "csv"` (RFC decision 13). Every message says what to change.
 - `run_site(site, settings, progress=None, cancel=None) -> SiteResult` validates the effective settings again (the GUI
   builds the dataclasses without a file), creates the cache and output folders, and then:
-  1. builds the URLs (`point_data_urlfilenames` or `area_data_urlfilenames`) as **netCDF4 for every route**;
+  1. builds the URLs (`point_data_urlfilenames` or `area_data_urlfilenames`) as **netCDF4 by default**; a point site
+     with `download = "csv"` builds csv URLs and takes the csv route in steps 3 and 4;
   2. downloads with `download_multithread`;
-  3. resolves variable versions, merges with `merge_netcdf_to_dataset`;
+  3. resolves variable versions, merges with `merge_netcdf_to_dataset` (csv route: `merge_csvs_to_df`, then
+     `convert_wind_components`; units are left as they are);
   4. writes `<name>_<domain>_<freq>_<selection>_<start>_<end>.nc`, or for `csv` `merge.write_csv(ds, out, name)`: the
      frames of `dataset_to_frames` as `<name>_<domain>_<freq>_<frame>_<start>_<end>.csv`, each with the metadata
-     header (RFC-007);
+     header (RFC-007); csv route: `merge.write_df_csv`, which writes the same header and file name;
   5. writes `<name>_run_summary.json` beside them.
 - A `CacheMismatchError` from the download (a moved site that kept its name) is a site-level failure: `failed`, with
   the error's message in `error` and the failing files in `missing`; nothing is downloaded or overwritten (RFC-007).
@@ -230,28 +233,24 @@ above. The owner reviews the note; it doesn't change a requirements doc.
 
 Findings that contradict an RFC-005 decision are reported to the owner and don't change the RFC.
 
-## Decisions for approval
+## Decisions
 
-RFC section 9 is still open, so the 5.7 additions above are proposals. The owner answers these before the code that
-depends on them is written; the proposed answer comes first in each.
+Approved by the owner on 2026-10-31, as answers to RFC-005 section 9 and the questions below:
 
 A. **Layout (section 9, 1):** top-level library with `gui/` and later `cli.py` beside it; no `core/` folder.
-B. **Engine additions (2):** the 5.7 list above, in slice 1.
-C. **Console output (3):** the conventions have every progress message logged and printed. From a GUI worker thread that
-   floods the server console. Proposed: keep it for now (RFC-007's `_report`), rely on the progress callback in the
-   GUI, and decide a convention change (the library logs, interfaces print) with the owner at slice 4. The convention
-   is the owner's to change.
+B. **Engine additions (2):** the 5.7 list above, all in slice 1.
+C. **Console output (3):** keep the current dual pattern (RFC-007's `_report`) for now and rely on the progress
+   callback in the GUI; revisit at slice 4. The convention is the owner's to change.
 D. **Boundary tests (4):** standard library, not `import-linter`.
 E. **ADR (5):** ADR-004, written in this slice.
-F. **Cache mismatch in the GUI (7):** `run_site` reports it as a failed site now. Whether the GUI offers "clear this
-   site's cache", a rename prompt or only the error is decided at slice 4.
+F. **Cache mismatch in the GUI (7):** `run_site` reports it as a failed site. The GUI shows the error and offers a
+   rename, and never deletes files for the user; detail at slice 4.
 
-1. **One download route.** `run_site` always downloads netCDF4 and writes csv from `dataset_to_frames`, instead of a
-   second csv download/merge/convert path. One code path, and `average4` csv needs it anyway. Cost: csv runs don't
-   reuse a cache made by the csv example (`.csv` files).
-2. **`cancelled` as a fourth `FileResult` status.** RFC 5.6 names three; a cancelled run otherwise has no result for
-   files it never tried.
+1. **Download route is a setting.** The default is the netCDF4 download for every route. A point site can switch to the
+   csv download (`download = "csv"`), which runs the csv route end to end and writes csv only (RFC decision 13). The
+   csv route's cache is the csv example's `.csv` files, so it reuses them.
+2. **`cancelled` as a fourth `FileResult` status** (RFC decision 14).
 3. **Retry arithmetic.** "Up to 3 times with back-off 1, 2, 4 s" is read as 3 retries (4 attempts in all).
 4. **Atomic writes and empty-response failure** were done by RFC-007 (#143); slice 1 only adds retries around them.
 5. **Example cell goes in the netCDF example only**, since the csv example is the step-by-step route.
-6. **RFC-005 stays `Draft`** until you say otherwise; I'll ask again when slice 1 is ready.
+6. **RFC-005 is `Accepted`** (2026-10-31).

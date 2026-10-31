@@ -1,4 +1,4 @@
-Status: Draft
+Status: Accepted
 
 # RFC-005: GUI for wind resource assessment
 
@@ -8,7 +8,7 @@ Status: Draft
 | Depends on | [RFC-001](wind-variables-bugfix-prd.md) (Done), [RFC-002 parameter review](parameter-review-prd.md), [RFC-003 netCDF output](netcdf-output-prd.md); see the [roadmap](wind-engineering-roadmap-prd.md#4-rfc-roadmap) |
 | Goes after | [RFC-007 cache validation and csv metadata header](cache-validation-csv-metadata-prd.md), which changes `download._download_file` first (cache check, atomic writes) and adds the csv writer `run_site` uses |
 | Replaces | RFC-004 (CLI), dropped on 2026-10-30. Its engine and project file are folded in here (5.5, 5.6); the command-line tool is deferred to the backlog |
-| Drafted | 2026-10-28, updated 2026-10-30 with the owner's decisions (section 8), and 2026-10-31 with the [package structure review](package-structure-review-prd.md) (5.7, section 9) |
+| Drafted | 2026-10-28, updated 2026-10-30 with the owner's decisions (section 8), and 2026-10-31 with the [package structure review](package-structure-review-prd.md) (5.7, section 9); accepted 2026-10-31 with the owner's answers to section 9 and decisions 13 and 14 |
 
 ## 1. Summary
 
@@ -381,9 +381,18 @@ Decided by the owner on 2026-10-30:
 12. **Failing sites:** a project run always carries on; each site's gaps are in its run summary, and the
     end-of-run report highlights failures (5.6).
 
-## 9. Open questions from the structure review
+Added by the owner on 2026-10-31:
 
-Raised on 2026-10-31 by the [package structure review](package-structure-review-prd.md); not yet decided.
+13. **Download route is a setting.** The default download is netCDF4 for every route. For a point site the user can
+    switch to the csv download (`download = "csv"` in the project file, a choice in the GUI); that site then takes the
+    csv route end to end (`merge_csvs_to_df`, convert, `write_df_csv` with the metadata header) and its output is csv
+    only. `average4`, `area` and netCDF output always use the netCDF download, and validation says so.
+14. **Cancelled files.** A fourth file status, `cancelled`, so every input file has a result after a cancel (5.6).
+
+## 9. Questions from the structure review
+
+Raised on 2026-10-31 by the [package structure review](package-structure-review-prd.md); answered by the owner on
+2026-10-31 (the answers are at the end of this section).
 
 1. **Layout:** top-level library with `gui/` and later `cli.py` beside it (proposed, 5.7), rather than a `core/`
    folder or a separate `barra2-dl-gui` distribution. Revisit a separate distribution only if the toolkit's
@@ -402,3 +411,16 @@ Raised on 2026-10-31 by the [package structure review](package-structure-review-
    (or unreadable ones) and leaves recovery to the error message: rename the site or delete the files. Moving a pin
    is normal in the GUI, so decide whether it offers a "clear this site's cache and re-download" action, a rename
    prompt, or just shows the error; `run_site` reports it as a failed site either way.
+
+**Answers (2026-10-31):**
+
+1. **Layout:** top-level library with `gui/` and later `cli.py` beside it, as proposed in 5.7. No `core/` folder.
+2. **Engine additions:** all of them, in slice 1 (`project_from_dict`/`site_from_dict`, public `validate` with
+   `Problem`, `plan_site`, one result serialiser, the output-format constant and `Literal` aliases).
+3. **Console output:** keep the current convention for now; the GUI relies on the progress callback. Revisit at the GUI
+   skeleton slice. The convention is still the owner's to change.
+4. **Boundary tests:** standard library, in `tests/test_package.py`; no `import-linter`.
+5. **ADR:** ADR-004 records the layering, written in slice 1.
+6. **Cache location:** settled by RFC-007.
+7. **Cache mismatch in the GUI:** show the error and offer a rename of the site, never delete files for the user.
+   Detail is settled at the GUI skeleton slice.

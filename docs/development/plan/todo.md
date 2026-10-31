@@ -1,6 +1,6 @@
 # Todo: GUI for wind resource assessment (RFC-005)
 
-Resumed 2026-10-31 after RFC-007 shipped. Owner answers to RFC section 9 (SPEC, "Decisions for approval") come before slice 1 code.
+Resumed 2026-10-31 after RFC-007 shipped. The owner answered RFC section 9 on 2026-10-31 (SPEC, "Decisions"); RFC-005 is Accepted.
 
 ## Slice 1: `feat/project-engine`
 - [ ] `FileResult`; `_download_file` retries (atomic write and empty response done by RFC-007); tests
@@ -8,7 +8,7 @@ Resumed 2026-10-31 after RFC-007 shipped. Owner answers to RFC section 9 (SPEC, 
 - [ ] `globals`: `BARRA2_OUTPUT_FORMATS`, `Literal` aliases; `__all__` for `globals` and `mapping`; tests
 - [ ] `project.py`: data classes, `Problem`, `ProjectError`, `project_from_dict`/`site_from_dict`, `load_project`, `validate`; tests
 - [ ] `plan_site`; tests
-- [ ] `run_site`: output (`write_csv`), run summary, `site_result_to_dict`, failed/partial/cancelled/cache-mismatch paths; tests
+- [ ] `run_site`: csv download option for point sites (`write_df_csv`); output (`write_csv`), run summary, `site_result_to_dict`, failed/partial/cancelled/cache-mismatch paths; tests
 - [ ] Export in `__init__.py`; `test_package.py` boundary tests
 - [ ] `scripts/example_project.toml`; example cell in the netCDF example (`.py` and `.ipynb`)
 - [ ] Docs: how-to-use, `CONTEXT.md`, README, modules page; ADR-004

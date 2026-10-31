@@ -14,7 +14,8 @@ Order, each step test-first:
 3. `project.py` data classes, `Problem`, `ProjectError`, `project_from_dict`/`site_from_dict`, `load_project`, public
    `validate` (all problems in one error); `BARRA2_OUTPUT_FORMATS`, `Literal` aliases, `__all__` for `globals` and
    `mapping`.
-4. `plan_site`; `run_site`: URLs, download, versions, merge, output (`write_csv` with header), run summary,
+4. `plan_site`; `run_site`: URLs, download (netCDF4 default, csv for a point site with `download = "csv"`), versions,
+   merge, output (`write_csv` or `write_df_csv`, with header), run summary,
    `site_result_to_dict`; failure, partial, cache-mismatch and cancel paths.
 5. `__init__.py` export, `test_package.py` boundary tests, `scripts/example_project.toml`, example cell (`.py` and
    `.ipynb`).
