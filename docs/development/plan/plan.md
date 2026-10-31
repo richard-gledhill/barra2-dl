@@ -51,7 +51,9 @@ by pattern); the jupytext sync of the notebook must not reformat unrelated cells
    an edit.
 4. **GUI skeleton** (`feat/gui-skeleton`): `gui` extra, `barra2-dl-gui` entry point, form to `Settings`/`Site`, background
    `run_site` with progress and cancel, display-free smoke test.
-5. **Map, import, summary view** (`feat/gui-map-import`): node preview with distances, an optional node layer limited
+5. **Map, import, summary view** (`feat/gui-map-import`): node preview with distances, **the nodes selected or used for a
+   site drawn on the map** (owner requirement, 2026-10-31: before a run for the chosen nodes, and after it from the
+   summary; not only a table), an optional node layer limited
    to the site or area plus a margin (nodes from the server, never a stored file), mast-list CSV and project-file
    import, boundary file import, polygon drawing on the map, run-summary view.
 6. **User docs and credit** (`docs/gui-user-guide`): GUI guide, project-file reference, why AUS-11 is the default (confirm

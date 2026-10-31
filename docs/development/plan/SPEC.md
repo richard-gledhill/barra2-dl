@@ -7,7 +7,7 @@ Style and gates: [conventions.md](../conventions.md), [constraints.md](../constr
 
 - Slice 1 (the engine) shipped in #147.
 - Slice 1b (research) is done and reviewed: see "Slice 1b addendum" for the owner's decisions.
-- Slice 2 (node lookup, chosen nodes) has its addendum, "Slice 2 addendum" at the end, awaiting owner review.
+- Slice 2 (node lookup, chosen nodes) has its addendum, "Slice 2 addendum" at the end, approved by the owner on 2026-10-31.
 
 ## Scope
 
@@ -296,7 +296,7 @@ table is decided yet.
 
 ## Slice 2 addendum: node lookup and chosen nodes (`feat/nearest-nodes`)
 
-Written 2026-10-31, when slice 2 started. **Status: awaiting owner review. No library code or tests until it is
+Written 2026-10-31, when slice 2 started. **Status: approved by the owner on 2026-10-31. No library code or tests until it is
 approved.** It settles the two rows of the design table marked "Slice 2" (choosing specific nodes for a point, and the
 output when several are chosen) and does not reopen RFC-005 section 8, the section 9 answers or the slice 1b decisions.
 
@@ -546,6 +546,10 @@ and for the box tests it applies NCSS's cell-overlap rule (with the observed nor
 - A larger lookup for the GUI node layer (slice 5): the internal fixed-field fetch takes a box, so slice 5 can call it for
   a site's margin with the same cache folder; no public API for it is added here.
 - Reusing a covering cache file for nearby pins; naming files by node.
+- **GUI requirement (owner, 2026-10-31):** the map shows the nodes selected or used for a site (nearest, the four of
+  `average4`, the chosen `nodes`, or an area's nodes), with distance, `orog` and `sftlf` on hover or select, both when
+  choosing and for a finished run (from the summary's `nodes`). A table alone does not meet it. Slice 4 carries the node
+  data through the form and the result; slice 5 draws it.
 
 ### Acceptance
 
@@ -559,11 +563,15 @@ and for the box tests it applies NCSS's cell-overlap rule (with the observed nor
   folder pass, with no suppression added; the example pairs are in step.
 - If approved, the three draft helpers, their tests and their notes are gone and the owner has updated `conventions.md`.
 
-### Questions for the owner
+### Decisions
 
-1. **Box:** shrink the `average4` box by 1% of the spacing for `nearest_nodes` (b, recommended), or use it exactly (a)?
-2. **`nodes` implied by `nodes = [...]`** (recommended, as a box implies an area), or an explicit
-   `node_selection = "nodes"`?
-3. **Delete the three draft helpers and their tests**, including the strict `xfail`, and edit the Design bullet of
-   `conventions.md` (yours to change)?
-4. **Function-level import** of `download` in `mapping.nearest_nodes` (a, recommended) to break the import cycle?
+Owner's answers of 2026-10-31 to the four questions raised in review; the option tables above are the reasoning.
+
+1. **Box:** the `average4` box shrunk by 1% of the spacing on every side (option b).
+2. **`nodes` is implied** by `nodes = [[lat, lon], ...]` on a point site; it is not a `node_selection` value.
+3. **The three draft helpers and their tests are deleted** in this slice, including the strict `xfail`. The Design bullet
+   in `conventions.md` stays for the owner to delete; this slice does not edit that file.
+4. **Function-level import** of `download` inside `nearest_nodes`, with a comment saying why (the import cycle).
+
+Added by the owner: the GUI must show a visual representation of the nodes selected or used, on the map, for a chosen or
+used site, not only a table. This is a slice 4/5 requirement (see "Not in scope" and `plan.md`).
