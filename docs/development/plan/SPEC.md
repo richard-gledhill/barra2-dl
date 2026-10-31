@@ -3,6 +3,11 @@
 Requirement: [RFC-005](../requirements/gui-prd.md); its decisions are in section 8 and are not reopened here.
 Style and gates: [conventions.md](../conventions.md), [constraints.md](../constraints.md).
 
+## Slice status
+
+- Slice 1 (the engine) shipped in #147.
+- Slice 1b (research) is done and reviewed: see "Slice 1b addendum" at the end for the owner's decisions.
+
 ## Scope
 
 Resumed 2026-10-31 after [RFC-007](../requirements/cache-validation-csv-metadata-prd.md) shipped (#143). RFC-007 already
@@ -254,3 +259,36 @@ F. **Cache mismatch in the GUI (7):** `run_site` reports it as a failed site. Th
 4. **Atomic writes and empty-response failure** were done by RFC-007 (#143); slice 1 only adds retries around them.
 5. **Example cell goes in the netCDF example only**, since the csv example is the step-by-step route.
 6. **RFC-005 is `Accepted`** (2026-10-31).
+
+## Slice 1b addendum: research (`docs/reanalysis-site-data-research`)
+
+Written 2026-10-31, when slice 1b started.
+
+**Scope.** The seven research tasks listed under "Research to resolve them", ending in one note,
+`docs/development/research/reanalysis-site-data.md`, with sources and a recommendation per question. No library or
+`src/` change.
+
+**Method.** Short web searches and page reads for tasks 1, 2, 3, 5, 6 and 7. Task 4 (NCSS behaviour) is tested against the
+live server, and the result is pinned as fixtures: `scripts/build_test_fixtures.py` gains `save_node_boxes`, which
+downloads the `orog` grid for six boxes into `tests/data/ncss_box_*.nc`, and `tests/test_ncss_nodes.py` checks the node
+rule against them offline. Claims from search summaries, and anything from my own knowledge of a standard, are marked in the
+note. Findings that contradict an RFC-005 decision are reported to the owner, not applied.
+
+**Output.** The note, the new `docs/development/research/` folder with its README, the fixtures and the test.
+
+**Acceptance.** The seven questions each have a recommendation or a stated gap; the live findings are reproducible from
+the fixture builder and pinned by tests; `make check`, `make test` and `make docs-test` pass; the owner has reviewed the
+note. The slice 2b addendum is written only after that review.
+
+**Not in scope.** Choosing the answers: the table of open questions stays open until the owner decides, slice by slice.
+
+**Owner decisions after the note (2026-10-31).** These resolve rows of the design table above for slice 2b; nothing else in the
+table is decided yet.
+
+| Question | Decision |
+|---|---|
+| Default output for a boundary | All nodes whose cell overlaps the polygon, one series each, plus an opt-in site mean |
+| Site mean | An opt-in extra series, weighted by each cell's overlap with the polygon, using the hybrid method |
+| Polygon smaller than one grid cell | The node whose cell holds the centroid (`average4` at the centroid stays an option) |
+| Node inclusion rule | The cell overlaps the polygon, as NCSS returns it |
+| Boundary file types | GeoJSON and KML with the standard library; no shapefile and no `pyshp` in v1 |

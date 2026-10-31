@@ -16,7 +16,9 @@ Resumed 2026-10-31 after RFC-007 shipped. The owner answered RFC section 9 on 20
 - [ ] PR
 
 ## Slice 1b: research (`docs/reanalysis-site-data-research`)
-- [ ] Seven research tasks (SPEC); note in `docs/development/research/`; owner review; PR
+- [x] Seven research tasks (SPEC); note in `docs/development/research/`
+- [x] Task 4 pinned: `save_node_boxes` fixtures and `tests/test_ncss_nodes.py`
+- [x] Owner review of the note (decisions recorded in the SPEC); PR
 
 ## Slice 2: `feat/nearest-nodes`
 - [ ] SPEC addendum; `mapping.nearest_nodes`; tests; PR
