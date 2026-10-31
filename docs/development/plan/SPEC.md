@@ -823,7 +823,7 @@ Written 2026-10-31, when slice 3 started. **Status: proposed, for the owner's re
 repo's dependencies until the owner approves this addendum.** It does not reopen RFC-005 section 8, the section 9 answers, ADR-004,
 or the slice 1b, 2 and 2b owner decisions.
 
-**Scope.** Choose the GUI toolkit (RFC-005 5.2, decision 3) by building the same thin slice in five candidates, scoring them on
+**Scope.** Choose the GUI toolkit (RFC-005 5.2, decision 3) by building the same thin slice in six candidates, scoring them on
 fixed criteria, and recording the choice as ADR-005. Spike code is throwaway: it is never merged to `main`. The slice's PR holds the
 ADR, a research note with the evidence, and plan updates, and nothing else. Out of scope: the GUI skeleton (slice 4), the real map
 and imports (slice 5), any `gui` extra, `barra2_dl/gui/` code, a CLI, and a Windows executable (decision 4).
@@ -833,7 +833,7 @@ and imports (slice 5), any `gui` extra, `barra2_dl/gui/` code, a CLI, and a Wind
 | Question | Decision |
 |---|---|
 | How the toolkit is chosen | Time-boxed spikes of one thin slice, judged on look and ease of use for a non-programmer; owner prefers Streamlit or a similar web interface (RFC decision 3) |
-| Candidates | Streamlit, NiceGUI, Panel, Dash (Plotly) and Flet are built; tkinter is judged on paper only, as the baseline (owner, 2026-10-30) |
+| Candidates | Streamlit, NiceGUI, Panel, Dash (Plotly) and Flet are built; tkinter is judged on paper only, as the baseline (owner, 2026-10-30). A sixth spike, a Jupyter notebook with `ipywidgets` and `ipyleaflet`, served as an app with Voila, was added by the owner on 2026-10-31 |
 | Layering | `barra2_dl/gui/` beside the library; the library never imports an interface; an interface imports only `__all__` names (ADR-004) |
 | Map | The nodes selected or used for a site are drawn on the map, not only listed (owner, 2026-10-31); drawing a polygon on the map is a criterion |
 | Packaging | Optional `gui` extra and entry point `barra2-dl-gui = "barra2_dl.gui:main"` (RFC 5.3); no executable in v1 |
@@ -843,7 +843,7 @@ and imports (slice 5), any `gui` extra, `barra2_dl/gui/` code, a CLI, and a Wind
 
 | # | Question | Proposal |
 |---|---|---|
-| A | Time box | 4 hours of work per spike, a hard stop. A feature not working at the stop is scored as not working and noted, not finished. About 20 hours of spikes, 1 hour for tkinter on paper, 3 for the note |
+| A | Time box | 4 hours of work per spike, a hard stop. A feature not working at the stop is scored as not working and noted, not finished. About 24 hours of spikes, 1 hour for tkinter on paper, 3 for the note |
 | B | Where spike code lives | Branch `chore/gui-toolkit-spikes` (a Conventional Commits type, so the branch-name check passes), in `spikes/<toolkit>/` plus `spikes/common/`. Never merged and never a PR. Pushed so the work is not lost, and tagged `rfc005-spikes` when the spikes finish, so ADR-005 can cite a commit that stays reproducible. See "Options: where spike code lives" |
 | C | Environments | Each spike installs into its own scratch virtual environment outside the repo (`uv venv` under the scratchpad folder, `uv pip install -e <worktree>` plus the spike's `requirements.txt`). The spike branch never changes `pyproject.toml` or `uv.lock`; `git diff main -- pyproject.toml uv.lock` must be empty, and `uv sync` is never run with toolkit packages |
 | D | Evidence home | A research note, `docs/development/research/gui-toolkit-spikes.md` (raw evidence: scores, timings, sizes, pin checks, screenshots, the `uv pip freeze` of each spike), and ADR-005 (the decision, short, linking the note). Screenshots are small PNGs in `docs/development/research/gui-toolkit-spikes/` |
@@ -851,7 +851,7 @@ and imports (slice 5), any `gui` extra, `barra2_dl/gui/` code, a CLI, and a Wind
 | F | Decision rule | A toolkit failing a gate is out unless the owner waives that gate. Among the rest, the weighted score ranks them and the owner decides, taking the ranking, the evidence and their stated preference into account. There is no automatic winner and no automatic tie-break |
 | G | Spikes without the network | A shared fake NCSS server (`spikes/common/fake_ncss.py`) patches `requests.get` from the `tests/data/` fixtures, with a short delay per file so progress and cancel are visible. It is the one thing a spike uses beyond the public API, because it stands in for the network. It works only for the fixture points (`scripts/build_test_fixtures.py`). A switch (`SPIKE_LIVE=1`) turns it off for one real month, run once per spike so the owner sees real data |
 | H | Map and draw libraries | Left to the spike author within the time box, from the candidates in the table below. A toolkit with no usable polygon drawing scores 0 on that criterion and the workaround, if any, is noted. The health of a third-party map component counts under maintenance, because the GUI would depend on it too |
-| I | Other toolkits | Gradio, Solara, Reflex, pywebview with HTML, Qt (PySide6) and Textual are not built. ADR-005 names each in one line under alternatives, from paper, so the record shows they were considered. The owner's list of five stands |
+| I | Other toolkits | Gradio, Reflex, pywebview with HTML, Qt (PySide6) and Textual are not built. ADR-005 names each in one line under alternatives, from paper, so the record shows they were considered. The owner's list of six stands. Solara, which is built on the same notebook widgets, is named in the notebook spike's alternatives |
 
 ### The thin slice every spike builds
 
@@ -895,6 +895,7 @@ and is maintained, and the exact versions go in the note.
 | **Panel** | Event-driven (Bokeh server, Param) | `ipyleaflet` with `DrawControl`, or `folium` | Dependency weight and pins (bokeh, param, numpy, pandas); time to a good-looking page; updating widgets from a thread |
 | **Dash** | Callbacks on a Flask server | `dash-leaflet` with `EditControl` | Background callbacks against a plain thread polled by `dcc.Interval`; extra dependencies for background callbacks; look |
 | **Flet** | Flutter client, Python backend | `flet-map` (polygon layers and tap events; check whether drawing is built in or has to be built from taps) | Whether polygon drawing is possible in the time box; desktop window versus web mode; the cost of freezing a desktop build, the one candidate where that is the point; Python 3.14 support of the client |
+| **Notebook** (`ipywidgets`, `ipyleaflet`, Voila) | Widgets in a Jupyter kernel; Voila serves the notebook as an app with the code cells hidden | `ipyleaflet` with `DrawControl`, which Panel's `ipyleaflet` route also uses | Run both as a notebook and under Voila, and score the Voila app mode, which is what an analyst would use; the kernel is busy unless `run_site` is on a thread, so progress and cancel need the worker-thread pattern; how `barra2-dl-gui` would launch Voila on a shipped notebook (G7); the Jupyter dependency set against the library's pins; testing with `nbclient` and no display; freeze cost (expected poor); whether `scripts/*.ipynb` and the jupytext pairs could share code |
 | **tkinter** (paper) | Event loop, standard library | `tkintermapview` (a tkinter map widget with polygons) | Judged from documentation only, not built: look, map and drawing, thread hand-off through a queue and `after`, display-free testing, freezing cost |
 
 ### Criteria and how each is scored
@@ -942,7 +943,7 @@ slice 4**; this slice only produces the evidence.
 |---|---|---|
 | **a. A never-merged branch with `spikes/`, tagged (proposed)** | Same repo, same hooks, reproducible from a tag, the ADR can link a commit, no new account or repo | The pre-commit hooks (ruff check and format) run on spike code, so it must pass them (never suppressed); a pushed branch may trigger CI jobs, whose failures are noise to tidy |
 | b. A scratch folder outside the repo, not in git | No hooks, no clutter | Not reproducible later; the ADR could not point at anything |
-| c. A separate public repository | No hooks or CI of this repo | The owner must create and keep it; a second place to look; more than five small apps need |
+| c. A separate public repository | No hooks or CI of this repo | The owner must create and keep it; a second place to look; more than six small apps need |
 
 ### Packaging and `pyproject.toml` during the spikes
 
@@ -960,7 +961,7 @@ follows the ADR README (context, decision, alternatives and why they lost, conse
 
 - **Context.** RFC-005 5.2, the owner's preference, the thin slice, the gates and criteria in short.
 - **Decision.** The chosen toolkit and map/draw component, with the versions the spike used.
-- **Evidence.** The scoring table (all five plus tkinter on paper), the gates, and links to the research note and the
+- **Evidence.** The scoring table (all six plus tkinter on paper), the gates, and links to the research note and the
   `rfc005-spikes` tag with its commit.
 - **Alternatives considered.** Each of the others and why it lost, in one or two lines; the toolkits in decision I, one line each.
 - **Consequences.** The shape of `gui/` and `main()` for that toolkit; the threading pattern slice 4 must use; the `gui` extra's
@@ -991,9 +992,9 @@ There is no library code, so no unit tests. Acceptance:
 | Step | What | About |
 |---|---|---|
 | 0 | Owner reviews and approves this addendum (this PR) and answers its questions | owner |
-| 1 | Set up: spike branch and worktree, `spikes/common` (fake NCSS server, shared form spec, scoring sheet), scratch environments, and a pin and wheel dry run for all five on 3.12 to 3.14. A toolkit failing G4 or G5 outright is flagged to the owner now, before time is spent on it | 2 h |
+| 1 | Set up: spike branch and worktree, `spikes/common` (fake NCSS server, shared form spec, scoring sheet), scratch environments, and a pin and wheel dry run for all six on 3.12 to 3.14. A toolkit failing G4 or G5 outright is flagged to the owner now, before time is spent on it | 2 h |
 | 2 | Spike 1 Streamlit, then spike 2 NiceGUI (the likelier choices). Optional checkpoint: the owner looks at these two before the rest | 4 h each |
-| 3 | Spikes 3 to 5: Panel, Dash, Flet (including the freeze attempt) | 4 h each |
+| 3 | Spikes 3 to 6: Panel, Dash, Flet (including the freeze attempt), notebook with Voila | 4 h each |
 | 4 | tkinter on paper | 1 h |
 | 5 | The note: measurements, console-output findings, Claude's scores, screenshots | 3 h |
 | 6 | Owner's walkthrough: run each spike with one command, score looks and ease (about 10 minutes each), choose | owner |
