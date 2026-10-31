@@ -3,6 +3,7 @@
 import io
 import os
 import re
+import shutil
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -734,6 +735,75 @@ def test_area_data_urlfilenames_box_returns_a_grid(tmp_path: Path) -> None:
     # nodes whose grid cell overlaps the box are returned, so the edge nodes can sit just inside or outside it
     assert -23.76 < lats.min() < -23.6
     assert -23.5 < lats.max() < -23.35
+
+
+# endregion
+
+
+# region nodes_data_urlfilenames
+NODES = [LatLonPoint(-23.54, 133.36), LatLonPoint(-23.43, 133.36)]
+
+
+def test_nodes_data_urlfilenames_requests_the_nodes_box_a_quarter_spacing_off_the_nodes() -> None:
+    """One bounding-box request per variable-month; the box is the nodes' box widened by a quarter spacing."""
+    pairs = barra2_dl.download.nodes_data_urlfilenames(NODES, ['ua50m'], '2023-01-01', '2023-02-28', 'site')
+
+    assert [name for _, name in pairs] == [
+        'site_AUS-11_1hr_nodes_n-23.4025_s-23.5675_e133.3875_w133.3325_ua50m_20230101_20230131.nc',
+        'site_AUS-11_1hr_nodes_n-23.4025_s-23.5675_e133.3875_w133.3325_ua50m_20230201_20230228.nc',
+        'site_AUS-11_fx_nodes_n-23.4025_s-23.5675_e133.3875_w133.3325_orog.nc',
+    ]
+    assert 'north=-23.4025&south=-23.5675&east=133.3875&west=133.3325&horizStride=1' in pairs[0][0]
+    assert all(url.endswith('accept=netcdf4') for url, _ in pairs)
+
+
+def test_nodes_data_urlfilenames_one_node_gets_a_box_inside_its_cell() -> None:
+    """A single node gets a box of half a spacing across, centred on it: inside its cell, off every cell edge."""
+    pairs = barra2_dl.download.nodes_data_urlfilenames(NODES[:1], ['ua50m'], '2023-01-01', '2023-01-31', 'site')
+
+    assert 'north=-23.5125&south=-23.5675&east=133.3875&west=133.3325' in pairs[0][0]
+
+
+def test_nodes_data_urlfilenames_a_different_choice_has_different_cache_files() -> None:
+    """Changing the nodes must not reuse the previous choice's cached files."""
+    first = barra2_dl.download.nodes_data_urlfilenames(NODES, ['ua50m'], '2023-01-01', '2023-01-31', 'site')
+    second = barra2_dl.download.nodes_data_urlfilenames(NODES[:1], ['ua50m'], '2023-01-01', '2023-01-31', 'site')
+
+    assert {name for _, name in first}.isdisjoint(name for _, name in second)
+
+
+def test_nodes_data_urlfilenames_uses_the_domain_spacing() -> None:
+    """On AUST-04 the box is widened by a quarter of 0.04, and the 20-minute month ends at 23:40."""
+    (url, name), *_ = barra2_dl.download.nodes_data_urlfilenames(
+        NODES[:1], ['ua10m'], '2020-01-01', '2020-01-31', 'site', domain='AUST-04', freq='20min'
+    )
+
+    assert '_20min_nodes_n-23.5300_s-23.5500_e133.3700_w133.3500_uas_' in name
+    assert 'time_end=2020-01-31T23:40:00Z' in url
+
+
+def test_nodes_data_urlfilenames_needs_a_node() -> None:
+    """An empty choice is an error."""
+    with pytest.raises(ValueError, match='at least one node'):
+        barra2_dl.download.nodes_data_urlfilenames([], ['ua50m'], '2023-01-01', '2023-01-31', 'site')
+
+
+def test_nodes_data_urlfilenames_unknown_variable_and_freq() -> None:
+    """Variables and the domain and frequency are validated before any URL is built."""
+    with pytest.raises(ValueError, match='Not available'):
+        barra2_dl.download.nodes_data_urlfilenames(NODES, ['ua999m'], '2023-01-01', '2023-01-31', 'site')
+    with pytest.raises(ValueError, match='not supported'):
+        barra2_dl.download.nodes_data_urlfilenames(NODES, ['ua50m'], '2023-01-01', '2023-01-31', 'site', freq='20min')
+
+
+def test_nodes_data_urlfilenames_cached_files_pass_the_cache_check(tmp_path: Path) -> None:
+    """The files a nodes box returns cover the box, so RFC-007's check accepts them from the cache."""
+    pairs = barra2_dl.download.nodes_data_urlfilenames(NODES, ['ua50m'], '2023-01-01', '2023-01-31', 'site')
+    fixed_url, fixed_name = pairs[-1]
+    # the superset fixture holds the nodes of the 5 x 5 block, whose extent covers this box
+    shutil.copy(DATA_DIR / 'ncss_box_superset.nc', tmp_path / fixed_name)
+
+    assert barra2_dl.download.cache_problems([(fixed_url, fixed_name)], tmp_path) == []
 
 
 # endregion

@@ -8,7 +8,7 @@ import sys
 import threading
 import time
 import warnings
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import partial
@@ -38,7 +38,7 @@ from barra2_dl.globals import (
     BARRA2_VARS,
     FileStatus,
 )
-from barra2_dl.mapping import LatLonBBox, bracket_index
+from barra2_dl.mapping import LatLonBBox, LatLonPoint, bracket_index
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
@@ -51,6 +51,7 @@ __all__ = [
     'cache_problems',
     'download_multithread',
     'download_serial',
+    'nodes_data_urlfilenames',
     'point_data_urlfilenames',
     'preset_variables',
     'resolve_variable_versions',
@@ -273,6 +274,74 @@ def area_data_urlfilenames(
         (BARRA2_URL_BBOX, BARRA2_URL_FX_BBOX),
         box,
         (barra2_vars, domain, freq, tag, fileout_type),
+        (start_datetime, end_datetime, fileout_prefix),
+    )
+
+
+def nodes_data_urlfilenames(
+    nodes: Sequence[LatLonPoint],
+    barra2_vars: list,
+    start_datetime: str | datetime,
+    end_datetime: str | datetime,
+    fileout_prefix: str | None = None,
+    *,
+    domain: str = 'AUS-11',
+    freq: str = '1hr',
+) -> list[URLFilenamePair]:
+    """Generate a list of URLs and Filenames for downloading barra2 data for chosen nodes.
+
+    One bounding-box request per variable-month returns a (time, lat, lon) grid of real nodes; merge it with
+    merge.merge_netcdf_to_dataset(..., node_selection='nodes', nodes=nodes), which picks the chosen nodes out by their
+    exact latitude and longitude. The box is the bounding box of the nodes widened by a quarter of the grid spacing on
+    every side. That is midway between a node and the edge of its cell, so the box sits off the cell edges (NCSS counts
+    a cell touching the north or east of a box but not the south or west) and returns exactly the block of nodes
+    between the chosen ones. The box, at 4 decimals, is in the filename so a different choice has its own cache files:
+    f'{fileout_prefix}_{domain}_{freq}_nodes_n{north}_s{south}_e{east}_w{west}_{var}_{time_start[:10]}_{time_end[:10]}.nc'
+
+    Variables are checked and fixed fields (orog added automatically) handled as in point_data_urlfilenames. A grid
+    can't be written as csv, so the download is always netCDF4.
+
+    Args:
+        nodes (Sequence[LatLonPoint]): The exact node latitudes and longitudes, e.g. from mapping.nearest_nodes.
+        barra2_vars (list): A preset from preset_variables, or set explicitly. Aliases are resolved as for points.
+        start_datetime (str | datetime): Used to define start of inclusive download period
+        end_datetime (str | datetime): Used to define end of inclusive download period
+        fileout_prefix (str): Optional prefix for downloaded file. E.g. site reference
+        domain (str): BARRA2 domain, a key of BARRA2_DOMAINS. Default 'AUS-11'.
+        freq (str): BARRA2 frequency available for the domain in BARRA2_FREQS. Default '1hr'.
+
+    Returns:
+        list[URLFilenamePair]
+
+    Raises:
+        ValueError: If there are no nodes, the domain and freq are not in BARRA2_FREQS, or a variable is not available
+            at that domain and freq.
+
+    Examples:
+        >>> from barra2_dl.mapping import LatLonPoint
+        >>> nodes = [LatLonPoint(-23.54, 133.36), LatLonPoint(-23.43, 133.36)]
+        >>> pairs = nodes_data_urlfilenames(nodes, ['ua50m'], '2020-01-01', '2020-01-31', 'site')
+        >>> pairs[-1][1]
+        'site_AUS-11_fx_nodes_n-23.4025_s-23.5675_e133.3875_w133.3325_orog.nc'
+        >>> 'north=-23.4025&south=-23.5675&east=133.3875&west=133.3325' in pairs[0][0]
+        True
+    """
+    if not nodes:
+        raise ValueError('Give at least one node.')
+    _check_domain_freq(domain, freq)
+    margin = BARRA2_GRID_SPACING[domain] / 4
+    lats, lons = [float(node.lat) for node in nodes], [float(node.lon) for node in nodes]
+    box = {
+        'north': round(max(lats) + margin, 6),
+        'south': round(min(lats) - margin, 6),
+        'east': round(max(lons) + margin, 6),
+        'west': round(min(lons) - margin, 6),
+    }
+    tag = f'nodes_n{box["north"]:.4f}_s{box["south"]:.4f}_e{box["east"]:.4f}_w{box["west"]:.4f}'
+    return _build_pairs(
+        (BARRA2_URL_BBOX, BARRA2_URL_FX_BBOX),
+        box,
+        (barra2_vars, domain, freq, tag, 'netcdf4'),
         (start_datetime, end_datetime, fileout_prefix),
     )
 
