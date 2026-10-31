@@ -1,0 +1,8 @@
+{
+  "type": "Feature",
+  "properties": {"name": "example wind farm outline"},
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [[[133.33, -23.62], [133.45, -23.60], [133.44, -23.50], [133.34, -23.52], [133.33, -23.62]]]
+  }
+}

@@ -1,9 +1,11 @@
 """This module contains the barra2.mapping test function(s)."""
 
 import dataclasses
+import json
 import os
 import re
 from pathlib import Path
+from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 import numpy as np
@@ -15,12 +17,14 @@ import barra2_dl.download
 from barra2_dl.download import CacheMismatchError
 from barra2_dl.globals import BARRA2_DOMAINS, BARRA2_GRID_SPACING, BARRA2_URL_FX
 from barra2_dl.mapping import (
+    BoundaryFileError,
     GridNode,
     Latitude,
     LatLonBBox,
     LatLonPoint,
     Longitude,
     NodeLookupError,
+    Polygon,
     _lookup_box,
     _lookup_pair,
     _rank_nodes,
@@ -28,6 +32,9 @@ from barra2_dl.mapping import (
     distance_km,
     inverse_distance_weights,
     nearest_nodes,
+    polygon_from_geojson,
+    polygon_from_kml,
+    read_polygon,
 )
 
 # region Test helpers
@@ -231,6 +238,149 @@ def test_grid_node_is_frozen() -> None:
 
 
 # endregion
+
+
+# region Polygon
+SQUARE = ((0.0, 0.0), (0.0, 2.0), (2.0, 2.0), (2.0, 0.0))  # (lat, lon), counter-clockwise: east, then north
+L_SHAPE = ((0.0, 0.0), (0.0, 2.0), (1.0, 2.0), (1.0, 1.0), (2.0, 1.0), (2.0, 0.0))
+HOLE = ((1.0, 1.0), (1.0, 2.0), (2.0, 2.0), (2.0, 1.0))
+
+
+def _circle(count: int, radius: float = 1.0) -> tuple[tuple[float, float], ...]:
+    """A ring of count vertices on a circle."""
+    angles = np.linspace(0, 2 * np.pi, count, endpoint=False)
+    return tuple((float(radius * np.sin(a)), float(radius * np.cos(a))) for a in angles)
+
+
+def test_polygon_orients_the_rings_and_drops_a_closing_vertex() -> None:
+    """The outline runs counter-clockwise and the holes clockwise, whatever order they were given in."""
+    clockwise = tuple(reversed(SQUARE))
+    polygon = Polygon((*clockwise, clockwise[0]), (((0.5, 0.5), (0.5, 1.5), (1.5, 1.5), (1.5, 0.5)),))
+
+    assert polygon.exterior in (SQUARE, SQUARE[1:] + SQUARE[:1], SQUARE[2:] + SQUARE[:2], SQUARE[3:] + SQUARE[:3])
+    assert Polygon(clockwise).area_deg2() == pytest.approx(4.0)
+    assert len(polygon.exterior) == 4
+    assert polygon.area_deg2() == pytest.approx(4.0 - 1.0)
+    assert len(polygon.holes[0]) == 4
+
+
+def test_polygon_bbox_area_and_centroid() -> None:
+    """The bounding box, the area less holes and the area centroid of simple shapes."""
+    assert Polygon(SQUARE).bbox() == LatLonBBox(north=2, south=0, east=2, west=0)
+    assert Polygon(SQUARE).centroid() == LatLonPoint(1.0, 1.0)
+    l_shape = Polygon(L_SHAPE)
+    assert l_shape.area_deg2() == pytest.approx(3.0)
+    assert (l_shape.centroid().lat, l_shape.centroid().lon) == pytest.approx((2.5 / 3, 2.5 / 3))
+    with_hole = Polygon(((0, 0), (0, 4), (4, 4), (4, 0)), (HOLE,))
+    assert with_hole.area_deg2() == pytest.approx(15.0)
+    assert with_hole.centroid().lat == pytest.approx((16 * 2 - 1 * 1.5) / 15)
+
+
+def test_polygon_area_km2_is_square_degrees_scaled_by_the_latitude() -> None:
+    """A tenth of a degree square at the equator is about 123.6 km2, and smaller further from it."""
+    equator = Polygon(((0, 0), (0, 0.1), (0.1, 0.1), (0.1, 0)))
+    south = Polygon(((-60, 0), (-60, 0.1), (-59.9, 0.1), (-59.9, 0)))
+
+    assert equator.area_km2() == pytest.approx(123.6, rel=2e-2)
+    assert south.area_km2() == pytest.approx(equator.area_km2() / 2, rel=2e-2)
+
+
+def test_polygon_contains_respects_holes() -> None:
+    """A point is inside the outline and outside every hole."""
+    polygon = Polygon(((0, 0), (0, 4), (4, 4), (4, 0)), (HOLE,))
+
+    assert polygon.contains(LatLonPoint(0.5, 0.5))
+    assert not polygon.contains(LatLonPoint(1.5, 1.5))
+    assert not polygon.contains(LatLonPoint(5, 1))
+    assert Polygon(L_SHAPE).contains(LatLonPoint(0.5, 1.5))
+    assert not Polygon(L_SHAPE).contains(LatLonPoint(1.5, 1.5))
+
+
+@pytest.mark.parametrize(
+    ('exterior', 'holes', 'message'),
+    [
+        (((91, 0), (91.5, 1), (90, 2)), (), 'out of range'),
+        (((0, 190), (1, 191), (0, 192)), (), 'Antimeridian'),
+        (((0, 0), (0, 1), (0, 1), (1, 1)), (), 'repeats a vertex'),
+        (((0, 0), (1, 1)), (), 'at least 3'),
+        (((0, 0), (1, 1), (2, 2)), (), 'no area'),
+        (((0, 0), (1, 1), (0, 1), (1, 0)), (), 'crosses itself'),
+        ('not a ring', (), 'list of'),
+        (SQUARE, (((5, 5), (5, 6), (6, 6)),), 'Hole 1 is not inside the outline'),
+        (SQUARE, (((1, 1), (1, 3), (3, 3), (3, 1)),), 'Hole 1 crosses the outline'),
+        (SQUARE, (((0.0, 0.5), (0.5, 0.5), (0.5, 1.0)),), 'Hole 1 crosses the outline'),
+        (
+            ((0, 0), (0, 9), (9, 9), (9, 0)),
+            (((1, 1), (1, 4), (4, 4), (4, 1)), ((3, 3), (3, 6), (6, 6), (6, 3))),
+            'Hole 2 crosses hole 1',
+        ),
+        (_circle(5001), (), 'limit is 5000'),
+    ],
+    ids=[
+        'latitude',
+        'antimeridian',
+        'repeat',
+        'two-vertices',
+        'collinear',
+        'bow-tie',
+        'not-a-ring',
+        'hole-outside',
+        'hole-crosses',
+        'hole-touches',
+        'holes-cross',
+        'too-many',
+    ],
+)
+def test_polygon_rejects_a_faulty_ring_with_one_message(exterior: Any, holes: Any, message: str) -> None:
+    """Each fault is a BoundaryFileError that says what is wrong."""
+    with pytest.raises(BoundaryFileError, match=message):
+        Polygon(exterior, holes)
+
+
+def test_polygon_with_a_thousand_vertices_is_checked_quickly() -> None:
+    """A detailed outline passes the pairwise crossing check."""
+    assert Polygon(_circle(1000)).area_deg2() == pytest.approx(np.pi, rel=1e-3)
+
+
+def test_polygon_a_ring_given_a_second_time_as_a_hole_cannot_touch() -> None:
+    """Rings that meet at a point are refused, not just rings that cross."""
+    with pytest.raises(BoundaryFileError, match='crosses'):
+        Polygon(SQUARE, (((0.5, 0.5), (0.5, 0.0), (1.0, 0.5)),))
+
+
+def test_polygon_cell_overlap_is_the_share_of_each_cell_inside() -> None:
+    """Whole cells give 1, a half cell 0.5, a hole removes its cell, and a polygon only touching a cell gives 0."""
+    lats, lons = [0.5, 1.5, 2.5], [0.5, 1.5]
+
+    assert Polygon(SQUARE).cell_overlap(lats, lons, 1.0).tolist() == [[1.0, 1.0], [1.0, 1.0], [0.0, 0.0]]
+    half = Polygon(((0, 0), (0, 0.5), (1, 0.5), (1, 0)))
+    assert half.cell_overlap([0.5], [0.5], 1.0)[0, 0] == pytest.approx(0.5)
+    holed = Polygon(((0, 0), (0, 4), (4, 4), (4, 0)), (HOLE,))
+    assert holed.cell_overlap([0.5, 1.5], [0.5, 1.5], 1.0).tolist() == [[1.0, 1.0], [1.0, 0.0]]
+
+
+@pytest.mark.parametrize(
+    ('exterior', 'holes'),
+    [
+        (L_SHAPE, ()),
+        (((0.1, 0.1), (0.1, 1.9), (1.7, 1.2)), ()),
+        (((0, 0), (0, 4), (4, 4), (4, 0)), (HOLE,)),
+        (_circle(40, 1.3), ()),
+    ],
+    ids=['concave', 'triangle', 'with-hole', 'circle'],
+)
+def test_polygon_cell_overlaps_add_up_to_the_polygon_area(exterior: Any, holes: Any) -> None:
+    """When the grid covers the polygon, the overlapped areas sum to its area, whatever the shape."""
+    polygon = Polygon(exterior, holes)
+    spacing = 0.5
+    axis = np.arange(-2.25, 5, spacing)
+
+    overlap = polygon.cell_overlap(axis, axis, spacing)
+
+    assert overlap.sum() * spacing**2 == pytest.approx(polygon.area_deg2())
+
+
+# endregion
 # endregion
 
 
@@ -239,6 +389,15 @@ def test_grid_node_is_frozen() -> None:
 def test_node_lookup_error_is_a_runtime_error() -> None:
     """A failed lookup is a RuntimeError, so callers can tell it from a bad argument."""
     assert issubclass(NodeLookupError, RuntimeError)
+
+
+# endregion
+
+
+# region BoundaryFileError
+def test_boundary_file_error_is_a_value_error() -> None:
+    """A bad boundary is a ValueError, so a form can treat it like any other invalid input."""
+    assert issubclass(BoundaryFileError, ValueError)
 
 
 # endregion
@@ -461,6 +620,192 @@ def test_nearest_nodes_live_returns_nodes_of_the_full_domain_grid(domain: str, l
     assert nodes
     assert all(np.isclose(lats, node.lat, atol=1e-6, rtol=0).any() for node in nodes)
     assert all(np.isclose(lons, node.lon, atol=1e-6, rtol=0).any() for node in nodes)
+
+
+# endregion
+
+
+# region read_polygon
+RING = [[133.33, -23.57], [133.50, -23.57], [133.50, -23.51], [133.33, -23.51], [133.33, -23.57]]
+EXPECTED = ((-23.57, 133.33), (-23.57, 133.50), (-23.51, 133.50), (-23.51, 133.33))
+
+
+def _geojson(geometry: Any, **extra: Any) -> str:
+    """GeoJSON text for a geometry."""
+    return json.dumps({'type': 'Feature', 'properties': {}, 'geometry': geometry, **extra})
+
+
+def test_read_polygon_reads_geojson_and_kml_to_the_same_boundary() -> None:
+    """The two fixture files describe the same outline, and the source is the file name."""
+    geojson = read_polygon(DATA / 'boundary_two_cells.geojson')
+    kml = read_polygon(DATA / 'boundary_two_cells.kml')
+
+    assert geojson.exterior == kml.exterior == EXPECTED
+    assert (geojson.source, kml.source) == ('boundary_two_cells.geojson', 'boundary_two_cells.kml')
+
+
+def test_read_polygon_reads_a_json_file_with_a_byte_order_mark(tmp_path: Path) -> None:
+    """A .json suffix is GeoJSON too, and a BOM from a Windows editor is ignored."""
+    file = tmp_path / 'farm.json'
+    file.write_text('﻿' + (DATA / 'boundary_sub_cell.geojson').read_text(), encoding='utf-8')
+
+    assert read_polygon(file).source == 'farm.json'
+
+
+@pytest.mark.parametrize(('name', 'text'), [('farm.kmz', 'zipped KML'), ('farm.shp', 'shapefiles are not read')])
+def test_read_polygon_refuses_other_file_types(tmp_path: Path, name: str, text: str) -> None:
+    """KMZ and shapefiles are not read, and the message says what to do or why."""
+    file = tmp_path / name
+    file.write_bytes(b'x')
+
+    with pytest.raises(BoundaryFileError, match=text):
+        read_polygon(file)
+
+
+def test_read_polygon_missing_file_raises_file_not_found(tmp_path: Path) -> None:
+    """A missing file is the ordinary OSError."""
+    with pytest.raises(FileNotFoundError):
+        read_polygon(tmp_path / 'nope.geojson')
+
+
+@pytest.mark.parametrize(
+    'text',
+    [
+        json.dumps({'type': 'Polygon', 'coordinates': [RING]}),
+        _geojson({'type': 'Polygon', 'coordinates': [RING]}),
+        json.dumps(
+            {
+                'type': 'FeatureCollection',
+                'features': [json.loads(_geojson({'type': 'Polygon', 'coordinates': [RING]}))],
+            }
+        ),
+        _geojson({'type': 'MultiPolygon', 'coordinates': [[RING]]}),
+        _geojson({'type': 'Polygon', 'coordinates': [[[lon, lat, 55.0] for lon, lat in RING]]}),
+        _geojson(
+            {'type': 'Polygon', 'coordinates': [RING]},
+            crs={'type': 'name', 'properties': {'name': 'urn:ogc:def:crs:OGC:1.3:CRS84'}},
+        ),
+        _geojson({'type': 'Polygon', 'coordinates': [RING]}, crs={'type': 'name', 'properties': {'name': 'EPSG:4326'}}),
+    ],
+    ids=['polygon', 'feature', 'collection', 'multipolygon-one-part', 'altitude', 'crs84', 'epsg4326'],
+)
+def test_polygon_from_geojson_accepts_each_form_in_lon_lat_order(text: str) -> None:
+    """Polygon, Feature, a one-feature collection, a one-part MultiPolygon, altitudes and a WGS 84 crs all read."""
+    assert polygon_from_geojson(text).exterior == EXPECTED
+
+
+def test_polygon_from_geojson_reads_holes() -> None:
+    """The rings after the first are holes."""
+    hole = [[133.40, -23.55], [133.40, -23.53], [133.42, -23.53], [133.42, -23.55], [133.40, -23.55]]
+
+    polygon = polygon_from_geojson(_geojson({'type': 'Polygon', 'coordinates': [RING, hole]}))
+
+    assert len(polygon.holes) == 1
+    assert polygon.area_deg2() == pytest.approx(0.17 * 0.06 - 0.02 * 0.02)
+
+
+@pytest.mark.parametrize(
+    ('text', 'message'),
+    [
+        ('{not json', 'not valid JSON'),
+        (
+            _geojson({'type': 'MultiPolygon', 'coordinates': [[RING], [RING]]}),
+            'holds 2 polygons; give each its own site',
+        ),
+        (
+            json.dumps(
+                {
+                    'type': 'FeatureCollection',
+                    'features': [json.loads(_geojson({'type': 'Polygon', 'coordinates': [RING]}))] * 2,
+                }
+            ),
+            'holds 2 polygons',
+        ),
+        (json.dumps({'type': 'FeatureCollection', 'features': []}), 'holds no polygon'),
+        (_geojson({'type': 'Point', 'coordinates': [133, -23]}), 'holds Point, not a Polygon'),
+        ('[1, 2]', 'holds no geometry'),
+        (_geojson({'type': 'Polygon', 'coordinates': []}), 'without coordinates'),
+        (_geojson({'type': 'Polygon', 'coordinates': [[[133.4]]]}), 'not \\[longitude, latitude\\]'),
+        (
+            _geojson(
+                {'type': 'Polygon', 'coordinates': [RING]}, crs={'type': 'name', 'properties': {'name': 'EPSG:28353'}}
+            ),
+            'only WGS 84 is read',
+        ),
+    ],
+    ids=str,
+)
+def test_polygon_from_geojson_refuses_what_is_not_one_wgs84_polygon(text: str, message: str) -> None:
+    """Bad JSON, several polygons, no polygon, another geometry, another CRS and bad positions each get a message."""
+    with pytest.raises(BoundaryFileError, match=message):
+        polygon_from_geojson(text, 'farm.geojson')
+
+
+KML = (
+    '<kml{ns}><Document><Placemark><Polygon><outerBoundaryIs><LinearRing><coordinates>{ring}</coordinates>'
+    '</LinearRing></outerBoundaryIs>{inner}</Polygon></Placemark></Document></kml>'
+)
+KML_RING = '133.33,-23.57,0 133.50,-23.57,0 133.50,-23.51,0 133.33,-23.51,0 133.33,-23.57,0'
+
+
+@pytest.mark.parametrize('ns', ['', ' xmlns="http://www.opengis.net/kml/2.2"'], ids=['no-namespace', 'namespace'])
+def test_polygon_from_kml_reads_with_or_without_a_namespace(ns: str) -> None:
+    """Element names are matched without their namespace."""
+    assert polygon_from_kml(KML.format(ns=ns, ring=KML_RING, inner='')).exterior == EXPECTED
+
+
+def test_polygon_from_kml_ignores_the_coordinates_of_other_shapes() -> None:
+    """A Point placemark beside the polygon (a label for the farm) has coordinates that are not a ring."""
+    text = KML.format(ns='', ring=KML_RING, inner='').replace(
+        '</Document>', '<Placemark><Point><coordinates>133.4,-23.5,0</coordinates></Point></Placemark></Document>'
+    )
+
+    assert polygon_from_kml(text).exterior == EXPECTED
+
+
+def test_polygon_from_kml_reads_a_prefixed_namespace_and_holes() -> None:
+    """A prefix such as kml: is ignored, and innerBoundaryIs rings are holes."""
+    inner = (
+        '<innerBoundaryIs><LinearRing><coordinates>133.40,-23.55 133.40,-23.53 133.42,-23.53 133.42,-23.55'
+        '</coordinates></LinearRing></innerBoundaryIs>'
+    )
+    text = KML.format(ns=' xmlns:kml="http://www.opengis.net/kml/2.2"', ring=KML_RING, inner=inner)
+    text = re.sub(
+        r'<(/?)(\w+)', lambda m: f'<{m.group(1)}kml:{m.group(2)}' if m.group(2) != 'kml' else m.group(0), text
+    )
+
+    polygon = polygon_from_kml(text)
+
+    assert polygon.exterior == EXPECTED
+    assert len(polygon.holes) == 1
+
+
+@pytest.mark.parametrize(
+    ('text', 'message'),
+    [
+        ('<!DOCTYPE kml [<!ENTITY a "b">]><kml/>', 'DOCTYPE or entity'),
+        ('<kml><!ENTITY a "b"></kml>', 'DOCTYPE or entity'),
+        ('<kml><Document>', 'not valid KML'),
+        ('<kml><Document/></kml>', 'holds no polygon'),
+        (
+            KML.format(ns='', ring=KML_RING, inner='').replace(
+                '</Placemark>',
+                '</Placemark><Placemark>' + KML.split('<Document>')[1].split('</Document>')[0] + '</Placemark>',
+            ),
+            'holds 2 polygons; give each its own site',
+        ),
+        (
+            '<kml><Polygon><innerBoundaryIs><coordinates>1,2 3,4 5,6</coordinates></innerBoundaryIs></Polygon></kml>',
+            'without an outerBoundaryIs',
+        ),
+        (KML.format(ns='', ring='133.38,-23.57 oops', inner=''), 'cannot read: <oops>'),
+    ],
+    ids=str,
+)
+def test_polygon_from_kml_refuses_what_is_not_one_polygon(text: str, message: str) -> None:
+    """A DOCTYPE, broken XML, no or several polygons, a missing outer boundary and bad coordinates get a message."""
+    with pytest.raises(BoundaryFileError, match=message):
+        polygon_from_kml(text, 'farm.kml')
 
 
 # endregion

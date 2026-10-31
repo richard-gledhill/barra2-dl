@@ -3,6 +3,7 @@
 import shutil
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -11,7 +12,7 @@ import xarray as xr
 
 from barra2_dl.convert import convert_units, convert_wind_components
 from barra2_dl.globals import BARRA2_INDEX
-from barra2_dl.mapping import LatLonPoint, distance_km
+from barra2_dl.mapping import LatLonPoint, Polygon, distance_km, read_polygon
 from barra2_dl.merge import (
     _csv_header,
     _merge_suffix_columns,
@@ -1017,6 +1018,214 @@ def test_merge_netcdf_to_dataset_area_round_trip(area: Callable[..., xr.Dataset]
     with xr.open_dataset(tmp_path / 'area.nc') as back:
         np.testing.assert_allclose(back['wind_speed'].to_numpy(), ds['wind_speed'].to_numpy())
         assert back.sizes['lat'] == 3
+
+
+# endregion
+
+
+# region merge_netcdf_to_dataset (polygon)
+# the grid fixtures hold the nodes at lat -23.65, -23.54, -23.43 and lon 133.25, 133.36, 133.47; the two-cells boundary
+# covers equal parts of the cells of (-23.54, 133.36) and (-23.54, 133.47), the sub-cell one lies in the first
+TWO_CELLS = read_polygon(DATA / 'boundary_two_cells.geojson')
+SUB_CELL = read_polygon(DATA / 'boundary_sub_cell.geojson')
+
+
+@pytest.fixture
+def boundary(tmp_path: Path) -> Callable[..., xr.Dataset]:
+    """Merge the bounding-box fixtures as an area selected by a boundary."""
+    for file in DATA.glob('grid_*.nc'):
+        shutil.copy(file, tmp_path / file.name.replace('_average4_', '_area_'))
+
+    def merge(
+        polygon: Polygon | None = TWO_CELLS, *, node_mean: bool = False, fixed_pattern: str | None = None
+    ) -> xr.Dataset:
+        return merge_netcdf_to_dataset(
+            str(tmp_path),
+            'grid_AUS-11_1hr_area_*.nc',
+            domain='AUS-11',
+            freq='1hr',
+            node_selection='area',
+            fixed_pattern=fixed_pattern,
+            polygon=polygon,
+            node_mean=node_mean,
+        )
+
+    return merge
+
+
+def _node(ds: xr.Dataset | xr.DataArray, lat: float, lon: float) -> Any:
+    """The series at one node of an area Dataset."""
+    return ds.sel(lat=lat, lon=lon, method='nearest')
+
+
+def test_merge_netcdf_to_dataset_polygon_uses_only_the_nodes_whose_cell_it_overlaps(
+    boundary: Callable[..., xr.Dataset],
+) -> None:
+    """Every variable is missing at the nodes the boundary does not touch, and kept at the two it does."""
+    ds = boundary()
+
+    used = ds['cell_overlap'].to_numpy() > 0
+    assert used.sum() == 2
+    assert ds['cell_overlap'].sel(lat=-23.54, lon=[133.36, 133.47], method='nearest').to_numpy().tolist() == (
+        pytest.approx([(0.06 * 0.085) / 0.0121] * 2)
+    )
+    for name in ('ua', 'tas', 'wind_speed'):
+        has_data = ds[name].notnull().any([d for d in ds[name].dims if d not in ('lat', 'lon')]).to_numpy()
+        assert (has_data == used).all()
+    assert ds.attrs['node_selection'] == 'area'
+
+
+def test_merge_netcdf_to_dataset_polygon_weights_sum_to_one_and_follow_the_overlap(
+    boundary: Callable[..., xr.Dataset],
+) -> None:
+    """Equal cell overlap at the same latitude gives equal weights of one half; unused nodes have none."""
+    ds = boundary()
+
+    assert float(ds['cell_weight'].sum()) == pytest.approx(1.0)
+    assert sorted(ds['cell_weight'].to_numpy().ravel().tolist())[-2:] == pytest.approx([0.5, 0.5])
+    assert ds['cell_weight'].attrs['units'] == '1'
+
+
+def test_merge_netcdf_to_dataset_polygon_describes_the_boundary_in_attributes(
+    boundary: Callable[..., xr.Dataset],
+) -> None:
+    """The source, size, centroid, whether it is sub-cell, and how much of it the used cells cover."""
+    ds = boundary()
+
+    assert ds.attrs['boundary_source'] == 'boundary_two_cells.geojson'
+    assert (ds.attrs['boundary_vertices'], ds.attrs['boundary_holes'], ds.attrs['boundary_sub_cell']) == (4, 0, 0)
+    assert ds.attrs['boundary_covered'] == pytest.approx(1.0)
+    assert ds.attrs['boundary_centroid_lat'] == pytest.approx(-23.54)
+    assert ds.attrs['boundary_centroid_lon'] == pytest.approx(133.415)
+    assert ds.attrs['boundary_area_km2'] == pytest.approx(
+        0.06 * 0.17 * 111.195**2 * np.cos(np.radians(23.54)), rel=1e-4
+    )
+
+
+def test_merge_netcdf_to_dataset_polygon_masks_the_orog_grid_too(boundary: Callable[..., xr.Dataset]) -> None:
+    """The altitude grid is kept only at the used nodes."""
+    ds = boundary(fixed_pattern='grid_AUS-11_fx_area_orog.nc')
+
+    assert int(ds['orog'].notnull().sum()) == 2
+
+
+def test_merge_netcdf_to_dataset_polygon_site_mean_is_the_hybrid_weighted_mean(
+    boundary: Callable[..., xr.Dataset],
+) -> None:
+    """Speed is the mean of the nodes' speeds, components are mean components, direction comes from those."""
+    ds = boundary(node_mean=True)
+    full = boundary(None)
+    first, second = _node(full, -23.54, 133.36), _node(full, -23.54, 133.47)
+
+    np.testing.assert_allclose(
+        ds['wind_speed_site_mean'].to_numpy(), ((first['wind_speed'] + second['wind_speed']) / 2).to_numpy()
+    )
+    np.testing.assert_allclose(ds['ua_site_mean'].to_numpy(), ((first['ua'] + second['ua']) / 2).to_numpy())
+    np.testing.assert_allclose(ds['tas_site_mean'].to_numpy(), ((first['tas'] + second['tas']) / 2).to_numpy())
+    east, north = ds['ua_site_mean'], ds['va_site_mean']
+    expected = np.mod(180 + np.rad2deg(np.arctan2(east, north)), 360)
+    np.testing.assert_allclose(ds['wind_from_direction_site_mean'].to_numpy(), expected.to_numpy())
+    assert (ds['wind_speed_site_mean'].to_numpy() >= np.asarray(np.hypot(east, north)) - 1e-12).all()
+    assert ds['ua_site_mean'].dims == ('time', 'height')
+    assert ds['pr_site_mean'].dims == ('time_mean',)
+
+
+def test_merge_netcdf_to_dataset_polygon_site_mean_says_which_mean_it_is(boundary: Callable[..., xr.Dataset]) -> None:
+    """cell_methods names the scalar mean of speed and the vector mean of the components and direction."""
+    ds = boundary(node_mean=True)
+
+    assert ds['wind_speed_site_mean'].attrs['cell_methods'].endswith('site: mean (scalar)')
+    assert ds['ua_site_mean'].attrs['cell_methods'].endswith('site: mean (vector)')
+    assert ds['wind_from_direction_site_mean'].attrs['cell_methods'].endswith('site: mean (vector)')
+    assert ds['tas_site_mean'].attrs['cell_methods'].endswith('site: mean')
+    assert 'ua_site_mean' not in boundary()
+
+
+def test_merge_netcdf_to_dataset_polygon_without_a_wind_pair_has_no_direction_mean(tmp_path: Path) -> None:
+    """With only a temperature grid there is a mean of it and nothing to derive a direction from."""
+    shutil.copy(DATA / 'grid_AUS-11_1hr_average4_tas_20230101_20230103.nc', tmp_path / 'g_AUS-11_1hr_area_tas_x.nc')
+
+    ds = merge_netcdf_to_dataset(
+        str(tmp_path), 'g_AUS-11_1hr_area_*.nc', domain='AUS-11', freq='1hr', node_selection='area',
+        polygon=TWO_CELLS, node_mean=True,
+    )  # fmt: skip
+
+    assert 'tas_site_mean' in ds
+    assert 'wind_from_direction_site_mean' not in ds
+
+
+def test_merge_netcdf_to_dataset_polygon_smaller_than_a_cell_uses_the_node_holding_its_centroid(
+    boundary: Callable[..., xr.Dataset],
+) -> None:
+    """A sub-cell boundary uses one node with weight 1, though it also overlaps a neighbouring cell."""
+    ds = boundary(SUB_CELL, node_mean=True)
+
+    assert ds.attrs['boundary_sub_cell'] == 1
+    assert int((ds['cell_weight'] > 0).sum()) == 1
+    assert float(_node(ds['cell_weight'], -23.54, 133.36)) == 1.0
+    assert float(_node(ds['cell_overlap'], -23.54, 133.36)) == pytest.approx(0.04 * 0.015 / 0.0121)
+    assert ds.attrs['boundary_covered'] == pytest.approx(0.75)
+    np.testing.assert_allclose(ds['ua_site_mean'].to_numpy(), _node(boundary(None)['ua'], -23.54, 133.36).to_numpy())
+
+
+def test_merge_netcdf_to_dataset_polygon_centroid_on_a_cell_edge_takes_the_lower_node(
+    boundary: Callable[..., xr.Dataset],
+) -> None:
+    """A centroid exactly between two nodes goes to the lower latitude."""
+    edge = Polygon(((-23.60, 133.36), (-23.60, 133.38), (-23.59, 133.38), (-23.59, 133.36)))
+
+    ds = boundary(edge)
+
+    assert float(_node(ds['cell_weight'], -23.65, 133.36)) == 1.0
+    assert int((ds['cell_weight'] > 0).sum()) == 1
+
+
+def test_merge_netcdf_to_dataset_polygon_leaving_the_grid_covers_less_of_itself(
+    boundary: Callable[..., xr.Dataset],
+) -> None:
+    """A boundary partly outside the downloaded grid still works, and says how much of it the used cells cover."""
+    wide = Polygon(((-23.60, 133.30), (-23.60, 133.80), (-23.50, 133.80), (-23.50, 133.30)))
+
+    ds = boundary(wide)
+
+    assert 0.3 < ds.attrs['boundary_covered'] < 0.7
+
+
+def test_merge_netcdf_to_dataset_polygon_outside_the_grid_raises(boundary: Callable[..., xr.Dataset]) -> None:
+    """A boundary that overlaps none of the nodes is an error naming the domain."""
+    far = Polygon(((-10, 100), (-10, 101), (-9, 101), (-9, 100)))
+
+    with pytest.raises(ValueError, match='overlaps no BARRA2 node of AUS-11'):
+        boundary(far)
+
+
+def test_merge_netcdf_to_dataset_sub_cell_polygon_off_the_grid_raises(boundary: Callable[..., xr.Dataset]) -> None:
+    """A tiny boundary whose centroid is in no returned node's cell is an error, not the nearest node."""
+    away = Polygon(((-23.30, 133.35), (-23.30, 133.40), (-23.29, 133.40), (-23.29, 133.35)))
+
+    with pytest.raises(ValueError, match='overlaps no BARRA2 node'):
+        boundary(away)
+
+
+def test_merge_netcdf_to_dataset_polygon_needs_an_area(nodes_folder: Path) -> None:
+    """A polygon selects the nodes of an area and nothing else."""
+    with pytest.raises(ValueError, match='selects the nodes of an area'):
+        merge_netcdf_to_dataset(
+            str(nodes_folder),
+            'site_AUS-11_1hr_nodes_*.nc',
+            domain='AUS-11',
+            freq='1hr',
+            requested=GRID_SITE,
+            node_selection='nodes',
+            nodes=CHOSEN,
+            polygon=TWO_CELLS,
+        )
+
+
+def test_merge_netcdf_to_dataset_node_mean_of_an_area_needs_a_polygon(boundary: Callable[..., xr.Dataset]) -> None:
+    """A mean needs weights, which only a boundary gives."""
+    with pytest.raises(ValueError, match='needs a polygon'):
+        boundary(None, node_mean=True)
 
 
 # endregion

@@ -26,6 +26,14 @@ fail loudly once the bug is fixed, so remove the `xfail` in the same change.
 - Checks for mismatched or multiple suffixed columns in `_merge_suffix_columns`, and for missing `ua`/`va` pairs in
   `convert_wind_components`.
 
+## Deferred features (from slice 2b)
+
+- csv output for a boundary (one csv per used node, or the site mean only).
+- Boundaries of several parts (`MultiPolygon`, several features): today refused, one site per part.
+- Shapefile and KMZ boundaries, and polygons across the antimeridian.
+- A node-inside-polygon filter, the alternative to the cell-overlap inclusion rule.
+- Listing the nodes of a plain box `area` in the run summary (the GUI map needs them).
+
 ## Deferred features (from the RFC roadmap)
 
 - Command-line tool (`barra2-dl point …`, `barra2-dl run project.toml`), from the dropped RFC-004. The design notes

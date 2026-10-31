@@ -156,6 +156,19 @@ csv_paths = barra2_dl.merge.write_csv(ds, output_dir, fileout_prefix)
 for node in barra2_dl.mapping.nearest_nodes(lat_lon_point, domain, 4, cache=cache_dir):
     print(f'{node.lat!r:>22} {node.lon!r:>8}  {node.distance_km:6.2f} km  orog {node.orog:6.1f} m  sftlf {node.sftlf:5.1f} %')
 #%% md
+# ## Use a site boundary (optional)
+# read_polygon reads a GeoJSON or KML outline (WGS 84, one polygon). A boundary site uses every BARRA2 node whose grid cell
+# overlaps it (or, for an outline smaller than one cell, the one node whose cell holds its centroid). cell_overlap says how
+# much of each cell the outline covers, which is also each node's weight in the optional site mean (node_mean). See the
+# farm-boundary site in example_project.toml, which writes the masked grid and the mean as netCDF.
+#%%
+boundary = barra2_dl.mapping.read_polygon('example_boundary.geojson')
+print(boundary.bbox(), f'{boundary.area_km2():.0f} km2, centroid {boundary.centroid()}')
+spacing = barra2_dl.globals.BARRA2_GRID_SPACING[domain]
+nodes = barra2_dl.mapping.nearest_nodes(boundary.centroid(), domain, 9, cache=cache_dir)
+lats, lons = sorted({n.lat for n in nodes}), sorted({n.lon for n in nodes})
+print(boundary.cell_overlap(lats, lons, spacing).round(2), lats, lons)
+#%% md
 # ## Run a whole project from a file (optional)
 # Everything above is what project.run_site does for you. A project file lists shared settings and one site per mast,
 # point or area; load_project checks all of it at once, and run_site downloads, merges and writes each site's output

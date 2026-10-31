@@ -64,10 +64,23 @@ The nodes a user picks from `nearest_nodes` for a point site, named by exact lat
 [[lat, lon], ...]` in a project file). Each is written as its own series (`node<k>`, in the order given), with an opt-in
 inverse-distance mean (`node_mean`). A site with nodes is a `nodes` download.
 
+**Boundary** (`mapping.Polygon`):
+A site's outline (one polygon, with optional holes) read from a GeoJSON or KML file in WGS 84. A boundary site is an `area`
+download of the nodes whose cell overlaps it.
+_Avoid_: Shapefile (not read), area (that is the box or the download)
+
+**Cell overlap** (`Polygon.cell_overlap`):
+The share (0 to 1) of a node's grid cell, the node plus or minus half the spacing, that lies inside the boundary. A node is
+used when it is above 0; it is also the basis of its weight in the site mean.
+
+**Site mean** (`node_mean`, `<name>_site_mean`):
+The opt-in mean of the nodes a boundary uses, weighted by cell overlap area times the cosine of latitude, by the hybrid
+method of the four-node average. Not for extremes or gusts.
+
 **Node selection** (`BARRA2_NODE_SELECTIONS`):
 How the nodes for a point are chosen: `nearest` (the default point request), `average4` (the four nodes around the
 point, averaged), `area` (every node in a box, netCDF only) or `nodes` (nodes chosen by their exact latitude and
-longitude, netCDF download). `area` and `nodes` are implied by a site's geometry (a box, or `nodes`), not set.
+longitude, netCDF download). `area` and `nodes` are implied by a site's geometry (a box or boundary, or `nodes`), not set.
 
 **Point data**:
 The time series of one variable at the grid node nearest a latitude and longitude, fetched through the NetCDF

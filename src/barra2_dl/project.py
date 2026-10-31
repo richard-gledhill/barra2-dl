@@ -1,7 +1,9 @@
 """The engine: a project file or a form becomes sites and settings, and run_site turns each site into output files."""
 
+import hashlib
 import json
 import logging
+import math
 import re
 import sys
 import threading
@@ -44,7 +46,7 @@ from barra2_dl.globals import (
     OutputFormat,
     SiteStatus,
 )
-from barra2_dl.mapping import LatLonBBox, LatLonPoint, distance_km
+from barra2_dl.mapping import BoundaryFileError, LatLonBBox, LatLonPoint, Polygon, distance_km, read_polygon
 from barra2_dl.merge import (
     merge_csvs_to_df,
     merge_netcdf_to_dataset,
@@ -88,6 +90,8 @@ _BOX_KEYS = ('north', 'south', 'east', 'west')
 # a node of the 3 x 3 block nearest_nodes returns is up to this many grid spacings from the point
 _NODE_REACH = 1.5
 _MAX_NODES = 9
+# a boundary whose bounding box covers more grid nodes than this is refused; a 1 GW wind farm needs about 10 to 150
+_MAX_BOUNDARY_NODES = 2500
 _SITE_NAME = re.compile(r'[A-Za-z0-9._-]+')
 # the variable and month in a series filename, e.g. demo_AUS-11_1hr_ua50m_20230201_20230228.nc
 _SERIES_FILE = re.compile(r'_(?P<var>[A-Za-z0-9]+)_(?P<year>\d{4})(?P<month>\d{2})\d{2}_\d{8}\.(?:nc|csv)$')
@@ -133,11 +137,13 @@ class Site:
     Attributes:
         name: Becomes the filename prefix, so only letters, digits, dot, underscore and hyphen.
         point: The site, for a nearest-node or four-node-average download.
-        bbox: The box, for an area download. Exactly one of point and bbox is set.
+        bbox: The box, for an area download. Exactly one of point, bbox and polygon is set.
         overrides: Settings this site changes, keys from the site-overridable settings.
         nodes: Chosen nodes for a point site, as the exact latitude and longitude from mapping.nearest_nodes. A site
             with nodes is a 'nodes' download of those nodes, in this order.
-        node_mean: With nodes, also write the inverse-distance weighted mean of the chosen nodes.
+        node_mean: With nodes, also write the inverse-distance weighted mean of the chosen nodes; with a polygon, the
+            mean of the nodes it uses, weighted by cell overlap.
+        polygon: A boundary read from a GeoJSON or KML file, for an area download of the nodes whose cell it overlaps.
     """
 
     name: str
@@ -146,6 +152,7 @@ class Site:
     overrides: dict[str, Any] = field(default_factory=dict)
     nodes: list[LatLonPoint] | None = None
     node_mean: bool = False
+    polygon: Polygon | None = None
 
 
 @dataclass(frozen=True)
@@ -272,7 +279,8 @@ def project_from_dict(data: Mapping[str, Any], base_dir: str | Path = '.') -> Pr
     The data has a 'settings' table (keys of Settings; start and end are required, as ISO dates or dates) and a 'site'
     list of tables. A site has a name and either lat and lon or north, south, east and west, and may override domain,
     freq, preset, node_selection, format, download, start and end. A point site may also give nodes, a list of
-    [lat, lon] pairs (exact values from mapping.nearest_nodes), and node_mean. Unknown keys are errors.
+    [lat, lon] pairs (exact values from mapping.nearest_nodes), and node_mean. A site may give polygon, the path of a
+    GeoJSON or KML boundary relative to base_dir, instead of a point or box. Unknown keys are errors.
 
     Args:
         data (Mapping[str, Any]): The parsed project.
@@ -296,7 +304,9 @@ def project_from_dict(data: Mapping[str, Any], base_dir: str | Path = '.') -> Pr
     if not isinstance(site_data, list) or not site_data:
         problems.append(Problem(None, 'site', 'Add at least one [[site]] table.'))
         site_data = []
-    sites = [_site_from_dict(item, settings, problems) for item in site_data if isinstance(item, Mapping)]
+    sites = [
+        _site_from_dict(item, settings, problems, Path(base_dir)) for item in site_data if isinstance(item, Mapping)
+    ]
     if len(sites) != len(site_data):
         problems.append(Problem(None, 'site', 'Every site must be a table.'))
     for name in sorted({site.name for site in sites if [other.name for other in sites].count(site.name) > 1}):
@@ -315,12 +325,14 @@ def project_from_dict(data: Mapping[str, Any], base_dir: str | Path = '.') -> Pr
     return Project(settings, sites)
 
 
-def site_from_dict(data: Mapping[str, Any], settings: Settings) -> Site:
+def site_from_dict(data: Mapping[str, Any], settings: Settings, base_dir: str | Path = '.') -> Site:
     """Build one validated Site from plain data, as a form gives it.
 
     Args:
-        data (Mapping[str, Any]): The site's keys: name, lat and lon or north, south, east and west, and any overrides.
+        data (Mapping[str, Any]): The site's keys: name, lat and lon, north, south, east and west, or
+            polygon (a file path or a Polygon), and any overrides.
         settings (Settings): The project settings the site is checked against.
+        base_dir (str | Path): A relative polygon file is relative to this folder.
 
     Returns:
         Site: The site.
@@ -329,7 +341,7 @@ def site_from_dict(data: Mapping[str, Any], settings: Settings) -> Site:
         ProjectError: If the site is invalid; every problem is listed.
     """
     problems: list[Problem] = []
-    site = _site_from_dict(data, settings, problems)
+    site = _site_from_dict(data, settings, problems, Path(base_dir))
     problems += validate(settings, site)
     if problems:
         raise ProjectError(problems)
@@ -357,15 +369,17 @@ def validate(settings: Settings, site: Site) -> list[Problem]:
         add('name', 'Use letters, digits, dot, underscore and hyphen only: the name becomes the filename prefix.')
     for key in sorted(set(site.overrides) - set(_SITE_SETTINGS)):
         add(key, f'A site cannot override this. Overridable: {", ".join(_SITE_SETTINGS)}.')
-    if site.nodes is not None and site.point is None and site.bbox is None:
+    places = [site.point, site.bbox, site.polygon]
+    if site.nodes is not None and all(place is None for place in places):
         add('lat/lon', 'A site with nodes also needs lat and lon: the site the distances are measured from.')
-    elif (site.point is None) == (site.bbox is None):
-        add('lat/lon', 'Give either lat and lon, or north, south, east and west, not both and not neither.')
+    elif sum(place is not None for place in places) != 1:
+        add('lat/lon', 'Give one place: lat and lon, a box, or a polygon.')
     if site.bbox is not None and not (site.bbox.north > site.bbox.south and site.bbox.east > site.bbox.west):
         add('north/south/east/west', 'north must be greater than south and east greater than west.')
     effective = _effective(site, settings)
     problems += [Problem(site.name, key, message) for key, message in _setting_problems(effective, site)]
     problems += [Problem(site.name, key, message) for key, message in _node_problems(effective, site)]
+    problems += [Problem(site.name, key, message) for key, message in _polygon_problems(effective, site)]
     return problems
 
 
@@ -450,11 +464,13 @@ def run_site(
     try:
         variables = preset_variables(effective.preset, effective.domain, effective.freq)
         versions = resolve_variable_versions(variables, effective.domain, effective.freq)
-        outputs, nodes, problem = _write_outputs(site, effective, urlfilenames, versions)
+        outputs, nodes, problem, extra = _write_outputs(site, effective, urlfilenames, versions)
     except (ValueError, OSError, KeyError) as error:
         return finish('failed', f'{type(error).__name__}: {error}', files=files, missing=missing, versions=versions)
     if problem:
-        return finish('failed', problem, files=files, missing=missing, versions=versions, nodes=nodes)
+        return finish(
+            'failed', problem, files=files, missing=missing, versions=versions, nodes=nodes, inputs_extra=extra
+        )
     return finish(
         'partial' if missing else 'ok',
         None,
@@ -463,6 +479,7 @@ def run_site(
         outputs=outputs,
         versions=versions,
         nodes=nodes,
+        inputs_extra=extra,
     )
 
 
@@ -518,6 +535,7 @@ def _finish(
     outputs: list[Path] | None = None,
     versions: dict[str, str] | None = None,
     nodes: list[dict[str, Any]] | None = None,
+    inputs_extra: dict[str, Any] | None = None,
 ) -> SiteResult:
     """Build the result and write <name>_run_summary.json beside the outputs."""
     result = SiteResult(
@@ -528,7 +546,7 @@ def _finish(
         files=files,
         missing=missing,
         error=error,
-        inputs=_inputs(site, settings),
+        inputs=_inputs(site, settings) | (inputs_extra or {}),
         started=started,
         finished=datetime.now(UTC),
         variable_versions=versions or {},
@@ -578,13 +596,15 @@ def _project_values(data: Mapping[str, Any], base_dir: Path, problems: list[Prob
     return values
 
 
-def _site_from_dict(data: Mapping[str, Any], settings: Settings, problems: list[Problem]) -> Site:
+def _site_from_dict(
+    data: Mapping[str, Any], settings: Settings, problems: list[Problem], base_dir: Path = Path()
+) -> Site:
     """Build a Site from a [[site]] table, adding to problems; settings is only for the defaults of a bad override."""
     name = data.get('name')
     if not isinstance(name, str):
         problems.append(Problem(None, 'name', 'Every site needs a name, in quotes.'))
         name = '(unnamed)'
-    known = ('name', *_POINT_KEYS, *_BOX_KEYS, 'nodes', 'node_mean', *_SITE_SETTINGS)
+    known = ('name', *_POINT_KEYS, *_BOX_KEYS, 'nodes', 'node_mean', 'polygon', *_SITE_SETTINGS)
     for key in sorted(set(data) - set(known)):
         problems.append(Problem(name, key, f'Unknown key. Known: {", ".join(known)}.'))
     point = _geometry(data, _POINT_KEYS, name, problems)
@@ -607,6 +627,7 @@ def _site_from_dict(data: Mapping[str, Any], settings: Settings, problems: list[
         overrides,
         _nodes_from_data(data['nodes'], name, problems) if 'nodes' in data else None,
         node_mean,
+        _polygon_from_data(data['polygon'], base_dir, name, problems) if 'polygon' in data else None,
     )
 
 
@@ -722,7 +743,7 @@ def _combination_problems(settings: Settings, site: Site) -> list[tuple[str, str
     selection = _selection(site, settings)
     if site.bbox is not None and site.overrides.get('node_selection', 'area') != 'area':
         problems.append(('node_selection', 'A box site is an area download; remove node_selection or use a point.'))
-    if selection == 'area' and settings.format == 'csv':
+    if selection == 'area' and settings.format == 'csv' and site.polygon is None:
         problems.append(('format', 'An area is a grid and cannot be written as csv; set format = "netcdf".'))
     if settings.download == 'csv' and (site.bbox is not None or selection != 'nearest' or settings.format != 'csv'):
         problems.append(
@@ -735,9 +756,11 @@ def _node_problems(settings: Settings, site: Site) -> list[tuple[str, str]]:
     """Return the (key, message) of each problem with the chosen nodes of a site, and with node_mean without nodes."""
     problems: list[tuple[str, str]] = []
     if site.nodes is None:
-        if site.node_mean:
-            problems.append(('node_mean', 'node_mean applies to a site with nodes.'))
+        if site.node_mean and site.polygon is None:
+            problems.append(('node_mean', 'node_mean applies to a site with nodes or a polygon.'))
         return problems
+    if site.polygon is not None:
+        problems.append(('polygon', 'Nodes belong to a point site; remove nodes, or remove polygon.'))
     if site.overrides.get('node_selection') in ('nearest', 'average4'):
         problems.append(('node_selection', 'A site with nodes is a nodes download; remove node_selection.'))
     if site.bbox is not None:
@@ -773,9 +796,35 @@ def _node_problems(settings: Settings, site: Site) -> list[tuple[str, str]]:
     return problems
 
 
+def _polygon_problems(settings: Settings, site: Site) -> list[tuple[str, str]]:
+    """Return the (key, message) of each problem with the boundary of a site beyond what reading it checked."""
+    if site.polygon is None:
+        return []
+    problems: list[tuple[str, str]] = []
+    if site.overrides.get('node_selection') in ('nearest', 'average4'):
+        problems.append(('node_selection', 'A polygon site is an area download; remove node_selection.'))
+    if settings.format == 'csv':
+        problems.append(('format', 'A boundary is a grid and cannot be written as csv; set format = "netcdf".'))
+    spacing = BARRA2_GRID_SPACING.get(settings.domain)
+    if spacing:
+        box = site.polygon.bbox()
+        count = max(1, math.ceil((box.north - box.south) / spacing)) * max(
+            1, math.ceil((box.east - box.west) / spacing)
+        )
+        if count > _MAX_BOUNDARY_NODES:
+            problems.append(
+                (
+                    'polygon',
+                    f'This boundary covers about {count:,} grid nodes; the limit is {_MAX_BOUNDARY_NODES:,}. '
+                    'Use a smaller boundary.',
+                )
+            )
+    return problems
+
+
 def _selection(site: Site, settings: Settings) -> str:
-    """Return the node selection a site runs: area for a box, nodes for chosen nodes, else the setting."""
-    if site.bbox is not None:
+    """Return the node selection a site runs: area for a box or polygon, nodes for chosen nodes, else the setting."""
+    if site.bbox is not None or site.polygon is not None:
         return 'area'
     return 'nodes' if site.nodes is not None else settings.node_selection
 
@@ -797,6 +846,15 @@ def _urlfilenames(site: Site, settings: Settings) -> list[tuple[str, str]]:
     """Return the (url, filename) pairs for the site: netCDF4 unless the csv download is chosen."""
     variables = preset_variables(settings.preset, settings.domain, settings.freq)
     period = (settings.start.isoformat(), settings.end.isoformat())
+    if site.polygon is not None:
+        return area_data_urlfilenames(
+            _widened(site.polygon.bbox(), BARRA2_GRID_SPACING[settings.domain]),
+            variables,
+            *period,
+            site.name,
+            domain=settings.domain,
+            freq=settings.freq,
+        )
     if site.nodes is not None:
         return nodes_data_urlfilenames(
             site.nodes, variables, *period, site.name, domain=settings.domain, freq=settings.freq
@@ -820,6 +878,31 @@ def _urlfilenames(site: Site, settings: Settings) -> list[tuple[str, str]]:
     )
 
 
+def _widened(box: LatLonBBox, spacing: float) -> LatLonBBox:
+    """Return the box widened by 1% of the grid spacing on every side, so no edge sits on a cell edge."""
+    margin = spacing / 100
+    return LatLonBBox(
+        north=min(90.0, round(float(box.north) + margin, 6)),
+        south=max(-90.0, round(float(box.south) - margin, 6)),
+        east=min(180.0, round(float(box.east) + margin, 6)),
+        west=max(-180.0, round(float(box.west) - margin, 6)),
+    )
+
+
+def _polygon_from_data(value: object, base_dir: Path, name: str, problems: list[Problem]) -> Polygon | None:
+    """Return the boundary of a site from a Polygon or the path of a file, or None with a problem added."""
+    if isinstance(value, Polygon):
+        return value
+    if not isinstance(value, str):
+        problems.append(Problem(name, 'polygon', 'Give the path of a GeoJSON or KML file, in quotes.'))
+        return None
+    try:
+        return read_polygon(base_dir / value)
+    except (OSError, BoundaryFileError) as error:
+        problems.append(Problem(name, 'polygon', f'Cannot read {value}: {error}'))
+        return None
+
+
 def _label(filename: str) -> str:
     """Name a file for the missing list: 'ua50m 2023-02' for a series file, 'orog' for a fixed field."""
     series = _SERIES_FILE.search(filename)
@@ -827,6 +910,24 @@ def _label(filename: str) -> str:
         return f'{series["var"]} {series["year"]}-{series["month"]}'
     fixed = _FIXED_FILE.search(filename)
     return fixed['var'] if fixed else filename
+
+
+def _polygon_summary(polygon: Polygon) -> dict[str, Any]:
+    """Describe a boundary for the summary: where it came from, its size, and a hash that shows when it changed."""
+    box = polygon.bbox()
+    return {
+        'source': polygon.source,
+        'vertices': len(polygon.exterior) + sum(len(hole) for hole in polygon.holes),
+        'holes': len(polygon.holes),
+        'bbox': {
+            'north': float(box.north),
+            'south': float(box.south),
+            'east': float(box.east),
+            'west': float(box.west),
+        },
+        'area_km2': polygon.area_km2(),
+        'sha256': hashlib.sha256(repr((polygon.exterior, polygon.holes)).encode()).hexdigest(),
+    }
 
 
 def _inputs(site: Site, settings: Settings) -> dict[str, Any]:
@@ -837,6 +938,8 @@ def _inputs(site: Site, settings: Settings) -> dict[str, Any]:
     if site.bbox is not None:
         box = site.bbox
         place = {'north': float(box.north), 'south': float(box.south), 'east': float(box.east), 'west': float(box.west)}
+    if site.polygon is not None:
+        place = {'polygon': _polygon_summary(site.polygon)}
     return {
         'name': site.name,
         **place,
@@ -844,6 +947,8 @@ def _inputs(site: Site, settings: Settings) -> dict[str, Any]:
         **(
             {'nodes': [[float(node.lat), float(node.lon)] for node in site.nodes], 'node_mean': site.node_mean}
             if site.nodes is not None
+            else {'node_mean': site.node_mean}
+            if site.polygon is not None
             else {}
         ),
         'domain': settings.domain,
@@ -861,8 +966,11 @@ def _inputs(site: Site, settings: Settings) -> dict[str, Any]:
 
 def _write_outputs(
     site: Site, settings: Settings, urlfilenames: list[tuple[str, str]], versions: dict[str, str]
-) -> tuple[list[Path], list[dict[str, Any]], str | None]:
-    """Merge the cached files and write the outputs; return (outputs, nodes, a problem that fails the site, or None)."""
+) -> tuple[list[Path], list[dict[str, Any]], str | None, dict[str, Any]]:
+    """Merge the cached files and write the outputs.
+
+    Returns (outputs, nodes, a problem that fails the site or None, extra entries for the summary's inputs).
+    """
     pattern = f'{site.name}_{settings.domain}_{settings.freq}_*'
     cache, out = str(settings.cache), settings.out
     dates = f'{settings.start.strftime("%Y%m%d")}_{settings.end.strftime("%Y%m%d")}'
@@ -891,12 +999,18 @@ def _write_outputs(
             fixed_pattern=fixed if selection != 'nearest' else None,
             nodes=site.nodes,
             node_mean=site.node_mean,
+            polygon=site.polygon,
         )
     nodes = _nodes(ds, selection)
+    extra = (
+        {'sub_cell': bool(ds.attrs['boundary_sub_cell']), 'covered': ds.attrs['boundary_covered']}
+        if site.polygon
+        else {}
+    )
     reach = _NODE_REACH if selection == 'nodes' else 1.0
     problem = _location_problem(ds, requested, BARRA2_GRID_SPACING[settings.domain], reach) if requested else None
     if problem:
-        return [], nodes, problem
+        return [], nodes, problem, extra
     if settings.download == 'csv':
         return (
             [
@@ -912,12 +1026,13 @@ def _write_outputs(
             ],
             nodes,
             None,
+            extra,
         )
     if settings.format == 'csv':
-        return write_csv(ds, out, site.name), nodes, None
+        return write_csv(ds, out, site.name), nodes, None, extra
     path = out / f'{site.name}_{settings.domain}_{settings.freq}_{selection}_{dates}.nc'
     ds.to_netcdf(path)
-    return [path], nodes, None
+    return [path], nodes, None, extra
 
 
 def _location_problem(ds: xr.Dataset, requested: LatLonPoint, spacing: float, reach: float = 1.0) -> str | None:
@@ -938,6 +1053,22 @@ def _location_problem(ds: xr.Dataset, requested: LatLonPoint, spacing: float, re
 
 def _nodes(ds: xr.Dataset, selection: str) -> list[dict[str, Any]]:
     """Describe the nodes in a Dataset: requested and actual position, distance and altitude, or an area's extent."""
+    if selection == 'area' and 'cell_weight' in ds:
+        centroid = (float(ds.attrs['boundary_centroid_lat']), float(ds.attrs['boundary_centroid_lon']))
+        orog = ds.get('orog')
+        return [
+            {
+                'lat': float(lat),
+                'lon': float(lon),
+                'overlap': float(ds['cell_overlap'].sel(lat=lat, lon=lon)),
+                'weight': float(ds['cell_weight'].sel(lat=lat, lon=lon)),
+                'orog': float(orog.sel(lat=lat, lon=lon)) if orog is not None else None,
+                'distance_km': float(distance_km(*centroid, lat, lon)),
+            }
+            for lat in ds['lat'].to_numpy()
+            for lon in ds['lon'].to_numpy()
+            if float(ds['cell_weight'].sel(lat=lat, lon=lon)) > 0
+        ]
     if selection == 'area':
         orog = ds.get('orog')
         return [
