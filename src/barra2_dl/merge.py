@@ -19,14 +19,16 @@ from barra2_dl.globals import (
     BARRA2_DOMAINS,
     BARRA2_FIXED_FREQ,
     BARRA2_FREQS,
+    BARRA2_GRID_SPACING,
     BARRA2_INDEX,
     BARRA2_NODE_SELECTIONS,
     BARRA2_NODE_TOLERANCE,
+    BARRA2_OVERLAP_MIN,
     BARRA2_VAR_ALIASES,
     BARRA2_VAR_INFO,
     BARRA2_WIND_VARS,
 )
-from barra2_dl.mapping import LatLonPoint, bracket_index, distance_km, inverse_distance_weights
+from barra2_dl.mapping import LatLonPoint, Polygon, bracket_index, distance_km, inverse_distance_weights
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
@@ -219,6 +221,7 @@ def merge_netcdf_to_dataset(
     fixed_pattern: str | None = None,
     nodes: Sequence[LatLonPoint] | None = None,
     node_mean: bool = False,
+    polygon: Polygon | None = None,
 ) -> xr.Dataset:
     """Merge downloaded netCDF4 files straight into a CF-style xarray Dataset, without a DataFrame.
 
@@ -244,6 +247,14 @@ def merge_netcdf_to_dataset(
     chosen nodes is written as for average4, with node_weight; without it there are no mean variables and no weights.
     lat and lon are the requested site.
 
+    node_selection='area' with a polygon keeps the grid of the area but uses only the nodes whose cell overlaps the
+    boundary (or, for a boundary smaller than one grid spacing, the one node whose cell holds its centroid): every data
+    variable is missing at the others, cell_overlap and cell_weight (lat, lon) say how much of each cell the boundary
+    covers and the weight of each node in a mean (overlap area times the cosine of latitude, normalised), and boundary_*
+    attributes describe it. With node_mean the weighted mean of the used nodes is added for every variable as
+    <name>_site_mean, by the hybrid method as for average4: speed is the weighted mean of the nodes' own speeds, ua and
+    va are weighted means, direction is taken from them.
+
     node_selection='area' keeps every node: lat and lon are dimensions, the variables are (time[, height], lat, lon),
     and orog, if fixed_pattern is given, is a (lat, lon) variable. There is no requested site.
 
@@ -261,7 +272,8 @@ def merge_netcdf_to_dataset(
         fixed_pattern (str | None): Filename pattern of the downloaded orog grid for average4, nodes and area, e.g.
             f'{prefix}_AUS-11_fx_average4_orog.nc'.
         nodes (Sequence[LatLonPoint] | None): The chosen nodes, exact values, for node_selection='nodes'.
-        node_mean (bool): With 'nodes', also write the weighted mean of the chosen nodes. Default False.
+        node_mean (bool): With 'nodes' or an area polygon, also write the weighted mean. Default False.
+        polygon (Polygon | None): For node_selection='area', the boundary that selects the nodes. Default None.
 
     Returns:
         xr.Dataset: Ready for to_netcdf().
@@ -273,9 +285,16 @@ def merge_netcdf_to_dataset(
     """
     if node_selection not in BARRA2_NODE_SELECTIONS:
         raise ValueError(f'node_selection <{node_selection}> must be one of {", ".join(BARRA2_NODE_SELECTIONS)}.')
+    if polygon is not None and node_selection != 'area':
+        raise ValueError(f'A polygon selects the nodes of an area, not of node_selection <{node_selection}>.')
     if node_selection == 'area':
         grids, units = _read_grids(_data_files(filein_folder, filename_pattern, node_selection))
-        return _area_dataset(grids, units, _read_fixed_grid(filein_folder, fixed_pattern), (domain, freq), versions)
+        area = _area_dataset(grids, units, _read_fixed_grid(filein_folder, fixed_pattern), (domain, freq), versions)
+        if polygon is None:
+            if node_mean:
+                raise ValueError('node_mean for an area needs a polygon, to say which nodes and what weights.')
+            return area
+        return _apply_polygon(area, polygon, domain, node_mean)
     site = _site(requested, node_selection)
     if node_selection == 'nodes' and not nodes:
         raise ValueError('node_selection <nodes> needs nodes, the exact latitude and longitude of each chosen node.')
@@ -824,6 +843,80 @@ def _nodes_dataset(
     ds = _build_dataset(per_node[0], units, site, domain_freq, requested, None, 'nodes', versions)
     mains = [name for name in ds.data_vars if name != 'time_bnds']
     return _add_nodes(ds, node_datasets, coords).drop_vars(mains)
+
+
+def _centroid_node(lats: np.ndarray, lons: np.ndarray, centroid: LatLonPoint) -> np.ndarray:
+    """Return the mask of the one grid node whose cell holds the centroid: nearest in latitude and longitude steps."""
+    lat_grid, lon_grid = (grid.ravel() for grid in np.meshgrid(lats, lons, indexing='ij'))
+    steps = np.maximum(np.abs(lat_grid - float(centroid.lat)), np.abs(lon_grid - float(centroid.lon)))
+    # a centroid on a cell edge is as near two nodes: take the lower latitude, then the lower longitude
+    first = int(np.lexsort((lon_grid, lat_grid, np.round(steps, 9)))[0])
+    mask = np.zeros(len(lat_grid), dtype=bool)
+    mask[first] = True
+    return mask.reshape(len(lats), len(lons))
+
+
+def _apply_polygon(ds: xr.Dataset, polygon: Polygon, domain: str, node_mean: bool) -> xr.Dataset:
+    """Use only the nodes the boundary selects: mask the others, add the overlap and weights, and the mean if asked."""
+    spacing = BARRA2_GRID_SPACING[domain]
+    lats, lons = ds['lat'].to_numpy(), ds['lon'].to_numpy()
+    overlap = polygon.cell_overlap(lats, lons, spacing)
+    box, centroid = polygon.bbox(), polygon.centroid()
+    sub_cell = bool((box.north - box.south) < spacing and (box.east - box.west) < spacing)
+    used = _centroid_node(lats, lons, centroid) if sub_cell else overlap > BARRA2_OVERLAP_MIN
+    if not used.any():
+        raise ValueError(f'The boundary overlaps no BARRA2 node of {domain}; check its coordinates.')
+    weights = used * overlap * np.cos(np.radians(lats))[:, None] if not sub_cell else used.astype(float)
+    weights = weights / weights.sum()
+    mask = xr.DataArray(used, coords={'lat': lats, 'lon': lons}, dims=('lat', 'lon'))
+    for name in [name for name in ds.data_vars if {'lat', 'lon'} <= set(ds[name].dims)]:
+        ds[name] = ds[name].where(mask).assign_attrs(ds[name].attrs)
+    ds['cell_overlap'] = (
+        ('lat', 'lon'),
+        np.where(used, overlap, 0.0),
+        {'units': '1', 'long_name': 'share of the grid cell inside the boundary'},
+    )
+    ds['cell_weight'] = (('lat', 'lon'), weights, {'units': '1', 'long_name': 'weight of the node in the site mean'})
+    covered = float((overlap * used).sum() * spacing**2 / polygon.area_deg2())
+    ds.attrs |= {
+        'boundary_source': polygon.source,
+        'boundary_vertices': len(polygon.exterior) + sum(len(hole) for hole in polygon.holes),
+        'boundary_holes': len(polygon.holes),
+        'boundary_area_km2': polygon.area_km2(),
+        'boundary_centroid_lat': float(centroid.lat),
+        'boundary_centroid_lon': float(centroid.lon),
+        'boundary_sub_cell': int(sub_cell),
+        'boundary_covered': min(covered, 1.0),
+    }
+    return _add_site_mean(ds, weights) if node_mean else ds
+
+
+def _add_site_mean(ds: xr.Dataset, weights: np.ndarray) -> xr.Dataset:
+    """Add <name>_site_mean, the weighted mean over the nodes of every gridded series, by the hybrid method."""
+    weight = xr.DataArray(weights, coords={'lat': ds['lat'], 'lon': ds['lon']}, dims=('lat', 'lon'))
+    labels = {'wind_speed': 'scalar', 'ua': 'vector', 'va': 'vector', 'wind_from_direction': 'vector'}
+    series = [
+        str(name)
+        for name in ds.data_vars
+        if {'lat', 'lon'} <= set(ds[name].dims) and ('time' in ds[name].dims or 'time_mean' in ds[name].dims)
+    ]
+    for name in series:
+        if name != 'wind_from_direction':
+            mean = ds[name].weighted(weight).mean(('lat', 'lon'))
+            ds[f'{name}_site_mean'] = mean.assign_attrs(ds[name].attrs)
+    if {'ua_site_mean', 'va_site_mean', 'wind_from_direction'} <= set(ds.data_vars) | set(series):
+        east, north = ds['ua_site_mean'], ds['va_site_mean']
+        direction = np.mod(180 + np.rad2deg(np.arctan2(east, north)), 360)
+        ds['wind_from_direction_site_mean'] = xr.where((east == 0) & (north == 0), 0.0, direction).assign_attrs(
+            ds['wind_from_direction'].attrs
+        )
+    for name in series:
+        mean_name = f'{name}_site_mean'
+        if mean_name in ds:
+            label = f'site: mean ({labels[name]})' if name in labels else 'site: mean'
+            existing = ds[mean_name].attrs.get('cell_methods')
+            ds[mean_name].attrs['cell_methods'] = f'{existing} {label}' if existing else label
+    return ds
 
 
 def _label_node_means(ds: xr.Dataset) -> xr.Dataset:

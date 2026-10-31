@@ -626,8 +626,8 @@ def test_nearest_nodes_live_returns_nodes_of_the_full_domain_grid(domain: str, l
 
 
 # region read_polygon
-RING = [[133.38, -23.57], [133.45, -23.57], [133.45, -23.51], [133.38, -23.51], [133.38, -23.57]]
-EXPECTED = ((-23.57, 133.38), (-23.57, 133.45), (-23.51, 133.45), (-23.51, 133.38))
+RING = [[133.33, -23.57], [133.50, -23.57], [133.50, -23.51], [133.33, -23.51], [133.33, -23.57]]
+EXPECTED = ((-23.57, 133.33), (-23.57, 133.50), (-23.51, 133.50), (-23.51, 133.33))
 
 
 def _geojson(geometry: Any, **extra: Any) -> str:
@@ -701,7 +701,7 @@ def test_polygon_from_geojson_reads_holes() -> None:
     polygon = polygon_from_geojson(_geojson({'type': 'Polygon', 'coordinates': [RING, hole]}))
 
     assert len(polygon.holes) == 1
-    assert polygon.area_deg2() == pytest.approx(0.07 * 0.06 - 0.02 * 0.02)
+    assert polygon.area_deg2() == pytest.approx(0.17 * 0.06 - 0.02 * 0.02)
 
 
 @pytest.mark.parametrize(
@@ -745,7 +745,7 @@ KML = (
     '<kml{ns}><Document><Placemark><Polygon><outerBoundaryIs><LinearRing><coordinates>{ring}</coordinates>'
     '</LinearRing></outerBoundaryIs>{inner}</Polygon></Placemark></Document></kml>'
 )
-KML_RING = '133.38,-23.57,0 133.45,-23.57,0 133.45,-23.51,0 133.38,-23.51,0 133.38,-23.57,0'
+KML_RING = '133.33,-23.57,0 133.50,-23.57,0 133.50,-23.51,0 133.33,-23.51,0 133.33,-23.57,0'
 
 
 @pytest.mark.parametrize('ns', ['', ' xmlns="http://www.opengis.net/kml/2.2"'], ids=['no-namespace', 'namespace'])

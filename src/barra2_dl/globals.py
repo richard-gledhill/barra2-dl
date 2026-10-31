@@ -16,6 +16,7 @@ __all__ = [
     'BARRA2_NODE_SELECTIONS',
     'BARRA2_NODE_TOLERANCE',
     'BARRA2_OUTPUT_FORMATS',
+    'BARRA2_OVERLAP_MIN',
     'BARRA2_PRESETS',
     'BARRA2_PRESET_DEFAULT',
     'BARRA2_URL',
@@ -121,6 +122,10 @@ BARRA2_NODE_SELECTIONS = ('nearest', 'average4', 'area', 'nodes')
 # How close, in degrees, a chosen node's latitude and longitude must be to a node of the grid to name it. Far below the
 # smallest spacing (0.04), so no two nodes are confused, and enough to forgive a value rounded by hand.
 BARRA2_NODE_TOLERANCE = 1e-4
+
+# The share of a grid cell a boundary must cover for the node to be used, so a boundary that only touches a cell
+# edge does not use it
+BARRA2_OVERLAP_MIN = 1e-9
 
 # What run_site writes (csv files or a netCDF file), and the format its downloads are requested in
 BARRA2_OUTPUT_FORMATS = ('csv', 'netcdf')
