@@ -14,6 +14,7 @@ the MkDocs part of `docs/`, one level up.
 | [`adr/`](adr/README.md) | Architecture decision records, `ADR-NNN-title.md`, sequential, never deleted. |
 | [`architecture/`](architecture/README.md) | Overview, diagrams, data model. |
 | [`testing/`](testing/README.md) | Test strategy and known gaps. |
+| [`research/`](research/README.md) | Time-boxed research notes that inform a decision, with sources and recommendations. |
 
 ## From backlog to shipped work
 
