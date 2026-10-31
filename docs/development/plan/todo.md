@@ -32,8 +32,8 @@ Resumed 2026-10-31 after RFC-007 shipped. The owner answered RFC section 9 on 20
 - [x] `make check`, `make test`, `make docs-test`, live tests, end-to-end run of the example project; PR
 
 ## Slice 2b: `feat/polygon-boundary` (beyond RFC-005; owner request)
-- [x] SPEC addendum written (PR `docs: slice 2b SPEC addendum (polygon boundary)`); owner review pending
-- [ ] Owner answers the five questions at the end of the addendum
+- [x] SPEC addendum written (PR `docs: slice 2b SPEC addendum (polygon boundary)`); approved with five answers 2026-10-31
+- [x] Owner answers recorded under "Decisions" in the addendum; implementation is a separate PR, started when the owner says
 - [ ] `mapping.Polygon`, readers, `cell_overlap`; tests
 - [ ] `merge` polygon mask and `_site_mean`; `project` `Site.polygon`, validation, summary; tests
 - [ ] Example boundary, docs, live tests; `make check`, `make test`, `make docs-test`; PR
