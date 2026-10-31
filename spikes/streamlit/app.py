@@ -27,7 +27,6 @@ from spike_common import (
     summary,
 )
 from streamlit.runtime.scriptrunner import get_script_run_ctx
-from streamlit_folium import st_folium
 
 from barra2_dl.project import run_site
 
@@ -87,6 +86,10 @@ def _run_panel() -> None:
 
 
 def _map(values: dict[str, Any], offered, chosen, polygon, used) -> dict[str, Any]:
+    # Imported here, not at the top: the component registers its route with the running server, so importing it in
+    # the launcher process (python app.py) before the server starts leaves the map frontend returning 404.
+    from streamlit_folium import st_folium
+
     fmap = folium.Map(location=[values['lat'], values['lon']], zoom_start=11, control_scale=True)
     Draw(
         export=False,
