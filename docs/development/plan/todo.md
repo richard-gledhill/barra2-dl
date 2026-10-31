@@ -44,7 +44,7 @@ Resumed 2026-10-31 after RFC-007 shipped. The owner answered RFC section 9 on 20
 - [ ] Set up: spike branch `chore/gui-toolkit-spikes`, `spikes/common` (fake NCSS server), scratch environments, pin and wheel dry run
 - [ ] Spikes: Streamlit, NiceGUI (optional owner checkpoint), Panel, Dash, Flet (with the freeze attempt), notebook with Voila; 4 h each
 - [ ] tkinter on paper; console-output findings
-- [ ] Research note `docs/development/research/gui-toolkit-spikes.md` with screenshots; owner's walkthrough and scores
+- [ ] Research note `docs/development/research/gui-toolkit-spikes.md` with screenshots; owner's walkthrough and checklists
 - [ ] ADR-005 and `adr/README.md` row; tag `rfc005-spikes`; `make check`, `make docs-test`; PR (no spike code on `main`)
 
 ## Slice 4: `feat/gui-skeleton`

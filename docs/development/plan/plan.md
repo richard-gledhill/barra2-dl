@@ -45,7 +45,7 @@ by pattern); the jupytext sync of the notebook must not reformat unrelated cells
    "Slice 2b addendum" (approved): cell-overlap mask, opt-in area-weighted mean, netCDF only.
 3. **Toolkit spikes** (`docs/gui-toolkit-adr`; spikes on the never-merged branch `chore/gui-toolkit-spikes`): time-boxed
    (4 hours each) Streamlit, NiceGUI, Panel, Dash (Plotly), Flet and notebook-with-Voila (added 2026-10-31) builds of the same thin slice (RFC 5.2); tkinter is
-   judged on paper. Gates and weighted criteria, with the owner scoring looks and ease; polygon drawing on the map and the
+   judged on paper. A yes/no checklist the owner completes for each toolkit, with a comment box; polygon drawing on the map and the
    nodes drawn on the map are criteria. The result is a research note with the evidence and ADR-005. No spike code,
    dependency or `gui` extra reaches `main`. Detailed in the SPEC "Slice 3 addendum" (proposed, awaiting the owner's
    review). The owner added Dash and Flet to the RFC's list on 2026-10-30; Flet also shows what freezing a desktop-native
