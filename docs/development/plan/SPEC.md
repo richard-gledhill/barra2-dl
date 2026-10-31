@@ -7,7 +7,8 @@ Style and gates: [conventions.md](../conventions.md), [constraints.md](../constr
 
 - Slice 1 (the engine) shipped in #147.
 - Slice 1b (research) is done and reviewed: see "Slice 1b addendum" for the owner's decisions.
-- Slice 2 (node lookup, chosen nodes) has its addendum, "Slice 2 addendum" at the end, approved by the owner on 2026-10-31.
+- Slice 2 (node lookup, chosen nodes) has its addendum, "Slice 2 addendum" at the end, approved by the owner on 2026-10-31, and shipped in #150.
+- Slice 2b (polygon boundary) has its addendum, "Slice 2b addendum" at the end, awaiting owner review.
 
 ## Scope
 
@@ -575,3 +576,236 @@ Owner's answers of 2026-10-31 to the four questions raised in review; the option
 
 Added by the owner: the GUI must show a visual representation of the nodes selected or used, on the map, for a chosen or
 used site, not only a table. This is a slice 4/5 requirement (see "Not in scope" and `plan.md`).
+
+## Slice 2b addendum: polygon boundary (`feat/polygon-boundary`)
+
+Written 2026-10-31, when slice 2b started. **Status: awaiting owner review. No library code or tests until it is
+approved.** It builds on the slice 1b owner decisions (the table under "Slice 1b addendum") and the slice 2 work (#150),
+settles the rows still open for 2b in the design table, and does not reopen RFC-005 section 8, the section 9 answers or
+the slice 1b and slice 2 decisions.
+
+**Scope.** A site whose place is a polygon boundary (a wind-farm or lease outline) instead of a point, a box or chosen
+nodes: a `Polygon` type, readers for GeoJSON and KML, the node mask by cell overlap, an optional area-weighted site mean,
+the project-file key `polygon = "farm.geojson"`, and the run summary entries the GUI needs to draw the nodes used. Out of
+scope: the GUI (drawing a polygon and showing the nodes is slice 5), shapefiles (owner: not in v1), csv output for a
+boundary, and any change to `nearest`, `average4`, `nodes` or box-`area` behaviour.
+
+### Decisions already made (not reopened)
+
+| Question | Decision (owner, 2026-10-31) |
+|---|---|
+| Default output for a boundary | All nodes whose cell overlaps the polygon, one series each, plus an opt-in site mean |
+| Site mean | Opt-in, weighted by each cell's overlap with the polygon, by the hybrid method (scalar-mean speed, vector-mean direction) |
+| Polygon smaller than one grid cell | The node whose cell holds the centroid (`average4` at the centroid stays an option) |
+| Node inclusion rule | The cell overlaps the polygon, as NCSS returns it |
+| Boundary file types | GeoJSON and KML with the standard library; no shapefile, no `pyshp` |
+
+### Proposed decisions (for the owner)
+
+| # | Question | Proposal |
+|---|---|---|
+| A | Where the geometry lives | `mapping.py`, as the plan says: `Polygon`, `read_polygon`, `polygon_from_geojson`, `polygon_from_kml`, `BoundaryFileError`. numpy only, no new dependency. |
+| B | Site key and selection | `Site.polygon: Polygon | None`; project file `polygon = "farm.geojson"` (relative to the project file). A polygon site is an `area` download automatically, as a box is. Exactly one of point, box and polygon. |
+| C | The mean | `node_mean = true`, the key slice 2 added, so one key means "also write the mean of the nodes used" for `nodes` and for a polygon. Weights are cell overlap area (times the cosine of the node latitude), normalised; hybrid method. |
+| D | Output | netCDF only, the `area` grid (`lat`, `lon` dimensions) with nodes that do not overlap the polygon set to missing, plus `cell_overlap` and `cell_weight` grids and, with `node_mean`, the `<var>_site_mean` series. |
+| E | Request | One box per variable-month, the polygon's bounding box widened by 1% of the spacing (box type and cache files as an area), so the cache is the same for any polygon with that bounding box. The mask is applied at merge. |
+| F | Several points for one site (turbines) | Each point stays its own site for now; a shared-download group is deferred to after the slice 5 import (backlog). |
+
+### `Polygon` and the readers (`mapping.py`)
+
+```python
+@dataclass(frozen=True)
+class Polygon:
+    exterior: tuple[tuple[float, float], ...]          # (lat, lon) vertices, counter-clockwise, not repeated at the end
+    holes: tuple[tuple[tuple[float, float], ...], ...] = ()
+    source: str = ''                                   # file name or 'drawn', for the summary
+
+    def bbox(self) -> LatLonBBox
+    def centroid(self) -> LatLonPoint                  # area-weighted; the bbox centre for a zero-area ring
+    def contains(self, point: LatLonPoint) -> bool     # inside the exterior and outside every hole
+    def cell_overlap(self, lats, lons, spacing) -> np.ndarray   # (lat, lon): fraction 0 to 1 of each cell inside
+
+def read_polygon(path: str | Path) -> Polygon                    # by suffix: .geojson, .json, .kml
+def polygon_from_geojson(text: str, source: str = '') -> Polygon
+def polygon_from_kml(text: str, source: str = '') -> Polygon
+class BoundaryFileError(ValueError)                               # one problem, saying what to change
+```
+
+`__all__` gains these. The text readers let the GUI parse an uploaded file or a drawn shape without touching the disk.
+
+**Geometry (numpy, planar in degrees).**
+- A cell is the node plus or minus half the grid spacing in each direction, the cell NCSS uses (pinned by
+  `tests/test_ncss_nodes.py`). `cell_overlap` clips the polygon to each cell (Sutherland-Hodgman against the rectangle,
+  whose area by the shoelace formula is right for a concave polygon too), subtracts the clipped holes, and divides by the
+  cell area. A node is **used** when its fraction is above `1e-9`, so a polygon that only touches a cell edge does not
+  use it, and the NCSS edge rule (north and east count, south and west do not) never matters.
+- Weights: `overlap area x cos(node latitude)`, normalised to sum to 1. Within a farm the cosine is almost constant;
+  it keeps the weights right for a boundary spanning degrees of latitude. Distances elsewhere are great-circle; areas
+  here are planar in degrees, which is the stated approximation.
+- `contains` uses the even-odd rule; the centroid is the polygon area centroid.
+
+**What a boundary may be (validation, one `BoundaryFileError` per fault).**
+- At least 3 distinct vertices, latitude -90 to 90, longitude -180 to 180 (a polygon across the antimeridian is
+  rejected; `Longitude` has the same limit today), no repeated vertex except the closing one, and no self-intersection of
+  a ring or crossing between rings (checked pairwise, fine for hundreds of vertices; above 5,000 vertices the file is
+  rejected with "simplify the outline").
+- GeoJSON (RFC 7946): a `Polygon`, a `Feature` holding one, or a `FeatureCollection` of exactly one such feature.
+  Coordinates are longitude then latitude; a third value is ignored. A legacy `crs` member is accepted only for
+  WGS 84 (`EPSG:4326`, `CRS84`); any other is an error. Order of the rings is normalised (exterior counter-clockwise,
+  holes clockwise).
+- KML: a `Placemark` with one `Polygon` (`outerBoundaryIs`, any `innerBoundaryIs`), tags matched regardless of the XML
+  namespace. A file with a `DOCTYPE` or entity declaration is refused before parsing (the standard parser is not hardened
+  against entity expansion). KMZ (zipped) is not read: the message says to extract the `.kml`.
+- A `MultiPolygon`, several features, or several placemarks are refused (see Q1): `farm.geojson holds 3 polygons; give each
+  its own site.`
+
+### Node mask and the sub-cell case
+
+- **Used nodes.** After the box download, the mask is `polygon.cell_overlap(lat, lon, spacing)` on the returned axes. The
+  returned grid always contains every used node, because NCSS returns every node whose cell overlaps the box and the box
+  contains the polygon; a live test pins this.
+- **Sub-cell polygon** (**Q2**): the polygon's bounding box is smaller than one grid spacing in both latitude and
+  longitude. Then exactly one node is used: of the returned nodes, the one whose cell holds the centroid, found as the
+  smallest Chebyshev distance `max(|dlat|, |dlon|)` to the centroid (a centroid on a cell edge goes to the lower latitude,
+  then the lower longitude). It is chosen among the server's nodes, never computed. Its `cell_overlap` is the polygon's real
+  fraction, but its weight is 1.
+  A bigger polygon that happens to lie in one cell is just the ordinary case and gives the same node.
+
+| Option for "smaller than one cell" | Effect |
+|---|---|
+| a. Bounding box under one spacing in both directions (**recommended**) | A small polygon straddling a cell boundary gets the one node holding its centroid, as the owner decision says. Simple to state and to test. |
+| b. Polygon area under one cell area | A thin long polygon (a 12 km x 1 km strip) counts as sub-cell and loses all but one node. |
+| c. Polygon overlaps only one cell | No special case, but a small polygon straddling a boundary gets two nodes, which is not what the decision says. |
+
+### The Dataset
+
+`merge.merge_netcdf_to_dataset(..., node_selection='area', polygon=polygon, node_mean=False)` builds the area Dataset as
+today, then:
+- every data variable is set to missing at unused nodes (a rectangular grid cannot drop individual nodes), so a
+  statistic over the grid ignores them;
+- `cell_overlap (lat, lon)`: the fraction of each cell inside the polygon, 0 where unused;
+- `cell_weight (lat, lon)`: the normalised weights above, 0 where unused (1 at the one node of a sub-cell polygon);
+- attributes: `boundary_source`, `boundary_vertices`, `boundary_area_km2` (planar area x 111.195^2 x cosine of the
+  centroid latitude, an approximation), `boundary_centroid`, `boundary_sub_cell` (bool), `boundary_covered` (the used cells'
+  share of the polygon area, below 1 only where the polygon leaves the domain);
+- with `node_mean`: `<var>_site_mean` for every data variable, by the hybrid method: speed is the weighted mean of
+  each used node's own speed (scalar mean), `ua`/`va` are weighted means of the components, direction is taken from them
+  (vector mean), and `cell_methods` says which, as for `average4`. `_site_mean` rather than `_mean`, because `_is_mean`
+  already means a time-mean variable (`pr`).
+
+netCDF only: `area` with `csv` stays an error, and the message for a polygon site says to use `format = "netcdf"` (**Q3**).
+
+### `project.py` and the project file
+
+```toml
+[[site]]
+name = "farm"
+polygon = "farm.geojson"     # GeoJSON or KML, WGS 84; relative to this file
+node_mean = true             # optional: also write the area-weighted mean of the nodes used
+format = "netcdf"
+```
+
+- `Site` gains `polygon: Polygon | None = None`. `site_from_dict` accepts `polygon` as a path (read with `read_polygon`,
+  relative to the project file's folder, so `project_from_dict` passes its `base_dir`) or as a `Polygon` (a form).
+  `_selection` returns `area` for a polygon site.
+- `validate` adds, each with the site and key and a message that says what to change:
+
+  | Key | When | Message |
+  |---|---|---|
+  | `polygon` | the file is missing or unreadable | `Cannot read farm.geojson: <reason>.` (the `BoundaryFileError` message, with the path) |
+  | `polygon` | not text or a `Polygon` | `Give the path of a GeoJSON or KML file, in quotes.` |
+  | `lat/lon` | more or fewer than one of point, box and polygon (nodes count with a point) | `Give one place: lat and lon, a box, or a polygon.` |
+  | `polygon` | the site also has `nodes` | `Nodes belong to a point site; remove nodes, or remove polygon.` |
+  | `node_selection` | an override on a polygon site | `A polygon site is an area download; remove node_selection.` |
+  | `format` | `csv` on a polygon site | `A boundary is a grid and cannot be written as csv; set format = "netcdf".` |
+  | `download` | `csv` on a polygon site | the existing csv-download message |
+  | `polygon` | the bounding box covers more than 2,500 nodes (**Q4**) | `This boundary covers about 4,000 grid nodes; the limit is 2,500. Use a smaller boundary.` The count is `ceil(extent / spacing)` per axis, a guard on size, not a node position. |
+  | `node_mean` | set on a site with neither `nodes` nor a polygon | `node_mean applies to a site with nodes or a polygon.` (the slice 2 message, widened) |
+
+- `urlfilenames`: `area_data_urlfilenames(LatLonBBox(<bbox widened by 1% of the spacing>), ...)`, so the files are the area
+  files of that box and RFC-007's coverage check applies unchanged. The widening is arithmetic on the polygon's own
+  extent, not on the grid.
+- `run_site`: downloads, `merge_netcdf_to_dataset(..., node_selection='area', polygon=..., node_mean=...)`, then writes
+  `<name>_<domain>_<freq>_area_<start>_<end>.nc`. No used node (the polygon is outside the domain) fails the site with
+  `The boundary overlaps no BARRA2 node of AUS-11; check its coordinates.`
+- Summary: `inputs` gains `polygon` (`source`, `vertices`, `holes`, `bbox`, `area_km2`, `sha256` of the vertex list, so a
+  changed file shows) and `node_mean`; `selection` stays `area`. `nodes` lists every used node, in latitude then longitude
+  order, with `lat`, `lon`, `overlap`, `weight`, `orog` and `distance_km` from the centroid, plus `sub_cell` and `covered` on
+  the site entry (`inputs`), so the GUI can draw the nodes used and their weights from the summary alone (the owner's slice 5
+  requirement). A plain box `area` summary keeps `count` and the `orog` range; listing its nodes is a slice 5 question.
+  New keys are additive, so `schema_version` stays 1.
+
+### Options considered
+
+| Question | Options | Choice |
+|---|---|---|
+| Several parts (**Q1**) | a. refuse a `MultiPolygon` and multi-feature files, asking for one site per part (**recommended**); b. accept them as one boundary (the overlap is the sum over parts; holes per part) | a: the weights, the centroid and the sub-cell test are all clearer for one outline, and a farm in two blocks is two sites to compare. b is a small extension if wanted. |
+| Output for a boundary (**Q3**) | a. netCDF only (**recommended**); b. also a csv per used node, as `nodes` writes | a: a boundary can use hundreds of nodes on AUST-04, and the site mean as a csv can be added later without a decision now. |
+| Size guard (**Q4**) | a. error above 2,500 nodes from the bounding box (**recommended**); b. no guard; c. a warning only | a: a continent-sized polygon would otherwise start tens of thousands of requests. The bound is a setting-free constant; raise it if wanted. |
+| Geometry home | a. `mapping.py` (**recommended**, as planned); b. a new `boundary.py` | a: about 300 lines more, still one concern (geometry on the grid); splitting later changes only imports. |
+| Weights | a. cell overlap area x cos(lat) (**owner decision**); b. equal; c. inverse distance | a |
+| Several points for one site (**Q5**) | a. each point its own site (**recommended**); b. a site group sharing one download | a: the nodes selection and a polygon cover most turbine-layout cases; a group needs a project-file shape and engine API that the slice 5 mast-list import will show. Backlog: "site group sharing one cached download". |
+
+### Tests (offline unless marked live)
+
+- **Fixtures.** Hand-written boundary files in `tests/data/`: a simple GeoJSON polygon over two of the 3 x 3 grid cells, one with
+  a hole, a sub-cell polygon straddling a cell boundary, a `Feature`/`FeatureCollection`/`MultiPolygon`/KML twin of the first,
+  a legacy-`crs` file, and bad files (open ring, self-intersecting, one vertex, projected `crs`, KML with a `DOCTYPE`, KMZ
+  bytes). No download is needed; the series come from the existing `grid_AUS-11_*` fixtures.
+- `tests/test_mapping.py`: `Polygon` validation (each fault above, one message each); `contains` with a hole;
+  `centroid` of a square, an L shape and a zero-area ring; `cell_overlap` against hand-computed fractions (a polygon
+  covering exactly one cell is 1.0; half of a cell is 0.5; a hole subtracts; a polygon touching an edge only is 0); the
+  **sum of overlap areas equals the polygon area** when the grid covers it (property, several shapes, concave included);
+  the readers (GeoJSON `Polygon`, `Feature`, `FeatureCollection` of one, lon-lat order, third value ignored, legacy `crs`, KML with and
+  without a namespace, holes) and their refusals, each with its message; `read_polygon` by suffix and an unknown suffix.
+- `tests/test_merge.py`: the area Dataset with a polygon masks unused nodes to missing, has `cell_overlap`/`cell_weight`
+  with weights summing to 1; with `node_mean` the `_site_mean` series equals the hybrid mean computed by hand for two
+  weighted nodes (speed scalar, direction vector, speed not equal to `hypot` of the mean components); a sub-cell polygon uses
+  one node (the one holding the centroid, found on a centroid at a cell edge too) with weight 1; a polygon outside the grid
+  raises; `area` without a polygon is unchanged.
+- `tests/test_project.py`: each validation row; `load_project` with `polygon` relative to the file; `plan_site` lists
+  the widened-box files; `run_site` with a polygon site writes the netCDF and the summary (`inputs.polygon`, `nodes` entries
+  with `overlap`, `weight`, `sub_cell`, `covered`); a polygon file that changes keeps its name but changes `sha256`; no used
+  node fails the site; the cache check still refuses files for another box.
+- `tests/test_package.py`: nothing new beyond `__all__` resolving.
+- Live (`BARRA2_LIVE=1`): **NCSS returns every used node**, for a polygon on AUS-11 and one on AUST-04 (each node with
+  `cell_overlap > 0` is in the downloaded grid), a boundary that straddles cell edges exactly (a polygon whose edges lie on
+  cell edges, built from a `nearest_nodes` lookup, never computed), and one month of `run_site` for a polygon site with `node_mean` on
+  both domains.
+
+### Examples and docs
+
+- `scripts/example_boundary.geojson` (a small outline near the example sites) and a `polygon` site in `scripts/example_project.toml`;
+  a cell in the netCDF example (`.py` and `.ipynb`, kept in step) that reads the boundary, prints the cell overlaps and
+  runs the site.
+- `docs/how-to-use.md`: "Site boundary" (files accepted, the rule, sub-cell, the mean and its weights, why the mean is
+  not for extremes, what the output variables are). `CONTEXT.md`: **Boundary**, **Cell overlap**, **Site mean**. README
+  one-liner. `docs/modules.md` needs nothing. No new ADR and no new dependency.
+
+### Not in scope, noted for later slices
+
+- Slice 5: drawing a polygon on the map, importing a boundary file in the GUI, drawing the nodes used from the summary
+  (`nodes` entries above), and whether a plain box `area` summary should list its nodes too.
+- Backlog: the site group sharing one download (turbines), csv for a boundary, `MultiPolygon` support, shapefile, a
+  node-inside-polygon filter (the owner's alternative inclusion rule), and antimeridian polygons.
+
+### Acceptance
+
+- `Polygon` and the two readers accept the formats above and refuse the faulty files with one clear message each.
+- `cell_overlap` matches hand-computed fractions and its areas sum to the polygon's.
+- A polygon site loads from a project file, validates (each row above), plans, runs and writes the netCDF with the mask,
+  `cell_overlap`, `cell_weight` and, on request, `<var>_site_mean`; the summary lists the nodes used with their weights.
+- A sub-cell polygon uses exactly the node whose cell holds its centroid.
+- The live tests show NCSS returns every used node on both domains.
+- `make check`, `make test`, `make docs-test`, the live tests and an end-to-end run of the example project in a scratch
+  folder pass, with no suppression added; the example pairs are in step.
+
+### Questions for the owner
+
+1. **Several parts:** refuse a `MultiPolygon` or several features and ask for one site per part (a, recommended), or accept
+   them as one boundary (b)?
+2. **"Smaller than one cell":** the bounding box under one spacing in both directions (a, recommended), polygon area under one
+   cell area (b), or no special case (c)?
+3. **Boundary output:** netCDF only (a, recommended), or also one csv per used node (b)?
+4. **Size guard:** error above 2,500 nodes (a, recommended), a warning (c), or none (b)?
+5. **Turbine points:** each point its own site for now, with the site group in the backlog (a, recommended)?
