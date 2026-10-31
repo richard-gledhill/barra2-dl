@@ -12,8 +12,6 @@ Only the owner changes either file.
 - Before adding a module, apply the deletion test: if removing it would just move one line into its callers,
   don't add it.
 - Add a seam (a `Protocol` or swappable adapter) only where something actually varies. One implementation is not a seam.
-- Draft helpers (`_generate_point_grid`, `_find_nearest_point`, `_format_lat_lon`) are unwired. Don't assume they are
-  used by `download.py`.
 
 **Code**
 - Public API of each module is declared in `__all__`. Internal helpers are prefixed `_` and left out of it.
