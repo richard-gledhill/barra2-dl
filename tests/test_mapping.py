@@ -754,6 +754,15 @@ def test_polygon_from_kml_reads_with_or_without_a_namespace(ns: str) -> None:
     assert polygon_from_kml(KML.format(ns=ns, ring=KML_RING, inner='')).exterior == EXPECTED
 
 
+def test_polygon_from_kml_ignores_the_coordinates_of_other_shapes() -> None:
+    """A Point placemark beside the polygon (a label for the farm) has coordinates that are not a ring."""
+    text = KML.format(ns='', ring=KML_RING, inner='').replace(
+        '</Document>', '<Placemark><Point><coordinates>133.4,-23.5,0</coordinates></Point></Placemark></Document>'
+    )
+
+    assert polygon_from_kml(text).exterior == EXPECTED
+
+
 def test_polygon_from_kml_reads_a_prefixed_namespace_and_holes() -> None:
     """A prefix such as kml: is ignored, and innerBoundaryIs rings are holes."""
     inner = (

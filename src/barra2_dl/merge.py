@@ -845,14 +845,14 @@ def _nodes_dataset(
     return _add_nodes(ds, node_datasets, coords).drop_vars(mains)
 
 
-def _centroid_node(lats: np.ndarray, lons: np.ndarray, centroid: LatLonPoint) -> np.ndarray:
-    """Return the mask of the one grid node whose cell holds the centroid: nearest in latitude and longitude steps."""
+def _centroid_node(lats: np.ndarray, lons: np.ndarray, centroid: LatLonPoint, spacing: float) -> np.ndarray:
+    """Return a mask of the one node whose cell holds the centroid, or none if the centroid is off the grid."""
     lat_grid, lon_grid = (grid.ravel() for grid in np.meshgrid(lats, lons, indexing='ij'))
     steps = np.maximum(np.abs(lat_grid - float(centroid.lat)), np.abs(lon_grid - float(centroid.lon)))
     # a centroid on a cell edge is as near two nodes: take the lower latitude, then the lower longitude
     first = int(np.lexsort((lon_grid, lat_grid, np.round(steps, 9)))[0])
     mask = np.zeros(len(lat_grid), dtype=bool)
-    mask[first] = True
+    mask[first] = steps[first] <= spacing / 2 + 1e-6
     return mask.reshape(len(lats), len(lons))
 
 
@@ -863,7 +863,7 @@ def _apply_polygon(ds: xr.Dataset, polygon: Polygon, domain: str, node_mean: boo
     overlap = polygon.cell_overlap(lats, lons, spacing)
     box, centroid = polygon.bbox(), polygon.centroid()
     sub_cell = bool((box.north - box.south) < spacing and (box.east - box.west) < spacing)
-    used = _centroid_node(lats, lons, centroid) if sub_cell else overlap > BARRA2_OVERLAP_MIN
+    used = _centroid_node(lats, lons, centroid, spacing) if sub_cell else overlap > BARRA2_OVERLAP_MIN
     if not used.any():
         raise ValueError(f'The boundary overlaps no BARRA2 node of {domain}; check its coordinates.')
     weights = used * overlap * np.cos(np.radians(lats))[:, None] if not sub_cell else used.astype(float)
@@ -910,12 +910,11 @@ def _add_site_mean(ds: xr.Dataset, weights: np.ndarray) -> xr.Dataset:
         ds['wind_from_direction_site_mean'] = xr.where((east == 0) & (north == 0), 0.0, direction).assign_attrs(
             ds['wind_from_direction'].attrs
         )
-    for name in series:
+    for name in [name for name in series if f'{name}_site_mean' in ds]:
         mean_name = f'{name}_site_mean'
-        if mean_name in ds:
-            label = f'site: mean ({labels[name]})' if name in labels else 'site: mean'
-            existing = ds[mean_name].attrs.get('cell_methods')
-            ds[mean_name].attrs['cell_methods'] = f'{existing} {label}' if existing else label
+        label = f'site: mean ({labels[name]})' if name in labels else 'site: mean'
+        existing = ds[mean_name].attrs.get('cell_methods')
+        ds[mean_name].attrs['cell_methods'] = f'{existing} {label}' if existing else label
     return ds
 
 

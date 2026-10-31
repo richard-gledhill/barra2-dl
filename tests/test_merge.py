@@ -3,6 +3,7 @@
 import shutil
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -1052,7 +1053,7 @@ def boundary(tmp_path: Path) -> Callable[..., xr.Dataset]:
     return merge
 
 
-def _node(ds: xr.DataArray, lat: float, lon: float) -> xr.DataArray:
+def _node(ds: xr.Dataset | xr.DataArray, lat: float, lon: float) -> Any:
     """The series at one node of an area Dataset."""
     return ds.sel(lat=lat, lon=lon, method='nearest')
 
@@ -1124,7 +1125,7 @@ def test_merge_netcdf_to_dataset_polygon_site_mean_is_the_hybrid_weighted_mean(
     east, north = ds['ua_site_mean'], ds['va_site_mean']
     expected = np.mod(180 + np.rad2deg(np.arctan2(east, north)), 360)
     np.testing.assert_allclose(ds['wind_from_direction_site_mean'].to_numpy(), expected.to_numpy())
-    assert (ds['wind_speed_site_mean'].to_numpy() >= np.hypot(east, north).to_numpy() - 1e-12).all()
+    assert (ds['wind_speed_site_mean'].to_numpy() >= np.asarray(np.hypot(east, north)) - 1e-12).all()
     assert ds['ua_site_mean'].dims == ('time', 'height')
     assert ds['pr_site_mean'].dims == ('time_mean',)
 
@@ -1196,6 +1197,14 @@ def test_merge_netcdf_to_dataset_polygon_outside_the_grid_raises(boundary: Calla
 
     with pytest.raises(ValueError, match='overlaps no BARRA2 node of AUS-11'):
         boundary(far)
+
+
+def test_merge_netcdf_to_dataset_sub_cell_polygon_off_the_grid_raises(boundary: Callable[..., xr.Dataset]) -> None:
+    """A tiny boundary whose centroid is in no returned node's cell is an error, not the nearest node."""
+    away = Polygon(((-23.30, 133.35), (-23.30, 133.40), (-23.29, 133.40), (-23.29, 133.35)))
+
+    with pytest.raises(ValueError, match='overlaps no BARRA2 node'):
+        boundary(away)
 
 
 def test_merge_netcdf_to_dataset_polygon_needs_an_area(nodes_folder: Path) -> None:

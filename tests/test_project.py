@@ -15,7 +15,8 @@ import xarray as xr
 
 import barra2_dl.project
 from barra2_dl.download import FileResult
-from barra2_dl.mapping import LatLonBBox, LatLonPoint, nearest_nodes
+from barra2_dl.globals import BARRA2_GRID_SPACING
+from barra2_dl.mapping import LatLonBBox, LatLonPoint, Polygon, nearest_nodes, read_polygon
 from barra2_dl.merge import read_csv
 from barra2_dl.project import (
     Problem,
@@ -117,6 +118,9 @@ VALID_PROJECT = {
 }
 # the grid fixtures hold the nodes at lat -23.65, -23.54, -23.43 and lon 133.25, 133.36, 133.47
 NODES = [LatLonPoint(-23.54, 133.36), LatLonPoint(-23.43, 133.47)]
+
+TWO_CELLS = read_polygon(DATA / 'boundary_two_cells.geojson')  # equal parts of the cells of two grid nodes
+SUB_CELL = read_polygon(DATA / 'boundary_sub_cell.geojson')  # lies in one cell and straddles a second
 # endregion
 
 
@@ -411,6 +415,69 @@ def test_project_from_dict_reads_nodes_from_a_project_file(tmp_path: Path) -> No
 # endregion
 
 
+# region polygon
+def test_site_from_dict_reads_a_boundary_file_relative_to_the_base_folder(tmp_path: Path) -> None:
+    """A polygon given as a path is read, relative to base_dir, and kept on the site."""
+    (tmp_path / 'farm.geojson').write_text((DATA / 'boundary_two_cells.geojson').read_text(), encoding='utf-8')
+
+    site = site_from_dict(
+        {'name': 'farm', 'polygon': 'farm.geojson', 'node_mean': True, 'format': 'netcdf'},
+        _settings(tmp_path, format='netcdf'),
+        base_dir=tmp_path,
+    )
+
+    assert site.polygon is not None
+    assert site.polygon.exterior == TWO_CELLS.exterior
+    assert site.polygon.source == 'farm.geojson'
+    assert site.node_mean is True
+
+
+def test_site_from_dict_takes_a_polygon_object_from_a_form(tmp_path: Path) -> None:
+    """A drawn boundary is a Polygon already."""
+    site = site_from_dict({'name': 'farm', 'polygon': TWO_CELLS}, _settings(tmp_path, format='netcdf'))
+
+    assert site.polygon is TWO_CELLS
+
+
+@pytest.mark.parametrize(
+    ('polygon', 'text'),
+    [
+        ('missing.geojson', 'Cannot read missing.geojson'),
+        ('bad.geojson', 'Cannot read bad.geojson: bad.geojson is not valid JSON'),
+        (3, 'path of a GeoJSON or KML file'),
+    ],
+    ids=['missing', 'bad-json', 'not-text'],
+)
+def test_site_from_dict_reports_a_boundary_that_cannot_be_read(tmp_path: Path, polygon: Any, text: str) -> None:
+    """A missing file, a file that is not a boundary and a value that is not a path each get a message under polygon."""
+    (tmp_path / 'bad.geojson').write_text('{nope', encoding='utf-8')
+
+    with pytest.raises(ProjectError) as error:
+        site_from_dict({'name': 'farm', 'polygon': polygon}, _settings(tmp_path, format='netcdf'), base_dir=tmp_path)
+
+    assert ('farm', 'polygon') in _problems(error.value)
+    assert text in str(error.value)
+
+
+def test_load_project_reads_the_polygon_key_relative_to_the_project_file(tmp_path: Path) -> None:
+    """In a project file the boundary path is relative to the file, like cache and out."""
+    (tmp_path / 'farm.kml').write_text((DATA / 'boundary_two_cells.kml').read_text(), encoding='utf-8')
+    file = tmp_path / 'project.toml'
+    file.write_text(
+        '[settings]\nstart = "2023-01-01"\nend = "2023-01-31"\nformat = "netcdf"\n'
+        '[[site]]\nname = "farm"\npolygon = "farm.kml"\nnode_mean = true\n',
+        encoding='utf-8',
+    )
+
+    (site,) = load_project(file).sites
+
+    assert site.polygon is not None
+    assert site.polygon.exterior == TWO_CELLS.exterior
+
+
+# endregion
+
+
 # endregion
 
 
@@ -507,6 +574,79 @@ def test_validate_a_box_site_cannot_have_nodes(tmp_path: Path) -> None:
 # endregion
 
 
+# region polygon
+def _polygon_site(**changes: Any) -> Site:
+    """A boundary site."""
+    return replace(Site('farm', polygon=TWO_CELLS), **changes)
+
+
+def test_validate_accepts_a_polygon_site_with_netcdf_output(tmp_path: Path) -> None:
+    """A boundary with netCDF output, with or without the mean, has no problems."""
+    assert validate(_settings(tmp_path, format='netcdf'), _polygon_site()) == []
+    assert validate(_settings(tmp_path, format='netcdf'), _polygon_site(node_mean=True)) == []
+
+
+@pytest.mark.parametrize(
+    ('site', 'settings', 'key', 'text'),
+    [
+        (
+            _polygon_site(point=POINT),
+            {'format': 'netcdf'},
+            'lat/lon',
+            'Give one place: lat and lon, a box, or a polygon.',
+        ),
+        (_polygon_site(bbox=BOX), {'format': 'netcdf'}, 'lat/lon', 'Give one place'),
+        (Site('farm'), {}, 'lat/lon', 'Give one place'),
+        (
+            _polygon_site(nodes=list(NODES)),
+            {'format': 'netcdf'},
+            'polygon',
+            'Nodes belong to a point site; remove nodes, or remove polygon.',
+        ),
+        (
+            _polygon_site(overrides={'node_selection': 'nearest'}),
+            {'format': 'netcdf'},
+            'node_selection',
+            'A polygon site is an area download',
+        ),
+        (_polygon_site(), {'format': 'csv'}, 'format', 'A boundary is a grid and cannot be written as csv'),
+        (_polygon_site(overrides={'download': 'csv'}), {'format': 'csv'}, 'download', 'csv download'),
+        (Site('mast', POINT, node_mean=True), {}, 'node_mean', 'applies to a site with nodes or a polygon'),
+    ],
+    ids=str,
+)
+def test_validate_reports_each_polygon_fault_with_what_to_change(
+    tmp_path: Path, site: Site, settings: dict[str, Any], key: str, text: str
+) -> None:
+    """One message per fault, keyed by the field, saying what to change."""
+    problems = validate(_settings(tmp_path, **settings), site)
+
+    assert any(problem.key == key and text in problem.message for problem in problems), problems
+    assert not any('An area is a grid' in problem.message for problem in problems if site.polygon is not None)
+
+
+def test_validate_a_polygon_site_with_an_unknown_domain_reports_the_domain_only(tmp_path: Path) -> None:
+    """The size guard needs the domain's spacing, so with an unknown domain only the domain is reported."""
+    problems = validate(_settings(tmp_path, format='netcdf'), _polygon_site(overrides={'domain': 'XX-99'}))
+
+    assert [problem.key for problem in problems] == ['domain']
+
+
+def test_validate_refuses_a_boundary_that_covers_too_many_nodes(tmp_path: Path) -> None:
+    """A continent-sized outline is an error with the node count, not tens of thousands of requests."""
+    huge = Polygon(((-40, 110), (-40, 150), (-10, 150), (-10, 110)))
+
+    problems = validate(_settings(tmp_path, format='netcdf'), Site('farm', polygon=huge))
+
+    assert [problem.key for problem in problems] == ['polygon']
+    assert 'covers about 99,372 grid nodes; the limit is 2,500' in problems[0].message
+    # the same outline is far more nodes on AUST-04, and a farm-sized one is fine on both
+    assert validate(_settings(tmp_path, format='netcdf', domain='AUST-04'), _polygon_site()) == []
+
+
+# endregion
+
+
 # endregion
 
 
@@ -563,6 +703,19 @@ def test_plan_site_nodes_lists_the_box_files_with_the_box_in_the_names(server: _
         'mast_AUS-11_1hr_nodes_n-23.4025_s-23.5675_e133.4975_w133.3325_ua50m_20230101_20230131.nc'
     )
     assert all('_nodes_n-23.4025' in file.filename for file in plan.files)
+    assert not any(file.cached for file in plan.files)
+    assert server.requested == []
+
+
+# endregion
+
+
+# region polygon
+def test_plan_site_polygon_lists_the_area_files_of_the_widened_bounding_box(server: _Server, tmp_path: Path) -> None:
+    """The files are those of an area download for the polygon's bounding box widened by 1% of the spacing."""
+    plan = plan_site(_polygon_site(), _settings(tmp_path, format='netcdf'))
+
+    assert '_area_n-23.5089_s-23.5711_e133.501_w133.329_' in plan.files[0].filename
     assert not any(file.cached for file in plan.files)
     assert server.requested == []
 
@@ -861,6 +1014,129 @@ def test_run_site_nodes_rejects_invalid_nodes_before_any_request(server: _Server
 
     assert _problems(error.value) == {('mast', 'nodes')}
     assert server.requested == []
+
+
+# region polygon
+def test_run_site_polygon_writes_the_masked_grid_and_the_site_mean(server: _Server, tmp_path: Path) -> None:
+    """A boundary site is an area download; the netCDF has the mask, the overlap, the weights and the mean."""
+    result = run_site(_polygon_site(node_mean=True), _settings(tmp_path, format='netcdf'))
+
+    assert result.status == 'ok', result.error
+    assert [path.name for path in result.outputs] == ['farm_AUS-11_1hr_area_20230101_20230131.nc']
+    assert all('north=' in url for url in server.requested)
+    with xr.open_dataset(result.outputs[0]) as ds:
+        assert int((ds['cell_weight'] > 0).sum()) == 2
+        assert float(ds['cell_weight'].sum()) == pytest.approx(1.0)
+        assert 'ua_site_mean' in ds
+        assert ds.attrs['boundary_source'] == 'boundary_two_cells.geojson'
+
+
+def test_run_site_polygon_summary_lists_the_nodes_used_with_their_weights(server: _Server, tmp_path: Path) -> None:
+    """The summary carries what a map needs: the boundary, and each node used with its overlap and weight."""
+    result = run_site(_polygon_site(node_mean=True), _settings(tmp_path, format='netcdf'))
+
+    assert result.inputs['selection'] == 'area'
+    assert result.inputs['node_mean'] is True
+    polygon = result.inputs['polygon']
+    assert (polygon['source'], polygon['vertices'], polygon['holes']) == ('boundary_two_cells.geojson', 4, 0)
+    assert polygon['bbox'] == {'north': -23.51, 'south': -23.57, 'east': 133.5, 'west': 133.33}
+    assert len(polygon['sha256']) == 64
+    assert result.inputs['sub_cell'] is False
+    assert result.inputs['covered'] == pytest.approx(1.0)
+    assert [(node['lat'], node['lon']) for node in result.nodes] == pytest.approx([(-23.54, 133.36), (-23.54, 133.47)])
+    assert [node['weight'] for node in result.nodes] == pytest.approx([0.5, 0.5])
+    assert all(0 < node['overlap'] < 1 and node['orog'] and node['distance_km'] > 0 for node in result.nodes)
+    assert json.loads(result.summary_path.read_text())['nodes'] == json.loads(json.dumps(result.nodes))
+
+
+def test_run_site_polygon_hash_changes_with_the_outline(server: _Server, tmp_path: Path) -> None:
+    """A boundary file edited under the same name shows in the summary through its hash."""
+    first = run_site(_polygon_site(), _settings(tmp_path, format='netcdf'))
+    second = run_site(replace(_polygon_site(), polygon=SUB_CELL), _settings(tmp_path / 'again', format='netcdf'))
+
+    assert first.inputs['polygon']['sha256'] != second.inputs['polygon']['sha256']
+
+
+def test_run_site_polygon_smaller_than_a_cell_uses_one_node(server: _Server, tmp_path: Path) -> None:
+    """A sub-cell boundary has one node with weight 1, and the summary says it is sub-cell."""
+    result = run_site(Site('farm', polygon=SUB_CELL), _settings(tmp_path, format='netcdf'))
+
+    assert result.status == 'ok', result.error
+    assert result.inputs['sub_cell'] is True
+    assert [(node['lat'], node['lon'], node['weight']) for node in result.nodes] == pytest.approx(
+        [(-23.54, 133.36, 1.0)]
+    )
+    assert result.inputs['covered'] == pytest.approx(0.75)
+
+
+def test_run_site_polygon_outside_the_downloaded_grid_fails_the_site(server: _Server, tmp_path: Path) -> None:
+    """A boundary that overlaps none of the returned nodes fails with a message, writing only the summary."""
+    away = Polygon(((-23.30, 133.35), (-23.30, 133.40), (-23.29, 133.40), (-23.29, 133.35)))
+
+    result = run_site(Site('farm', polygon=away), _settings(tmp_path, format='netcdf'))
+
+    assert result.status == 'failed'
+    assert 'overlaps no BARRA2 node of AUS-11' in str(result.error)
+    assert result.outputs == []
+
+
+def test_run_site_polygon_with_csv_is_rejected_before_any_request(server: _Server, tmp_path: Path) -> None:
+    """A boundary can't be written as csv: a ProjectError, before any request."""
+    with pytest.raises(ProjectError) as error:
+        run_site(_polygon_site(), _settings(tmp_path))
+
+    assert _problems(error.value) == {('farm', 'format')}
+    assert server.requested == []
+
+
+@live_network
+@pytest.mark.parametrize('domain', ['AUS-11', 'AUST-04'])
+def test_run_site_polygon_live_ncss_returns_every_node_the_boundary_overlaps(domain: str, tmp_path: Path) -> None:
+    """One month on the real server: no node beyond the returned grid overlaps the boundary; the mean is written."""
+    spacing = BARRA2_GRID_SPACING[domain]
+    polygon = Polygon(
+        (
+            (-23.5527 - 1.4 * spacing, 133.3961 - 1.3 * spacing),
+            (-23.5527 - 1.2 * spacing, 133.3961 + 1.6 * spacing),
+            (-23.5527 + 1.5 * spacing, 133.3961 + 1.1 * spacing),
+            (-23.5527 + 1.3 * spacing, 133.3961 - 1.5 * spacing),
+        ),
+        source='live',
+    )
+    settings = _settings(tmp_path, domain=domain, preset='wind', format='netcdf')
+
+    result = run_site(Site('live', polygon=polygon, node_mean=True), settings)
+
+    assert result.status == 'ok', result.error
+    with xr.open_dataset(result.outputs[0]) as ds:
+        lats, lons = ds['lat'].to_numpy(), ds['lon'].to_numpy()
+        around_lats = [lats[0] - spacing, *lats, lats[-1] + spacing]
+        around_lons = [lons[0] - spacing, *lons, lons[-1] + spacing]
+        ring = polygon.cell_overlap(around_lats, around_lons, spacing)
+        assert ring[0].max() < 1e-9 and ring[-1].max() < 1e-9
+        assert ring[:, 0].max() < 1e-9 and ring[:, -1].max() < 1e-9
+        assert float(ds['cell_weight'].sum()) == pytest.approx(1.0)
+        assert 'wind_speed_site_mean' in ds
+
+
+@live_network
+@pytest.mark.parametrize('domain', ['AUS-11', 'AUST-04'])
+def test_run_site_polygon_live_edges_on_cell_edges_use_exactly_one_node(domain: str, tmp_path: Path) -> None:
+    """A boundary whose edges lie on the edges of one cell (built from looked-up nodes) uses just that node."""
+    found = nearest_nodes(LatLonPoint(-23.5527, 133.3961), domain, 9, cache=tmp_path)
+    lats, lons = sorted({node.lat for node in found}), sorted({node.lon for node in found})
+    south, north = (lats[0] + lats[1]) / 2, (lats[1] + lats[2]) / 2
+    west, east = (lons[0] + lons[1]) / 2, (lons[1] + lons[2]) / 2
+    polygon = Polygon(((south, west), (south, east), (north, east), (north, west)), source='live')
+    settings = _settings(tmp_path / 'run', domain=domain, preset='wind', format='netcdf')
+
+    result = run_site(Site('live', polygon=polygon), settings)
+
+    assert result.status == 'ok', result.error
+    assert [(node['lat'], node['lon']) for node in result.nodes] == pytest.approx([(lats[1], lons[1])])
+
+
+# endregion
 
 
 # endregion
