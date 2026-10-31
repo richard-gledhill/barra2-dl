@@ -29,6 +29,13 @@ NODE_BOXES = {
     'superset': ('AUS-11', -23.30, -23.75, 133.60, 133.15),
     'aust04_across_a_boundary': ('AUST-04', -23.505, -23.515, 133.405, 133.395),
 }
+# Fixed-field grids for the nearest_nodes tests: (fixture name, domain, variable, north, south, east, west). The AUS-11
+# one is the superset box above for sftlf (orog is ncss_box_superset.nc); AUST-04 spacing is 0.04.
+NODE_LOOKUPS = {
+    'ncss_box_superset_sftlf': ('AUS-11', 'sftlf', -23.30, -23.75, 133.60, 133.15),
+    'ncss_box_aust04_orog': ('AUST-04', 'orog', -23.45, -23.65, 133.50, 133.30),
+    'ncss_box_aust04_sftlf': ('AUST-04', 'sftlf', -23.45, -23.65, 133.50, 133.30),
+}
 
 
 def save(pairs: list[tuple[str, str]]) -> None:
@@ -64,6 +71,26 @@ def save_node_boxes() -> None:
         sys.stdout.write('\n')
 
 
+def save_node_lookups() -> None:
+    """Download the fixed-field grids in NODE_LOOKUPS as <name>.nc."""
+    for name, (domain, var, north, south, east, west) in NODE_LOOKUPS.items():
+        url = BARRA2_URL_FX_BBOX.format(
+            domain=domain,
+            model=BARRA2_DOMAINS[domain],
+            var=var,
+            north=north,
+            south=south,
+            east=east,
+            west=west,
+            fileout_type='netcdf4',
+        )
+        response = requests.get(url, timeout=60)
+        response.raise_for_status()
+        (OUT / f'{name}.nc').write_bytes(response.content)
+        sys.stdout.write(f'{name}.nc: {len(response.content)} bytes')
+        sys.stdout.write('\n')
+
+
 def main() -> None:
     """Download the point fixtures as csv and netCDF4, and the grid fixtures as netCDF4, into tests/data."""
     OUT.mkdir(exist_ok=True)
@@ -79,6 +106,7 @@ def main() -> None:
         )
     )
     save_node_boxes()
+    save_node_lookups()
 
 
 if __name__ == '__main__':
