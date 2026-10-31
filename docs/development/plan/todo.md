@@ -21,7 +21,15 @@ Resumed 2026-10-31 after RFC-007 shipped. The owner answered RFC section 9 on 20
 - [x] Owner review of the note (decisions recorded in the SPEC); PR
 
 ## Slice 2: `feat/nearest-nodes`
-- [ ] SPEC addendum; `mapping.nearest_nodes`; tests; PR
+- [x] SPEC addendum written (PR `docs: slice 2 SPEC addendum (nearest_nodes)`); approved with four answers 2026-10-31
+- [x] Owner answers recorded under "Decisions" in the addendum; implementation is a separate PR, started when the owner says
+- [ ] Fixtures: `save_node_lookups` in `scripts/build_test_fixtures.py` (live, once)
+- [ ] `mapping`: `GridNode`, `NodeLookupError`, `nearest_nodes` (cache, shrunk box); delete the three draft helpers and their tests (approved); tests
+- [ ] `globals`: `nodes` in `BARRA2_NODE_SELECTIONS` and `NodeSelection`; `download.nodes_data_urlfilenames`; tests
+- [ ] `merge`: `node_selection='nodes'`, `node_mean`, frames and header without a mean; tests
+- [ ] `project`: `Site.nodes`/`node_mean`, validation rows, `run_site` nodes route, summary; tests
+- [ ] Example project and netCDF example cells (`.py` and `.ipynb`); docs (how-to-use, CONTEXT, README, AGENTS); live tests
+- [ ] `make check`, `make test`, `make docs-test`, end-to-end run; PR
 
 ## Slice 2b: `feat/polygon-boundary` (beyond RFC-005; owner request)
 - [ ] SPEC addendum; `mapping.Polygon`, file readers, node mask, `Site.polygon`, project-file key; tests; PR
@@ -30,10 +38,10 @@ Resumed 2026-10-31 after RFC-007 shipped. The owner answered RFC section 9 on 20
 - [ ] SPEC addendum; five spikes (Streamlit, NiceGUI, Panel, Dash, Flet), tkinter on paper; ADR; PR
 
 ## Slice 4: `feat/gui-skeleton`
-- [ ] SPEC addendum; `gui` extra, entry point, form, background run, smoke test; PR
+- [ ] SPEC addendum; `gui` extra, entry point, form, background run, carry selected/used nodes through, smoke test; PR
 
 ## Slice 5: `feat/gui-map-import`
-- [ ] SPEC addendum; map preview, optional node layer (site or area plus margin), mast-list, project and boundary-file import, polygon drawing, summary view; PR
+- [ ] SPEC addendum; map preview, nodes selected or used drawn on the map (owner requirement), optional node layer (site or area plus margin), mast-list, project and boundary-file import, polygon drawing, summary view; PR
 
 ## Slice 6: `docs/gui-user-guide`
 - [ ] User docs, CSIRO link check, atl3b credit; PR

@@ -34,8 +34,9 @@ by pattern); the jupytext sync of the notebook must not reformat unrelated cells
    live NCSS node behaviour, point and node selection, file formats, mast conventions. Owner reviews it before the slice 2b addendum is written.
 2. **Node lookup** (`feat/nearest-nodes`): `mapping.nearest_nodes(point, domain, n=4) -> list[GridNode]` from a
    bounding-box request of real nodes, never from arithmetic on an origin; a test pins that every returned node is a node
-   of the grid. Choosing specific nodes for a point (a `nodes` selection) is reviewed here (SPEC, "Open design
-   questions"). Decide then whether this finishes or deletes the unwired draft helpers (backlog).
+   of the grid. Choosing specific nodes for a point (a `nodes` selection) is detailed in the SPEC's "Slice 2 addendum",
+   which also proposes deleting the unwired draft helpers (backlog). Order after approval: fixtures, `mapping`,
+   `globals`/`download`, `merge`, `project`, examples and docs, live tests; each step test-first.
 2b. **Polygon boundary** (`feat/polygon-boundary`, added at the owner's request on 2026-10-30; goes beyond RFC-005,
    whose area is a rectangle): a `Polygon` type in `mapping` (bounding box, point-in-polygon, node mask); readers for
    standard files (GeoJSON and KML with the standard library; shapefile only if the owner approves a dependency such
@@ -50,7 +51,9 @@ by pattern); the jupytext sync of the notebook must not reformat unrelated cells
    an edit.
 4. **GUI skeleton** (`feat/gui-skeleton`): `gui` extra, `barra2-dl-gui` entry point, form to `Settings`/`Site`, background
    `run_site` with progress and cancel, display-free smoke test.
-5. **Map, import, summary view** (`feat/gui-map-import`): node preview with distances, an optional node layer limited
+5. **Map, import, summary view** (`feat/gui-map-import`): node preview with distances, **the nodes selected or used for a
+   site drawn on the map** (owner requirement, 2026-10-31: before a run for the chosen nodes, and after it from the
+   summary; not only a table), an optional node layer limited
    to the site or area plus a margin (nodes from the server, never a stored file), mast-list CSV and project-file
    import, boundary file import, polygon drawing on the map, run-summary view.
 6. **User docs and credit** (`docs/gui-user-guide`): GUI guide, project-file reference, why AUS-11 is the default (confirm

@@ -6,7 +6,8 @@ Style and gates: [conventions.md](../conventions.md), [constraints.md](../constr
 ## Slice status
 
 - Slice 1 (the engine) shipped in #147.
-- Slice 1b (research) is done and reviewed: see "Slice 1b addendum" at the end for the owner's decisions.
+- Slice 1b (research) is done and reviewed: see "Slice 1b addendum" for the owner's decisions.
+- Slice 2 (node lookup, chosen nodes) has its addendum, "Slice 2 addendum" at the end, approved by the owner on 2026-10-31.
 
 ## Scope
 
@@ -292,3 +293,285 @@ table is decided yet.
 | Polygon smaller than one grid cell | The node whose cell holds the centroid (`average4` at the centroid stays an option) |
 | Node inclusion rule | The cell overlaps the polygon, as NCSS returns it |
 | Boundary file types | GeoJSON and KML with the standard library; no shapefile and no `pyshp` in v1 |
+
+## Slice 2 addendum: node lookup and chosen nodes (`feat/nearest-nodes`)
+
+Written 2026-10-31, when slice 2 started. **Status: approved with the owner's four answers on 2026-10-31 (see "Decisions"). Implementation
+is a separate PR, started when the owner says.** It settles the two rows of the design table marked "Slice 2" (choosing specific nodes for a point, and the
+output when several are chosen) and does not reopen RFC-005 section 8, the section 9 answers or the slice 1b decisions.
+
+**Scope.** `mapping.nearest_nodes(point, domain, n=4) -> list[GridNode]`; a `nodes` node selection that downloads and
+writes chosen nodes; the draft helpers in `mapping.py` finished or deleted. Out of scope: polygons and the area-weighted
+mean (slice 2b), the GUI map and the node layer (slice 5; it may reuse the lookup's internals, see "Not in scope"), and
+any change to `nearest`, `average4` or `area` behaviour.
+
+### Proposed decisions (for the owner)
+
+| # | Question | Proposal |
+|---|---|---|
+| A | How a user names chosen nodes | Exact latitude and longitude, copied from `nearest_nodes`, never an index and never computed. The project file key is `nodes = [[lat, lon], ...]` on a point site. |
+| B | Is `nodes` a setting or implied by the geometry? | Implied, like the box that makes an area: a point site with `nodes` is a `nodes` download. `nodes` is not a `node_selection` setting value; validation says what to give instead. |
+| C | Output layout | The `average4` layout: a `node` dimension, `<var>_node` variables, one csv per node through `merge.write_csv`. The mean is opt-in (`node_mean = true`), by the hybrid method with inverse-distance weights among the chosen nodes. |
+| D | Download | One bounding-box request per variable-month covering the chosen nodes, as `average4` and `area` do; the chosen nodes are picked client-side. |
+| E | Draft helpers | Delete all three, with their tests (needs the owner's approval, see below). |
+| F | `nearest_nodes` and the cache | Optional `cache=` folder; fixed-field files go in `<cache>/nodes/`; no `cache` means nothing is written. |
+
+### `GridNode` and `nearest_nodes` (`mapping.py`)
+
+```python
+@dataclass(frozen=True)
+class GridNode:
+    lat: float          # exact grid latitude as served, degrees north
+    lon: float          # exact grid longitude as served, degrees east
+    distance_km: float  # great-circle distance from the point (mapping.distance_km)
+    orog: float         # surface altitude, m
+    sftlf: float        # land fraction of the cell, percent (0 to 100)
+
+def nearest_nodes(point, domain='AUS-11', n=4, *, cache=None) -> list[GridNode]
+class NodeLookupError(RuntimeError)   # the server could not give the nodes
+```
+
+`point` is a `LatLonPoint`; `cache` is `str | Path | None`. `domain` has a default only because the project default is
+AUS-11; the RFC signature `(point, domain, n=4)` is kept. `__all__` gains `GridNode`, `NodeLookupError` and
+`nearest_nodes`.
+
+- Nodes come from the server only (RFC-005 5.1; decision of 2026-10-31): two small NCSS bounding-box requests, for the
+  fixed fields `orog` and `sftlf`, using `BARRA2_URL_FX_BBOX`. `lat` and `lon` are the response's axis values, never
+  `origin + k * spacing`. A node is identified by those values; `GridNode` carries no index.
+- Result: the `n` nodes of the block returned, nearest first by great-circle distance (ties broken by latitude, then
+  longitude, so the order is stable). `n` is 1 to 9, since the box returns at most a 3 x 3 block; otherwise
+  `ValueError`. Fewer than `n` come back only at the edge of the domain. For `n = 4` these are normally, but not always,
+  the four that surround the point (`average4` always averages the four that surround it): where a longitude step is
+  shorter in km than a latitude step, a node on the far side can rank fourth. The docstring says so.
+- An unknown domain is a `ValueError` listing `BARRA2_DOMAINS`. A point outside the domain (HTTP 400, or an empty
+  response) or a failed download is a `NodeLookupError` carrying the file result's error.
+
+**Request box (options).** The brief is to reuse the `average4` box (point ± one `BARRA2_GRID_SPACING`). NCSS returns
+every node whose cell overlaps the box, so that box returns the 3 x 3 block around the cell holding the point
+(`tests/test_ncss_nodes.py`), with one exception: a point exactly on a cell boundary puts the box edges exactly on cell
+edges, where north and east count and south and west do not, so the block is 4 wide on one side only. Round coordinates
+such as 133.415 (a boundary on AUS-11) make this plausible.
+
+| Option | Effect |
+|---|---|
+| a. Exact `average4` box | Same request as `average4`. A boundary point gives an asymmetric 3 or 4 wide block; harmless for `n <= 4`, but for `n >= 7` the result depends on the edge rule. |
+| b. `average4` box shrunk by 1% of the spacing on every side (**recommended**) | The block is always the 3 x 3 or smaller around the cell holding the point. The four bracket nodes are always inside (each is at most one spacing away, and a cell overlaps while its node is within 1.5 spacings). A boundary point gives the 2 nodes it sits between on that axis. The degenerate point moves to a non-round value (133.4161 on AUS-11). |
+
+`average4` is left as it is: its cache files and tests are unchanged. Both options round the box to 6 decimals, as
+`point_data_urlfilenames` does.
+
+**Caching and RFC-007.**
+- Files are `<cache>/nodes/<domain>_fx_<var>_n<N>_s<S>_e<E>_w<W>.nc`, box at 4 decimals. A subfolder, because a site name
+  may be any `[A-Za-z0-9._-]+` and a lookup prefix in the cache folder itself could clash with a site called the same. The
+  `nodes` subfolder is created if `cache` exists; a missing `cache` raises `FileNotFoundError`, as downloads do.
+- The files are fetched with `download.download_serial` (retries, atomic `.part` write, the empty-response failure), so
+  RFC-007's check runs unchanged: before any request `download._cached_file_problem` compares the file's extent
+  (`geospatial_*`) with the box in the url, and a file that does not cover it or cannot be read raises
+  `CacheMismatchError`, which `nearest_nodes` lets propagate (the message names the files). Nothing is deleted for the
+  user. The lookup files are derived data and a stale one could safely be removed, but one rule for every cache file is
+  simpler.
+- A rerun for the same point makes no request. A different point in the same cell has a different box and so its own
+  pair of small files; reuse of a covering file is not built (a ~2 KB file per pin is not worth the logic) and goes to
+  the backlog.
+- `cache=None` uses a temporary folder, deleted after the call, so a library call writes nothing unasked. The engine and
+  the GUI pass `settings.cache`.
+- The lookup files are not shared with a site's own `fx` file (that one carries the site name and the `average4` box).
+
+**Import cycle (options).** `download.py` imports `LatLonBBox` and `bracket_index` from `mapping.py`, so `mapping`
+cannot import `download` at the top.
+
+| Option | Cost |
+|---|---|
+| a. Function-level `from barra2_dl.download import ...` inside `nearest_nodes` (**recommended**) | One local import with a comment; the retries, atomic write and cache check are reused, not copied. The ranking is a separate pure function, tested without any request. |
+| b. Fetch with a small `requests.get` of its own in `mapping.py` | No cycle, but the retry and cache logic would be duplicated. |
+| c. Move the fetch into `download.py` and call it from `mapping` | Same cycle. |
+
+### Chosen nodes: the `nodes` selection
+
+**Naming.** A user picks nodes from `nearest_nodes` (or the GUI preview, which shows the same list) and writes their
+`lat` and `lon`. An index (1 to 4) is rejected: it depends on the lookup's order and on `n`. A project file reads:
+
+```toml
+[[site]]
+name = "mast-b"
+lat = -23.55                 # the site the nodes are measured from (required)
+lon = 133.37
+nodes = [[-23.54, 133.36], [-23.43, 133.36]]   # exact node values, copied from nearest_nodes
+node_mean = true             # optional: also write the inverse-distance mean of these nodes
+```
+
+For one node, a `nearest` site at the node's own coordinates already gives that node's series. `nodes` is for several
+nodes of one site from one download, laid out for comparison.
+
+**`project.py`.**
+- `Site` gains `nodes: list[LatLonPoint] | None = None` and `node_mean: bool = False` (geometry and output choice of one
+  site, not settings; slice 2b's opt-in mean reuses `node_mean`). `site_from_dict` accepts the keys `nodes` (a list of
+  `[lat, lon]` pairs) and `node_mean` (a bool); the unknown-key message lists them.
+- `_selection(site, settings)`: `area` for a box, `nodes` for a site with `nodes`, else `settings.node_selection`.
+  `globals.BARRA2_NODE_SELECTIONS` becomes `('nearest', 'average4', 'area', 'nodes')` and `NodeSelection` gains
+  `'nodes'`; `merge_netcdf_to_dataset` already validates against the constant.
+- `validate` adds the following, each with the site and the key and a message that says what to change:
+
+  | Key | When | Message |
+  |---|---|---|
+  | `nodes` | not a list of `[lat, lon]` number pairs, or a pair out of range | `Give each node as [lat, lon] in degrees, copied from nearest_nodes.` |
+  | `nodes` | empty, or more than 9 | `Give 1 to 9 nodes: the 3 x 3 block around the site is the most nearest_nodes returns.` |
+  | `nodes` | a repeated node | `Node 2 repeats node 1.` |
+  | `nodes` | site has a box | `Nodes belong to a point site; remove nodes, or use lat and lon.` |
+  | `lat/lon` | `nodes` without a point | `A site with nodes also needs lat and lon: the site the distances are measured from.` |
+  | `nodes` | a node more than 1.5 grid spacings from the point, in latitude or longitude, in the effective domain | `Node 2 is too far from the site (more than 1.5 grid spacings). Choose from nearest_nodes.` |
+  | `node_selection` | a site override of `nodes` or `area`, or a settings value of either | The existing message, extended: `Use nearest or average4; a box site is an area and a site with nodes is a nodes download, automatically.` |
+  | `node_selection` | an override other than `nodes` on a site that has `nodes` | `A site with nodes is a nodes download; remove node_selection.` |
+  | `node_mean` | set on a site without `nodes` | `node_mean applies to a site with nodes.` |
+  | `download` | `nodes` with `download = "csv"` | The existing csv-download message (the csv route is nearest-node only). |
+
+  `validate` stays offline. Whether a named node is a grid node cannot be settled by arithmetic (RFC 5.1), so that is
+  checked against the server's response in `run_site` (below). Range, count, repeats and the 1.5-spacing check use only
+  the point, the named values and `BARRA2_GRID_SPACING`.
+- `download.nodes_data_urlfilenames(nodes, barra2_vars, start, end, prefix, *, domain, freq)` builds the pairs (public,
+  beside `area_data_urlfilenames`, netCDF4 only). The box is the nodes' bounding box widened by a quarter of the spacing
+  on each side (midway between a node and its cell edge, so off the cell edges), which returns exactly the block between
+  the chosen nodes. The filename tag is `nodes_n<N>_s<S>_e<E>_w<W>` (4 decimals), so a different choice has its own cache
+  files, and `_cached_file_problem`'s coverage check applies as for an area. `_urlfilenames` calls it for a `nodes`
+  site; `plan_site` needs no change.
+- `run_site` for a `nodes` site downloads as above, calls `merge_netcdf_to_dataset(..., node_selection='nodes',
+  nodes=..., node_mean=...)`, then writes with `write_csv` (one file per node, plus the mean) or one `.nc`. The fixed
+  `orog` grid is read as for `average4`.
+  - **Each named node must be a node of the response.** It is matched to a returned `(lat, lon)` within `1e-4` degrees
+    (spacing is at least 0.04, so no two nodes are confused). No match fails the site: `<lat>, <lon> is not a node of
+    AUS-11. The nodes near it: ... Use nearest_nodes.` (the nearest returned nodes, from the response). The cache keeps
+    the files.
+  - `_location_problem` takes its limit as a parameter: one spacing for `average4` (unchanged), 1.5 for `nodes`, since a
+    node in the 3 x 3 block can be that far from the point.
+- Summary: `inputs` gains `nodes` (the named pairs) and `node_mean` for a nodes site, with `selection = "nodes"`. `nodes`
+  entries are as for `average4` (requested and actual position, `distance_km`, `orog`), in the order the user gave, with
+  `weight` null when there is no mean and a 1-based `node` that matches the file name `node<k>`. `node` is additive, so
+  `schema_version` stays 1.
+
+**`merge.py`.**
+- `merge_netcdf_to_dataset(..., node_selection='nodes', nodes=list[LatLonPoint], node_mean=False)`; `nodes` is required
+  for `nodes` and `ValueError` otherwise. Grid files carry `_nodes_` in their name, so `_data_files` filters them as it
+  does `_average4_` and `_area_`.
+- The Dataset has the `average4` shape: the `node` dimension (in the user's order), `node_lat`, `node_lon`,
+  `node_distance`, `node_orog` and `<var>_node` variables. With `node_mean` it also has the main variables (the hybrid
+  mean, `node_weight`, `cell_methods` labelled as `average4` does) and `lat`/`lon` are the requested site. Without it
+  there are no main variables and no `node_weight`. `attrs['node_selection']` is `nodes`.
+- `dataset_to_frames` skips the main frame when there are no main variables, so the frames are `node1` to `nodeN`, plus
+  `nodes` (the mean) when `node_mean`. File names follow: `<name>_<domain>_<freq>_node<k>_<dates>.csv` and
+  `<name>_<domain>_<freq>_nodes_<dates>.csv`; the netCDF is `<name>_<domain>_<freq>_nodes_<dates>.nc`. `_csv_header` gives
+  the mean frame its `Node k` lines as for `average4` and omits the weight when there is none.
+- The inverse-distance mean among the chosen nodes reuses `_average_series` and `inverse_distance_weights`. With the four
+  surrounding nodes it equals `average4` exactly (a test).
+
+**Options considered for the output.**
+
+| Option | Verdict |
+|---|---|
+| One file per node, no shared Dataset | Rejected: the node files and the netCDF would not share a layout with `average4`, and the metadata header code is written for the node dimension. |
+| `average4` layout with the mean always on | Rejected: the research note (question 6) and the owner's boundary decision make the mean opt-in. |
+| `average4` layout, mean opt-in (**proposed**) | Reuses the layout, writers and header; a mean costs one flag. |
+
+### The draft helpers in `mapping.py`
+
+`_generate_point_grid`, `_find_nearest_point` and `_format_lat_lon` are unwired, and the first two are the arithmetic the
+RFC rules out (a grid built from a start and a resolution, and a nearest point searched in it). `_find_nearest_point` is
+replaced by `nearest_nodes` (RFC-005 5.1 says so). `_format_lat_lon` was meant for file names by node; the `nodes`
+selection names files `node<k>`, with the node in the header and the summary, and naming by node stays in the backlog.
+
+**Proposal: delete all three** (git history keeps them), in this slice, together with:
+- the `tests/test_mapping.py` regions `_generate_point_grid`, `_find_nearest_point` and `_format_lat_lon`, including the
+  strict `xfail` `test_generate_point_grid_tuple`. This deletes tests, so it needs the owner's approval; the code they
+  cover no longer exists.
+- the backlog's "Tuple bounds crash" row and the draft-helpers bullet (the "naming files by BARRA2 node" bullet stays);
+  the module docstring `Todo` and the then unused `pandas` and `cast` imports in `mapping.py`; the commented `Todo
+  BARRA2_AU11_LATLONBBOX` line in `globals.py`; the draft-helpers sentence in `AGENTS.md`.
+- **For the owner to change** (the file is theirs): the "Draft helpers (...) are unwired" bullet under **Design** in
+  `docs/development/conventions.md` would then be wrong. Suggested change: delete the bullet.
+
+Alternative: finish them. Not recommended: nothing needs a locally generated grid, and a finished `_generate_point_grid`
+would invite the origin arithmetic the RFC removed.
+
+### Tests (offline unless marked live)
+
+`requests.get` is faked as in `tests/test_download.py`. The fake serves `tests/data/` fixtures by the `var` in the url,
+and for the box tests it applies NCSS's cell-overlap rule (with the observed north/east-count edge rule) to the 5 x 5
+`superset` fixture, so a boundary point is tested against the real behaviour rather than a hard-coded block.
+
+- **New fixtures**, built live by a new `save_node_lookups` in `scripts/build_test_fixtures.py` (same style as
+  `save_node_boxes`): the `sftlf` grid for the `superset` box, and `orog` and `sftlf` for one AUST-04 box (5 x 5), so a
+  lookup can be served for both domains. Needs the network once; run with the owner's go-ahead.
+- `tests/test_mapping.py` (`GridNode`, `nearest_nodes` and `NodeLookupError` regions): returns the `n` nearest in order
+  with the fixture values; `n=1`, `n=9`, `n=10` and `n=0` (error); tie order; fewer nodes at a domain edge; unknown
+  domain; request shape (two urls, `orog` and `sftlf`, the shrunk box, `accept=netcdf4`, `horizStride=1`); a failed
+  download and a 400 give `NodeLookupError`.
+- **Every returned node is a node of the grid** (RFC 5.1), parametrised over AUS-11 and AUST-04 and several points (inside
+  a cell, near a node, on a cell boundary): each `lat`/`lon` equals a value of the response's axis exactly, lies on the
+  lattice of the response (differences from the other axis values are whole multiples of the domain's spacing), and for
+  AUST-04 is not a node an AUS-11 spacing would give (the fork's bug, RFC 3.2). Live (`BARRA2_LIVE=1`): the same check
+  against the full-domain axes of each domain's `orog` file, read over OPeNDAP as on 2026-10-31.
+- Boundary point: a point exactly on a cell edge returns the two nodes on that axis, not four (the shrunk box), with the
+  fake applying the observed edge rule.
+- Cache: the first call writes `<cache>/nodes/...`; the second makes no request; `cache=None` writes nothing; a file
+  whose extent does not cover the box, and an unreadable file, raise `CacheMismatchError` before any request; a missing
+  cache folder raises `FileNotFoundError`.
+- `tests/test_download.py`: `nodes_data_urlfilenames` urls, box (a quarter spacing off the nodes), tag and file names; one
+  node and several; a different node set gives a different box and names; `_cached_file_problem` accepts the files.
+- `tests/test_merge.py`: `merge_netcdf_to_dataset(node_selection='nodes')` with and without the mean; node order is the
+  user's; a named non-node raises; with the four surrounding nodes the mean equals `average4`; `dataset_to_frames` and
+  `write_csv` names and header lines (no weight without a mean).
+- `tests/test_project.py`: each validation row above; `site_from_dict` and `load_project` with `nodes`; the unknown-key
+  list; `plan_site` lists the nodes files; `run_site` for a nodes site, csv and netCDF, with and without the mean
+  (outputs, summary `inputs` and `nodes`, `weight` null); a non-node fails the site with the message and keeps the cache;
+  the 1.5-spacing location limit (a far node of the block passes, an `average4` node at 1.2 spacings still fails).
+- `tests/test_package.py`: `import barra2_dl.mapping` first still works (no cycle); `NodeSelection` and
+  `BARRA2_NODE_SELECTIONS` agree.
+- Live (`BARRA2_LIVE=1`): the grid-membership check above, and one month of `run_site` for a `nodes` site (two nodes,
+  with the mean) on AUS-11 and on AUST-04.
+
+### Examples and docs
+
+- `scripts/example_project.toml`: a `nodes` site; its node values come from a live `nearest_nodes` call, never from
+  computation. `scripts/example_barra2_dl_netcdf.py` and its notebook (kept in step by jupytext) gain a cell that prints
+  the `nearest_nodes` table for a point and a cell that runs a `nodes` site. The csv example is unchanged.
+- `docs/how-to-use.md`: "Choosing nodes" (the lookup, the `orog` and `sftlf` columns, the project-file keys, the output
+  files, and the research note's advice to correlate each node and the mean) and a pointer from the project-file section.
+- `CONTEXT.md`: **Grid node** (`GridNode`) and **Chosen nodes** (`nodes`); **Node selection** gains `nodes`; the **Node**
+  entry's "never computed" stays. `docs/modules.md` needs nothing (mkdocstrings reads `__all__`). README one-liner.
+  `AGENTS.md` loses the draft-helpers sentence.
+- No new ADR: the rules this slice applies (nodes from the server, no origin arithmetic) are RFC-005 5.1. No new
+  dependency.
+
+### Not in scope, noted for later slices
+
+- A larger lookup for the GUI node layer (slice 5): the internal fixed-field fetch takes a box, so slice 5 can call it for
+  a site's margin with the same cache folder; no public API for it is added here.
+- Reusing a covering cache file for nearby pins; naming files by node.
+- **GUI requirement (owner, 2026-10-31):** the map shows the nodes selected or used for a site (nearest, the four of
+  `average4`, the chosen `nodes`, or an area's nodes), with distance, `orog` and `sftlf` on hover or select, both when
+  choosing and for a finished run (from the summary's `nodes`). A table alone does not meet it. Slice 4 carries the node
+  data through the form and the result; slice 5 draws it.
+
+### Acceptance
+
+- `nearest_nodes` returns real nodes for both domains, pinned by the grid-membership test (offline and live), and the
+  boundary-point test passes with the NCSS edge rule applied.
+- A project file with a `nodes` site loads, validates (each row above), plans, runs and writes `node<k>` csv files (and
+  the mean on request) or one netCDF; the summary lists the nodes in the user's order; a named non-node fails the site
+  with the message above.
+- The mean of the four surrounding nodes through `nodes` equals `average4`.
+- `make check`, `make test`, `make docs-test`, the live tests and an end-to-end run of the example project in a scratch
+  folder pass, with no suppression added; the example pairs are in step.
+- If approved, the three draft helpers, their tests and their notes are gone and the owner has updated `conventions.md`.
+
+### Decisions
+
+Owner's answers of 2026-10-31 to the four questions raised in review; the option tables above are the reasoning.
+
+1. **Box:** the `average4` box shrunk by 1% of the spacing on every side (option b).
+2. **`nodes` is implied** by `nodes = [[lat, lon], ...]` on a point site; it is not a `node_selection` value.
+3. **The three draft helpers and their tests are deleted** in this slice, including the strict `xfail`. The Design bullet
+   in `conventions.md` stays for the owner to delete; this slice does not edit that file.
+4. **Function-level import** of `download` inside `nearest_nodes`, with a comment saying why (the import cycle).
+
+Added by the owner: the GUI must show a visual representation of the nodes selected or used, on the map, for a chosen or
+used site, not only a table. This is a slice 4/5 requirement (see "Not in scope" and `plan.md`).
