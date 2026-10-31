@@ -155,7 +155,7 @@ come from the server's response, never from arithmetic on the grid spacing.
 | `nearest` (default) | The nearest node | Yes | Yes |
 | `average4` | The four nodes around the point, averaged, plus the four node series | Yes | Yes |
 | `nodes` | The nodes you choose by their exact latitude and longitude, one series each, and optionally their mean | Yes | Yes |
-| `area` | Every node in a box you give | No | Yes |
+| `area` | Every node in a box you give, or every node a site boundary overlaps | No | Yes |
 
 ### Four-node average
 
@@ -275,6 +275,46 @@ are in the name), so they can share a cache folder. `merge_netcdf_to_dataset` pi
 selection you ask for, so a loose pattern such as `Demo_AUS-11_1hr_*.nc` is safe. For the nearest node, read the node
 altitude from its exact name (`Demo_AUS-11_fx_orog.nc`), because `read_fixed_fields` reads every file the pattern matches.
 
+## Site boundary
+
+A site can be a polygon outline (a wind-farm or lease boundary) instead of a point or a box. Give a GeoJSON or KML file in
+WGS 84 with one polygon, which may have holes:
+
+```toml
+[[site]]
+name = "farm"
+polygon = "farm.geojson"     # relative to the project file
+node_mean = true             # optional: also write the area-weighted mean
+format = "netcdf"            # a boundary is a grid: netCDF only
+```
+
+```python
+from barra2_dl.mapping import read_polygon
+
+boundary = read_polygon('farm.geojson')              # or polygon_from_geojson(text), polygon_from_kml(text)
+print(boundary.bbox(), boundary.area_km2(), boundary.centroid())
+```
+
+**Which nodes.** A node is used when its grid cell (the node plus or minus half the spacing) overlaps the outline, the same
+cell NCSS uses to decide which nodes a box returns. `boundary.cell_overlap(lats, lons, spacing)` gives the share of each
+cell inside the outline; an outline that only touches a cell's edge does not use it. An outline whose bounding box is
+smaller than one grid spacing in both directions uses the one node whose cell holds its centroid (for the four-node average
+of that point, make a point site with `node_selection = "average4"`).
+
+**Output.** One netCDF file, `<name>_<domain>_<freq>_area_<start>_<end>.nc`, with the grid of the outline's bounding box
+(`lat` and `lon` dimensions). Every variable is missing at the nodes not used, `cell_overlap` and `cell_weight` give the
+overlap of each cell and its weight in the mean, and the `boundary_*` attributes record the source file, size, centroid and
+how much of the outline lies on the grid. With `node_mean`, every series also has a `<name>_site_mean`: the mean of the used
+nodes weighted by overlap area times the cosine of the latitude, by the hybrid method (speed is the mean of the nodes' own
+speeds, direction comes from the mean components, so mean speed is not `hypot(ua, va)`). A mean smooths the series, so use the node
+series, not the mean, for extremes and gusts.
+
+**What a file may hold.** One polygon, with a `Polygon`, a `Feature` or a one-feature `FeatureCollection` in GeoJSON (longitude
+then latitude), or one `Polygon` placemark in KML. Several polygons, KMZ, shapefiles, a CRS other than WGS 84, outlines that cross
+themselves or the antimeridian, and outlines over 5,000 vertices are refused with a message saying what to change. A boundary
+whose bounding box covers more than 2,500 grid nodes is refused too (a 1 GW farm needs about 10 to 150). The files downloaded are
+those of an area download for the bounding box widened by 1% of the grid spacing, so two outlines with the same box share a cache.
+
 ## Re-running and the cache
 
 A file already in the cache folder is not downloaded again, so a re-run resumes. Before any request, every cached
@@ -375,7 +415,7 @@ west = 133.20                # a box is an area download: netCDF only
 format = "netcdf"
 ```
 
-A point site can also give `nodes` and `node_mean` (see Choosing nodes). Any site can override `domain`, `freq`, `preset`, `node_selection`, `format`, `download`, `start` and `end`; `cache`,
+A point site can also give `nodes` and `node_mean` (see Choosing nodes), and a site can give `polygon` and `node_mean` instead of a point (see Site boundary). Any site can override `domain`, `freq`, `preset`, `node_selection`, `format`, `download`, `start` and `end`; `cache`,
 `out` and `workers` belong to the whole project. Unknown keys are errors, so a typo isn't silently ignored.
 
 ```python
