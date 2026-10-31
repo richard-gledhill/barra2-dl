@@ -1,4 +1,6 @@
 ipywidgets
 ipyleaflet
-voila
+jupyterlab
+jupytext
 nbclient
+ipykernel

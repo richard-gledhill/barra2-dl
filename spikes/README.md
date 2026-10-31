@@ -17,6 +17,14 @@ uv pip install --python <scratch>/streamlit/Scripts/python.exe -e . -e spikes/co
 
 NiceGUI is the same with `nicegui` (`python spikes/nicegui/app.py`, port 8602).
 
+The notebook spike (`spikes/notebook/app.py`, ipywidgets + ipyleaflet, no Voila) is a jupytext script. In its environment
+(`-r spikes/notebook/requirements.txt`), make a notebook and open it, then Run, Run All Cells:
+
+```bash
+<scratch>/notebook/Scripts/jupytext.exe --set-kernel - --to ipynb -o spikes/_scratch/spike6.ipynb spikes/notebook/app.py
+<scratch>/notebook/Scripts/jupyter.exe lab spikes/_scratch/spike6.ipynb
+```
+
 - The fake NCSS server (`spikes/common/fake_ncss.py`) serves the `tests/data` fixtures, so no network is needed except
   map tiles. It serves AUS-11 only and only the fixture point (-23.55, 133.40); the form starts there.
 - `SPIKE_DELAY=6` makes each file take 6 s (so Cancel is easy to try); `SPIKE_FAIL=va50m` makes that variable return
