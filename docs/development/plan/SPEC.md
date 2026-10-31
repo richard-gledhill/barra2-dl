@@ -296,8 +296,8 @@ table is decided yet.
 
 ## Slice 2 addendum: node lookup and chosen nodes (`feat/nearest-nodes`)
 
-Written 2026-10-31, when slice 2 started. **Status: approved by the owner on 2026-10-31. No library code or tests until it is
-approved.** It settles the two rows of the design table marked "Slice 2" (choosing specific nodes for a point, and the
+Written 2026-10-31, when slice 2 started. **Status: approved with the owner's four answers on 2026-10-31 (see "Decisions"). Implementation
+is a separate PR, started when the owner says.** It settles the two rows of the design table marked "Slice 2" (choosing specific nodes for a point, and the
 output when several are chosen) and does not reopen RFC-005 section 8, the section 9 answers or the slice 1b decisions.
 
 **Scope.** `mapping.nearest_nodes(point, domain, n=4) -> list[GridNode]`; a `nodes` node selection that downloads and
