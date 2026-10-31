@@ -146,7 +146,7 @@ Here the units are those in the DataFrame, so a frame passed through `convert_un
 
 ## Choosing the nodes
 
-By default each series comes from the BARRA2 grid node nearest the point (`nearest`). Two other selections download a
+By default each series comes from the BARRA2 grid node nearest the point (`nearest`). Three other selections download a
 small grid of real nodes instead (`fileout_type='netcdf4'` is implied, because a grid doesn't fit csv). The nodes always
 come from the server's response, never from arithmetic on the grid spacing.
 
@@ -154,6 +154,7 @@ come from the server's response, never from arithmetic on the grid spacing.
 |---|---|---|---|
 | `nearest` (default) | The nearest node | Yes | Yes |
 | `average4` | The four nodes around the point, averaged, plus the four node series | Yes | Yes |
+| `nodes` | The nodes you choose by their exact latitude and longitude, one series each, and optionally their mean | Yes | Yes |
 | `area` | Every node in a box you give | No | Yes |
 
 ### Four-node average
@@ -208,6 +209,45 @@ paths = barra2_dl.merge.write_csv(ds, 'output', 'Demo')
 # Demo_AUS-11_1hr_average4_20230101_20230331.csv, Demo_AUS-11_1hr_node1_20230101_20230331.csv, ...
 ```
 
+### Choosing nodes
+
+`mapping.nearest_nodes` looks up the nodes around a point so you can choose among them:
+
+```python
+from barra2_dl.mapping import LatLonPoint, nearest_nodes
+
+for node in nearest_nodes(LatLonPoint(-23.55, 133.40), 'AUS-11', n=4, cache=cache_dir):
+    print(node.lat, node.lon, f'{node.distance_km:.1f} km', node.orog, node.sftlf)
+# -23.54 133.36 4.2 km 747.6 100.0
+# -23.54 133.47 7.2 km 742.2 100.0
+# ...
+```
+
+It returns up to 9 `GridNode`s (the 3 x 3 block around the cell holding the point), nearest first, each with the exact
+`lat` and `lon` the server holds, `distance_km` from the point, `orog` (m) and `sftlf` (land fraction of the cell, in
+percent). A coastal node with a low `sftlf` represents mostly sea. The nodes come from two small requests for the fixed
+fields (`orog` and `sftlf`), kept in `<cache>/nodes` so a repeat lookup makes no request; without `cache` nothing is
+written. The nearest four are normally, but not always, the four that surround the point.
+
+To download chosen nodes give a site their exact values, copied from the lookup and never worked out by hand (a rounded
+value still matches if it is within 0.0001 degrees, but a value that is not a node fails the site and lists the nodes near it):
+
+```toml
+[[site]]
+name = "mast-b"
+lat = -23.55                 # the site the distances are measured from
+lon = 133.40
+nodes = [[-23.54, 133.36], [-23.54, 133.47]]
+node_mean = true             # optional: also write the inverse-distance mean of these nodes
+```
+
+A site with `nodes` is a `nodes` download automatically (like a box, which is an area), and takes at most 9 nodes within
+1.5 grid spacings of the site. The output has the layout of the four-node average: one csv per node, in the order you gave
+them (`<name>_<domain>_<freq>_node1_<dates>.csv`, ...), and the mean (`..._nodes_...`) only with `node_mean`; as netCDF,
+one file with a `node` dimension. To compare nodes for a mast, correlate each node and the mean against the mast and pick
+by out-of-sample correlation and error. From Python use `download.nodes_data_urlfilenames` and
+`merge_netcdf_to_dataset(..., node_selection='nodes', nodes=[...], node_mean=False)`.
+
 ### Area
 
 ```python
@@ -230,7 +270,7 @@ The Dataset keeps every node of the box: `lat` and `lon` are dimensions, so the 
 `(time, height, lat, lon)` and orog is a `(lat, lon)` variable. The server returns the nodes whose grid cell overlaps the
 box, so the edge nodes can sit just outside it. An area can't be written as csv.
 
-**Sharing a cache folder.** Point, `average4` and `area` files are named differently (`average4` or `area` and the box
+**Sharing a cache folder.** Point, `average4`, `nodes` and `area` files are named differently (`average4`, `nodes` or `area` and the box
 are in the name), so they can share a cache folder. `merge_netcdf_to_dataset` picks only the files of the node
 selection you ask for, so a loose pattern such as `Demo_AUS-11_1hr_*.nc` is safe. For the nearest node, read the node
 altitude from its exact name (`Demo_AUS-11_fx_orog.nc`), because `read_fixed_fields` reads every file the pattern matches.
@@ -312,7 +352,7 @@ A project file runs several sites with the same settings, and is the same path a
 domain = "AUS-11"
 freq = "1hr"
 preset = "wind+density"
-node_selection = "nearest"   # or "average4"
+node_selection = "nearest"   # or "average4"; a site with a box or nodes sets its own
 format = "csv"               # the output: csv (with a metadata header) or netcdf
 download = "netcdf4"         # or "csv", for a nearest-node point site with csv output
 start = "2023-01-01"
@@ -335,7 +375,7 @@ west = 133.20                # a box is an area download: netCDF only
 format = "netcdf"
 ```
 
-Any site can override `domain`, `freq`, `preset`, `node_selection`, `format`, `download`, `start` and `end`; `cache`,
+A point site can also give `nodes` and `node_mean` (see Choosing nodes). Any site can override `domain`, `freq`, `preset`, `node_selection`, `format`, `download`, `start` and `end`; `cache`,
 `out` and `workers` belong to the whole project. Unknown keys are errors, so a typo isn't silently ignored.
 
 ```python
@@ -356,7 +396,8 @@ files a run would download and which are already cached, without any request.
 
 **Run summary.** `<name>_run_summary.json` is written beside the output for every outcome. It holds the inputs, the
 package and dataset versions, the result of every file (downloaded, skipped, failed or cancelled, with the status code and
-attempts), the missing months, the outputs, and for each node the requested and actual position, distance and `orog`.
+attempts), the missing months, the outputs, and for each node the requested and actual position, distance and `orog`
+(and, for `average4` and `nodes`, its number, which matches the `node<k>` file name, and its weight).
 
 **Retries, progress and cancel.** Each file is retried up to three times (after 1, 2 and 4 seconds) on a timeout,
 connection error, server error or empty response; a 404 is not retried. `download_serial` and `download_multithread`

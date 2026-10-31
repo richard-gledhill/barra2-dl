@@ -15,7 +15,7 @@ import xarray as xr
 
 import barra2_dl.project
 from barra2_dl.download import FileResult
-from barra2_dl.mapping import LatLonBBox, LatLonPoint
+from barra2_dl.mapping import LatLonBBox, LatLonPoint, nearest_nodes
 from barra2_dl.merge import read_csv
 from barra2_dl.project import (
     Problem,
@@ -115,6 +115,8 @@ VALID_PROJECT = {
         {'name': 'farm-area', 'north': -33.7, 'south': -34.0, 'east': 151.3, 'west': 151.0},
     ],
 }
+# the grid fixtures hold the nodes at lat -23.65, -23.54, -23.43 and lon 133.25, 133.36, 133.47
+NODES = [LatLonPoint(-23.54, 133.36), LatLonPoint(-23.43, 133.47)]
 # endregion
 
 
@@ -352,6 +354,63 @@ def test_site_from_dict_rejects_an_invalid_site(tmp_path: Path) -> None:
     assert _problems(error.value) == {('mast', 'freq')}
 
 
+# region nodes
+def test_site_from_dict_builds_a_site_with_nodes(tmp_path: Path) -> None:
+    """Nodes is a list of [lat, lon] pairs in the order given, node_mean a bool."""
+    site = site_from_dict(
+        {'name': 'mast', 'lat': -23.55, 'lon': 133.4, 'nodes': [[-23.54, 133.36], [-23.43, 133.47]], 'node_mean': True},
+        _settings(tmp_path),
+    )
+
+    assert site == Site('mast', POINT, None, {}, NODES, True)
+
+
+@pytest.mark.parametrize(
+    'nodes', ['x', [[-23.54]], [[-23.54, 'a']], [[True, 1]], [[91.0, 133.0]], [-23.54, 133.36]], ids=str
+)
+def test_site_from_dict_rejects_nodes_that_are_not_lat_lon_pairs(tmp_path: Path, nodes: object) -> None:
+    """Each node must be two numbers in range."""
+    with pytest.raises(ProjectError) as error:
+        site_from_dict({'name': 'mast', 'lat': -23.55, 'lon': 133.4, 'nodes': nodes}, _settings(tmp_path))
+
+    assert _problems(error.value) == {('mast', 'nodes')}
+    assert 'copied from nearest_nodes' in str(error.value)
+
+
+def test_site_from_dict_rejects_a_node_mean_that_is_not_true_or_false(tmp_path: Path) -> None:
+    """node_mean is a bool."""
+    with pytest.raises(ProjectError) as error:
+        site_from_dict(
+            {'name': 'mast', 'lat': -23.55, 'lon': 133.4, 'nodes': [[-23.54, 133.36]], 'node_mean': 'yes'},
+            _settings(tmp_path),
+        )
+
+    assert _problems(error.value) == {('mast', 'node_mean')}
+
+
+def test_project_from_dict_reads_nodes_from_a_project_file(tmp_path: Path) -> None:
+    """A TOML site with nodes and node_mean loads, and the unknown-key list names them."""
+    file = tmp_path / 'project.toml'
+    file.write_text(
+        '[settings]\nstart = "2023-01-01"\nend = "2023-01-31"\n'
+        '[[site]]\nname = "mast"\nlat = -23.55\nlon = 133.4\nnodes = [[-23.54, 133.36], [-23.43, 133.47]]\n'
+        'node_mean = true\n',
+        encoding='utf-8',
+    )
+
+    (site,) = load_project(file).sites
+
+    assert site.nodes == NODES
+    assert site.node_mean is True
+    with pytest.raises(ProjectError, match='nodes, node_mean'):
+        project_from_dict(
+            {'settings': {'start': '2023-01-01', 'end': '2023-01-31'}, 'site': [{'name': 'a', 'colour': 1}]}
+        )
+
+
+# endregion
+
+
 # endregion
 
 
@@ -383,6 +442,69 @@ def test_validate_needs_exactly_one_of_point_and_box(tmp_path: Path) -> None:
 
     assert [problem.key for problem in neither] == ['lat/lon']
     assert [problem.key for problem in both] == ['lat/lon']
+
+
+# region nodes
+def _nodes_site(**changes: Any) -> Site:
+    """A point site with the two chosen nodes."""
+    return replace(Site('mast', POINT, nodes=list(NODES)), **changes)
+
+
+def test_validate_accepts_a_nodes_site(tmp_path: Path) -> None:
+    """A point with nodes within reach, with or without the mean, has no problems."""
+    assert validate(_settings(tmp_path), _nodes_site()) == []
+    assert validate(_settings(tmp_path, format='netcdf'), _nodes_site(node_mean=True)) == []
+
+
+@pytest.mark.parametrize(
+    ('site', 'key', 'text'),
+    [
+        (_nodes_site(nodes=[]), 'nodes', 'Give 1 to 9 nodes'),
+        (
+            _nodes_site(nodes=[LatLonPoint(-23.54 + 0.001 * k, 133.36) for k in range(10)]),
+            'nodes',
+            'Give 1 to 9 nodes',
+        ),
+        (_nodes_site(nodes=[NODES[0], NODES[1], NODES[0]]), 'nodes', 'Node 3 repeats node 1.'),
+        (_nodes_site(nodes=[LatLonPoint(-23.30, 133.40)]), 'nodes', 'Node 1 is too far from the site'),
+        (_nodes_site(nodes=[LatLonPoint(-23.55, 133.60)]), 'nodes', 'more than 1.5 grid spacings'),
+        (_nodes_site(point=None), 'lat/lon', 'A site with nodes also needs lat and lon'),
+        (_nodes_site(overrides={'node_selection': 'nearest'}), 'node_selection', 'remove node_selection'),
+        (_nodes_site(overrides={'node_selection': 'nodes'}), 'node_selection', 'a site with nodes is a nodes download'),
+        (_nodes_site(overrides={'node_selection': 'area'}), 'node_selection', 'a site with nodes is a nodes download'),
+        (_nodes_site(overrides={'download': 'csv'}), 'download', 'csv download'),
+        (Site('mast', POINT, node_mean=True), 'node_mean', 'applies to a site with nodes'),
+        (Site('mast', POINT, overrides={'node_selection': 'nodes'}), 'node_selection', 'nodes download, automatically'),
+    ],
+    ids=str,
+)
+def test_validate_reports_each_nodes_fault_with_what_to_change(tmp_path: Path, site: Site, key: str, text: str) -> None:
+    """One message per fault, keyed by the field, saying what to change."""
+    problems = validate(_settings(tmp_path), site)
+
+    assert any(problem.key == key and text in problem.message for problem in problems), problems
+
+
+def test_validate_nodes_reach_is_measured_in_the_effective_domains_spacing(tmp_path: Path) -> None:
+    """A node 0.1 degrees away is within reach on AUS-11 (0.11) but not on AUST-04 (0.04)."""
+    site = _nodes_site(nodes=[LatLonPoint(-23.55, 133.50)])
+
+    assert validate(_settings(tmp_path), site) == []
+    assert [
+        problem.key for problem in validate(_settings(tmp_path), replace(site, overrides={'domain': 'AUST-04'}))
+    ] == ['nodes']
+
+
+def test_validate_a_box_site_cannot_have_nodes(tmp_path: Path) -> None:
+    """Nodes belong to a point site."""
+    problems = validate(_settings(tmp_path, format='netcdf'), Site('a', None, BOX, nodes=list(NODES)))
+
+    assert [problem.message for problem in problems if problem.key == 'nodes'] == [
+        'Nodes belong to a point site; remove nodes, or use lat and lon.'
+    ]
+
+
+# endregion
 
 
 # endregion
@@ -430,6 +552,22 @@ def test_plan_site_rejects_an_invalid_site(tmp_path: Path) -> None:
     """An invalid site raises before anything is planned."""
     with pytest.raises(ProjectError):
         plan_site(Site('mast'), _settings(tmp_path))
+
+
+# region nodes
+def test_plan_site_nodes_lists_the_box_files_with_the_box_in_the_names(server: _Server, tmp_path: Path) -> None:
+    """A nodes plan names the grid files for the chosen nodes' box, none cached, with no request."""
+    plan = plan_site(Site('mast', POINT, nodes=list(NODES)), _settings(tmp_path))
+
+    assert plan.files[0].filename == (
+        'mast_AUS-11_1hr_nodes_n-23.4025_s-23.5675_e133.4975_w133.3325_ua50m_20230101_20230131.nc'
+    )
+    assert all('_nodes_n-23.4025' in file.filename for file in plan.files)
+    assert not any(file.cached for file in plan.files)
+    assert server.requested == []
+
+
+# endregion
 
 
 # endregion
@@ -636,6 +774,96 @@ def test_run_site_live(domain: str, freq: str, preset: str, tmp_path: Path) -> N
     assert result.status == 'ok', result.error
     assert result.outputs
     assert not result.missing
+
+
+# region nodes
+def test_run_site_nodes_csv_writes_a_file_per_node_in_the_order_given(server: _Server, tmp_path: Path) -> None:
+    """Chosen nodes without the mean give node1 to nodeN files and the nodes in the summary, in order."""
+    settings = _settings(tmp_path)
+
+    result = run_site(Site('mast', POINT, nodes=list(NODES)), settings)
+
+    assert result.status == 'ok'
+    assert [path.name for path in result.outputs] == [f'mast_AUS-11_1hr_node{k}_20230101_20230103.csv' for k in (1, 2)]
+    assert all('north=' in url for url in server.requested)
+    assert [(node['node'], node['weight']) for node in result.nodes] == [(1, None), (2, None)]
+    assert [(node['lat'], node['lon']) for node in result.nodes] == pytest.approx([(-23.54, 133.36), (-23.43, 133.47)])
+    assert {'requested_lat', 'distance_km', 'orog'} <= set(result.nodes[0])
+    assert result.inputs['selection'] == 'nodes'
+    assert result.inputs['nodes'] == [[-23.54, 133.36], [-23.43, 133.47]]
+    assert result.inputs['node_mean'] is False
+    _, header = read_csv(result.outputs[1])
+    assert header['Node selection'] == 'nodes'
+    assert float(header['Latitude']) == pytest.approx(-23.43)
+    assert json.loads(result.summary_path.read_text())['nodes'] == json.loads(json.dumps(result.nodes))
+
+
+def test_run_site_nodes_with_the_mean_writes_it_beside_the_nodes(server: _Server, tmp_path: Path) -> None:
+    """node_mean adds the mean's file, whose weights are in the summary and sum to one."""
+    result = run_site(Site('mast', POINT, nodes=list(NODES), node_mean=True), _settings(tmp_path))
+
+    assert [path.name.split('_')[3] for path in result.outputs] == ['nodes', 'node1', 'node2']
+    assert sum(node['weight'] for node in result.nodes) == pytest.approx(1.0)
+    assert result.inputs['node_mean'] is True
+
+
+def test_run_site_nodes_netcdf_is_one_file_with_a_node_dimension(server: _Server, tmp_path: Path) -> None:
+    """With format netcdf the nodes are one file named for the selection."""
+    result = run_site(Site('mast', POINT, nodes=list(NODES)), _settings(tmp_path, format='netcdf'))
+
+    assert [path.name for path in result.outputs] == ['mast_AUS-11_1hr_nodes_20230101_20230131.nc']
+    with xr.open_dataset(result.outputs[0]) as ds:
+        assert ds.sizes['node'] == 2
+        assert ds.attrs['node_selection'] == 'nodes'
+        assert 'wind_speed' not in ds
+
+
+def test_run_site_nodes_that_are_not_grid_nodes_fail_the_site_and_keep_the_cache(
+    server: _Server, tmp_path: Path
+) -> None:
+    """A made-up node fails the site with a message naming the nodes near it; nothing is written but the summary."""
+    settings = _settings(tmp_path)
+
+    result = run_site(Site('mast', POINT, nodes=[LatLonPoint(-23.55, 133.36)]), settings)
+
+    assert result.status == 'failed'
+    assert result.error is not None
+    assert 'is not a node of AUS-11' in result.error
+    assert 'nearest_nodes' in result.error
+    assert result.outputs == []
+    assert len(list(settings.cache.iterdir())) == 4
+    assert result.summary_path.exists()
+
+
+@live_network
+@pytest.mark.parametrize('domain', ['AUS-11', 'AUST-04'])
+def test_run_site_nodes_live(domain: str, tmp_path: Path) -> None:
+    """One month of a nodes site, with the two nearest nodes from the live lookup and their mean, runs end to end."""
+    settings = _settings(tmp_path, domain=domain, preset='wind')
+    settings.cache.mkdir()
+    point = LatLonPoint(-23.5527472, 133.3961111)
+    found = nearest_nodes(point, domain, 2, cache=settings.cache)
+    site = Site('live', point, nodes=[LatLonPoint(node.lat, node.lon) for node in found], node_mean=True)
+
+    result = run_site(site, settings)
+
+    assert result.status == 'ok', result.error
+    assert [path.name.split('_')[3] for path in result.outputs] == ['nodes', 'node1', 'node2']
+    assert [node['lat'] for node in result.nodes] == pytest.approx([node.lat for node in found])
+    assert [node['lon'] for node in result.nodes] == pytest.approx([node.lon for node in found])
+    assert sum(node['weight'] for node in result.nodes) == pytest.approx(1.0)
+
+
+def test_run_site_nodes_rejects_invalid_nodes_before_any_request(server: _Server, tmp_path: Path) -> None:
+    """A node too far from the site is a ProjectError, raised before any request."""
+    with pytest.raises(ProjectError) as error:
+        run_site(Site('mast', POINT, nodes=[LatLonPoint(-23.30, 133.40)]), _settings(tmp_path))
+
+    assert _problems(error.value) == {('mast', 'nodes')}
+    assert server.requested == []
+
+
+# endregion
 
 
 # region site_result_to_dict

@@ -147,6 +147,15 @@ csv_paths = barra2_dl.merge.write_csv(ds, output_dir, fileout_prefix)
 # The netCDF file is now ready to open with xarray, e.g. xarray.open_dataset(path), or any netCDF tool.
 # For example ds.wind_speed.sel(height=[50, 100]) selects two heights.
 #%% md
+# ## Choose specific nodes (optional)
+# nearest_nodes asks the server for the grid nodes around a point and returns them nearest first, with their distance,
+# altitude (orog) and land fraction in percent (sftlf). Pick the nodes you want and give their exact latitude and longitude
+# to a site as nodes = [[lat, lon], ...] (see example_project.toml); never type a node you worked out yourself.
+# The two small fixed-field files are kept in cache/nodes, so a repeat lookup makes no request.
+#%%
+for node in barra2_dl.mapping.nearest_nodes(lat_lon_point, domain, 4, cache=cache_dir):
+    print(f'{node.lat!r:>22} {node.lon!r:>8}  {node.distance_km:6.2f} km  orog {node.orog:6.1f} m  sftlf {node.sftlf:5.1f} %')
+#%% md
 # ## Run a whole project from a file (optional)
 # Everything above is what project.run_site does for you. A project file lists shared settings and one site per mast,
 # point or area; load_project checks all of it at once, and run_site downloads, merges and writes each site's output

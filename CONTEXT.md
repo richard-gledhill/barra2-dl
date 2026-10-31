@@ -53,9 +53,21 @@ One point of the BARRA2 grid, with its own latitude, longitude and altitude (`or
 on AUS-11 and 0.04 on AUST-04 (`BARRA2_GRID_SPACING`). Always taken from the server's response, never computed.
 _Avoid_: Cell, grid point (a grid point is requested at a latitude and longitude; the node is what the server returns)
 
+**Grid node** (`mapping.GridNode`):
+A node as `nearest_nodes` returns it: the exact grid `lat` and `lon` as the server holds them, the distance in km from
+the point asked about, `orog` and `sftlf` (land fraction of the cell, in percent). Taken from a small bounding-box
+request, never computed from a grid origin.
+_Avoid_: Grid point (a grid point is requested; the grid node is what the server returns)
+
+**Chosen nodes** (`nodes`):
+The nodes a user picks from `nearest_nodes` for a point site, named by exact latitude and longitude (`Site.nodes`, `nodes =
+[[lat, lon], ...]` in a project file). Each is written as its own series (`node<k>`, in the order given), with an opt-in
+inverse-distance mean (`node_mean`). A site with nodes is a `nodes` download.
+
 **Node selection** (`BARRA2_NODE_SELECTIONS`):
 How the nodes for a point are chosen: `nearest` (the default point request), `average4` (the four nodes around the
-point, averaged) or `area` (every node in a box, netCDF only).
+point, averaged), `area` (every node in a box, netCDF only) or `nodes` (nodes chosen by their exact latitude and
+longitude, netCDF download). `area` and `nodes` are implied by a site's geometry (a box, or `nodes`), not set.
 
 **Point data**:
 The time series of one variable at the grid node nearest a latitude and longitude, fetched through the NetCDF

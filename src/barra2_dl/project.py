@@ -24,6 +24,7 @@ from barra2_dl.download import (
     area_data_urlfilenames,
     cache_problems,
     download_multithread,
+    nodes_data_urlfilenames,
     point_data_urlfilenames,
     preset_variables,
     resolve_variable_versions,
@@ -84,6 +85,9 @@ _PROJECT_SETTINGS = ('cache', 'out', 'workers')
 _TEXT_SETTINGS = ('domain', 'freq', 'preset', 'node_selection', 'format', 'download')
 _POINT_KEYS = ('lat', 'lon')
 _BOX_KEYS = ('north', 'south', 'east', 'west')
+# a node of the 3 x 3 block nearest_nodes returns is up to this many grid spacings from the point
+_NODE_REACH = 1.5
+_MAX_NODES = 9
 _SITE_NAME = re.compile(r'[A-Za-z0-9._-]+')
 # the variable and month in a series filename, e.g. demo_AUS-11_1hr_ua50m_20230201_20230228.nc
 _SERIES_FILE = re.compile(r'_(?P<var>[A-Za-z0-9]+)_(?P<year>\d{4})(?P<month>\d{2})\d{2}_\d{8}\.(?:nc|csv)$')
@@ -100,7 +104,8 @@ class Settings:
         domain: BARRA2 domain, a key of BARRA2_DOMAINS.
         freq: BARRA2 frequency available for the domain in BARRA2_FREQS.
         preset: A key of BARRA2_PRESETS.
-        node_selection: 'nearest' or 'average4' for a point site; a box site is always 'area'.
+        node_selection: 'nearest' or 'average4' for a point site; a box site is always 'area' and a site with nodes
+            is always 'nodes'.
         format: The output, 'csv' or 'netcdf'.
         download: The download format, 'netcdf4' (default) or 'csv' (a nearest-node point site with csv output).
         cache: Folder for the downloaded files.
@@ -130,12 +135,17 @@ class Site:
         point: The site, for a nearest-node or four-node-average download.
         bbox: The box, for an area download. Exactly one of point and bbox is set.
         overrides: Settings this site changes, keys from the site-overridable settings.
+        nodes: Chosen nodes for a point site, as the exact latitude and longitude from mapping.nearest_nodes. A site
+            with nodes is a 'nodes' download of those nodes, in this order.
+        node_mean: With nodes, also write the inverse-distance weighted mean of the chosen nodes.
     """
 
     name: str
     point: LatLonPoint | None = None
     bbox: LatLonBBox | None = None
     overrides: dict[str, Any] = field(default_factory=dict)
+    nodes: list[LatLonPoint] | None = None
+    node_mean: bool = False
 
 
 @dataclass(frozen=True)
@@ -261,7 +271,8 @@ def project_from_dict(data: Mapping[str, Any], base_dir: str | Path = '.') -> Pr
 
     The data has a 'settings' table (keys of Settings; start and end are required, as ISO dates or dates) and a 'site'
     list of tables. A site has a name and either lat and lon or north, south, east and west, and may override domain,
-    freq, preset, node_selection, format, download, start and end. Unknown keys are errors.
+    freq, preset, node_selection, format, download, start and end. A point site may also give nodes, a list of
+    [lat, lon] pairs (exact values from mapping.nearest_nodes), and node_mean. Unknown keys are errors.
 
     Args:
         data (Mapping[str, Any]): The parsed project.
@@ -346,12 +357,15 @@ def validate(settings: Settings, site: Site) -> list[Problem]:
         add('name', 'Use letters, digits, dot, underscore and hyphen only: the name becomes the filename prefix.')
     for key in sorted(set(site.overrides) - set(_SITE_SETTINGS)):
         add(key, f'A site cannot override this. Overridable: {", ".join(_SITE_SETTINGS)}.')
-    if (site.point is None) == (site.bbox is None):
+    if site.nodes is not None and site.point is None and site.bbox is None:
+        add('lat/lon', 'A site with nodes also needs lat and lon: the site the distances are measured from.')
+    elif (site.point is None) == (site.bbox is None):
         add('lat/lon', 'Give either lat and lon, or north, south, east and west, not both and not neither.')
     if site.bbox is not None and not (site.bbox.north > site.bbox.south and site.bbox.east > site.bbox.west):
         add('north/south/east/west', 'north must be greater than south and east greater than west.')
-    effective = replace(settings, **{key: value for key, value in site.overrides.items() if key in _SITE_SETTINGS})
+    effective = _effective(site, settings)
     problems += [Problem(site.name, key, message) for key, message in _setting_problems(effective, site)]
+    problems += [Problem(site.name, key, message) for key, message in _node_problems(effective, site)]
     return problems
 
 
@@ -570,7 +584,7 @@ def _site_from_dict(data: Mapping[str, Any], settings: Settings, problems: list[
     if not isinstance(name, str):
         problems.append(Problem(None, 'name', 'Every site needs a name, in quotes.'))
         name = '(unnamed)'
-    known = ('name', *_POINT_KEYS, *_BOX_KEYS, *_SITE_SETTINGS)
+    known = ('name', *_POINT_KEYS, *_BOX_KEYS, 'nodes', 'node_mean', *_SITE_SETTINGS)
     for key in sorted(set(data) - set(known)):
         problems.append(Problem(name, key, f'Unknown key. Known: {", ".join(known)}.'))
     point = _geometry(data, _POINT_KEYS, name, problems)
@@ -582,12 +596,37 @@ def _site_from_dict(data: Mapping[str, Any], settings: Settings, problems: list[
     for key in ('start', 'end'):
         if key in data and (parsed := _put_date(data[key], name, key, problems)):
             overrides[key] = parsed
+    node_mean = data.get('node_mean', False)
+    if not isinstance(node_mean, bool):
+        problems.append(Problem(name, 'node_mean', 'Must be true or false.'))
+        node_mean = False
     return Site(
         name,
         LatLonPoint(*point) if point else None,
         LatLonBBox(*box) if box else None,
         overrides,
+        _nodes_from_data(data['nodes'], name, problems) if 'nodes' in data else None,
+        node_mean,
     )
+
+
+def _nodes_from_data(value: object, name: str, problems: list[Problem]) -> list[LatLonPoint] | None:
+    """Return the nodes of a site from a list of [lat, lon] pairs, or None with a problem added if it isn't one."""
+    message = 'Give each node as [lat, lon] in degrees, copied from nearest_nodes.'
+    if not isinstance(value, list) or not all(isinstance(pair, list) and len(pair) == 2 for pair in value):
+        problems.append(Problem(name, 'nodes', message))
+        return None
+    nodes: list[LatLonPoint] = []
+    for pair in value:
+        if not all(isinstance(number, int | float) and not isinstance(number, bool) for number in pair):
+            problems.append(Problem(name, 'nodes', message))
+            return None
+        try:
+            nodes.append(LatLonPoint(*pair))
+        except ValueError as error:
+            problems.append(Problem(name, 'nodes', f'{error}. {message}'))
+            return None
+    return nodes
 
 
 def _geometry(
@@ -658,8 +697,14 @@ def _value_problems(settings: Settings) -> list[tuple[str, str]]:
             preset_variables(settings.preset, settings.domain, settings.freq)
         except ValueError as error:
             problems.append(('preset', str(error)))
-    if settings.node_selection not in BARRA2_NODE_SELECTIONS or settings.node_selection == 'area':
-        problems.append(('node_selection', 'Use nearest or average4; a box site is an area automatically.'))
+    if settings.node_selection not in BARRA2_NODE_SELECTIONS or settings.node_selection in ('area', 'nodes'):
+        problems.append(
+            (
+                'node_selection',
+                'Use nearest or average4; a box site is an area and a site with nodes is a nodes download, '
+                'automatically.',
+            )
+        )
     if settings.format not in BARRA2_OUTPUT_FORMATS:
         problems.append(('format', f'Use one of: {", ".join(BARRA2_OUTPUT_FORMATS)}.'))
     if settings.download not in BARRA2_DOWNLOAD_FORMATS:
@@ -686,9 +731,53 @@ def _combination_problems(settings: Settings, site: Site) -> list[tuple[str, str
     return problems
 
 
+def _node_problems(settings: Settings, site: Site) -> list[tuple[str, str]]:
+    """Return the (key, message) of each problem with the chosen nodes of a site, and with node_mean without nodes."""
+    problems: list[tuple[str, str]] = []
+    if site.nodes is None:
+        if site.node_mean:
+            problems.append(('node_mean', 'node_mean applies to a site with nodes.'))
+        return problems
+    if site.overrides.get('node_selection') in ('nearest', 'average4'):
+        problems.append(('node_selection', 'A site with nodes is a nodes download; remove node_selection.'))
+    if site.bbox is not None:
+        problems.append(('nodes', 'Nodes belong to a point site; remove nodes, or use lat and lon.'))
+    if not 1 <= len(site.nodes) <= _MAX_NODES:
+        problems.append(
+            (
+                'nodes',
+                f'Give 1 to {_MAX_NODES} nodes: the 3 x 3 block around the site is the most nearest_nodes returns.',
+            )
+        )
+    first_seen: dict[tuple[float, float], int] = {}
+    reach = _NODE_REACH * BARRA2_GRID_SPACING.get(settings.domain, 0.0)
+    for number, node in enumerate(site.nodes, start=1):
+        key = (float(node.lat), float(node.lon))
+        if key in first_seen:
+            problems.append(('nodes', f'Node {number} repeats node {first_seen[key]}.'))
+        first_seen.setdefault(key, number)
+        if (
+            site.point is not None
+            and reach
+            and (
+                abs(key[0] - float(site.point.lat)) > reach + 1e-9 or abs(key[1] - float(site.point.lon)) > reach + 1e-9
+            )
+        ):
+            problems.append(
+                (
+                    'nodes',
+                    f'Node {number} is too far from the site (more than {_NODE_REACH} grid spacings). '
+                    'Choose from nearest_nodes.',
+                )
+            )
+    return problems
+
+
 def _selection(site: Site, settings: Settings) -> str:
-    """Return the node selection a site runs: area for a box, else the setting."""
-    return 'area' if site.bbox is not None else settings.node_selection
+    """Return the node selection a site runs: area for a box, nodes for chosen nodes, else the setting."""
+    if site.bbox is not None:
+        return 'area'
+    return 'nodes' if site.nodes is not None else settings.node_selection
 
 
 def _effective(site: Site, settings: Settings) -> Settings:
@@ -708,6 +797,10 @@ def _urlfilenames(site: Site, settings: Settings) -> list[tuple[str, str]]:
     """Return the (url, filename) pairs for the site: netCDF4 unless the csv download is chosen."""
     variables = preset_variables(settings.preset, settings.domain, settings.freq)
     period = (settings.start.isoformat(), settings.end.isoformat())
+    if site.nodes is not None:
+        return nodes_data_urlfilenames(
+            site.nodes, variables, *period, site.name, domain=settings.domain, freq=settings.freq
+        )
     if site.bbox is not None:
         return area_data_urlfilenames(
             site.bbox, variables, *period, site.name, domain=settings.domain, freq=settings.freq
@@ -748,6 +841,11 @@ def _inputs(site: Site, settings: Settings) -> dict[str, Any]:
         'name': site.name,
         **place,
         'selection': _selection(site, settings),
+        **(
+            {'nodes': [[float(node.lat), float(node.lon)] for node in site.nodes], 'node_mean': site.node_mean}
+            if site.nodes is not None
+            else {}
+        ),
         'domain': settings.domain,
         'freq': settings.freq,
         'preset': settings.preset,
@@ -791,9 +889,12 @@ def _write_outputs(
             node_selection=selection,
             versions=versions,
             fixed_pattern=fixed if selection != 'nearest' else None,
+            nodes=site.nodes,
+            node_mean=site.node_mean,
         )
     nodes = _nodes(ds, selection)
-    problem = _location_problem(ds, requested, BARRA2_GRID_SPACING[settings.domain]) if requested else None
+    reach = _NODE_REACH if selection == 'nodes' else 1.0
+    problem = _location_problem(ds, requested, BARRA2_GRID_SPACING[settings.domain], reach) if requested else None
     if problem:
         return [], nodes, problem
     if settings.download == 'csv':
@@ -819,16 +920,17 @@ def _write_outputs(
     return [path], nodes, None
 
 
-def _location_problem(ds: xr.Dataset, requested: LatLonPoint, spacing: float) -> str | None:
-    """Return why the merged nodes aren't around the requested point (further than one grid spacing), or None."""
+def _location_problem(ds: xr.Dataset, requested: LatLonPoint, spacing: float, reach: float = 1.0) -> str | None:
+    """Return why the merged nodes aren't around the requested point (further than reach grid spacings), or None."""
     if 'node_lat' in ds:
         lats, lons = list(map(float, ds['node_lat'].to_numpy())), list(map(float, ds['node_lon'].to_numpy()))
     else:
         lats, lons = [float(ds['lat'])], [float(ds['lon'])]
+    limit = 'one grid spacing' if reach == 1 else f'{reach:g} grid spacings'
     for lat, lon in zip(lats, lons, strict=True):
-        if abs(lat - float(requested.lat)) > spacing or abs(lon - float(requested.lon)) > spacing:
+        if abs(lat - float(requested.lat)) > reach * spacing or abs(lon - float(requested.lon)) > reach * spacing:
             return (
-                f'The node at {lat:.3f}, {lon:.3f} is more than one grid spacing ({spacing}) from the requested point '
+                f'The node at {lat:.3f}, {lon:.3f} is more than {limit} ({spacing}) from the requested point '
                 f'{float(requested.lat):.3f}, {float(requested.lon):.3f}; the cached data may be for another location.'
             )
     return None
@@ -854,8 +956,9 @@ def _nodes(ds: xr.Dataset, selection: str) -> list[dict[str, Any]]:
                 'lat': float(ds['node_lat'][k]),
                 'lon': float(ds['node_lon'][k]),
                 'distance_km': float(ds['node_distance'][k]),
-                'weight': float(ds['node_weight'][k]),
+                'weight': float(ds['node_weight'][k]) if 'node_weight' in ds else None,
                 'orog': float(ds['node_orog'][k]) if 'node_orog' in ds else None,
+                'node': k + 1,
             }
             for k in range(ds.sizes['node'])
         ]

@@ -2,30 +2,38 @@
 
 References:
     https://stackoverflow.com/questions/79174938/how-to-fix-order-of-inherited-subclasses-in-python-dataclass/79174970
-
-Todo:
-    Draft functions to set grid for mapping support.
-    Implement _format_lat_lon for converting lat lon for file naming
 """
 
+import logging
+import tempfile
 from dataclasses import dataclass
-from typing import Self, cast
+from pathlib import Path
+from typing import Self
 
 import numpy as np
-import pandas as pd
+import xarray as xr
 from numpy.typing import ArrayLike
 
+from barra2_dl.globals import BARRA2_DOMAINS, BARRA2_GRID_SPACING, BARRA2_URL_FX_BBOX
+
+logger = logging.getLogger(__name__)
+logger.addHandler(logging.NullHandler())
+
 __all__ = [
+    'GridNode',
     'LatLonBBox',
     'LatLonPoint',
     'Latitude',
     'Longitude',
+    'NodeLookupError',
     'bracket_index',
     'distance_km',
     'inverse_distance_weights',
+    'nearest_nodes',
 ]
 
 
+# region Constants and types
 class _Geodetic(float):
     """Float specialization base class for Latitude and Longitude.
 
@@ -123,112 +131,93 @@ class LatLonBBox:
         self.west = Longitude(west)
 
 
-def _generate_point_grid(
-    lat_lon_bbox: dict,
-    lat_res: float,
-    lon_res: float | None = None,
-    offset: bool | None = None,
-) -> pd.DataFrame:
-    """Create a grid of longitude and latitude points between specified minimum and maximum values.
+@dataclass(frozen=True)
+class GridNode:
+    """One node of a BARRA2 grid, as the server returns it.
+
+    Attributes:
+        lat (float): Exact grid latitude in degrees north, as served.
+        lon (float): Exact grid longitude in degrees east, as served.
+        distance_km (float): Great-circle distance from the point the lookup was made for, in km.
+        orog (float): Surface altitude of the node in m.
+        sftlf (float): Percentage of the node's grid cell occupied by land, 0 to 100.
+    """
+
+    lat: float
+    lon: float
+    distance_km: float
+    orog: float
+    sftlf: float
+
+
+# endregion
+
+
+# region Errors
+class NodeLookupError(RuntimeError):
+    """The server could not give the nodes around a point, e.g. it is offline or the point is outside the domain."""
+
+
+# endregion
+
+
+# region Public API
+def nearest_nodes(
+    point: LatLonPoint, domain: str = 'AUS-11', n: int = 4, *, cache: str | Path | None = None
+) -> list[GridNode]:
+    """Return the n grid nodes nearest a point, nearest first, with their altitude and land fraction.
+
+    The nodes come from the server, never from arithmetic on a grid origin: two small NCSS bounding-box requests, for
+    the fixed fields orog and sftlf, return every node whose grid cell overlaps a box of one grid spacing (less 1%)
+    either side of the point. That is the 3 x 3 block around the cell holding the point, or fewer at the edge of the
+    domain, so n is at most 9. Distances are great-circle, ties go to the lower latitude then longitude. For n = 4 these
+    are normally, but not always, the four nodes that surround the point, which the four-node average uses.
+
+    With cache, the two files are kept in <cache>/nodes and a repeat lookup of the same point makes no request. A
+    cached file is checked as every cache file is (download.CacheMismatchError) and nothing is deleted. Without cache
+    nothing is written.
 
     Args:
-        lat_lon_bbox (dict | tuple): Dictionary or tuple containing geographic boundaries.
-                                     Dictionary should have keys 'north', 'south', 'east', 'west'.
-                                     Tuple should contain values in the order (north, south, east, west).
-        lon_res (float): Resolution of the longitude points.
-        lat_res (float): Resolution of the latitude points. Optional lon_res = lat_res if not specified.
-        offset: Offsets the first point by half the lat_res and lon_res to create points at centre.
+        point (LatLonPoint): The place to look around.
+        domain (str): BARRA2 domain, a key of BARRA2_DOMAINS. Default 'AUS-11'.
+        n (int): How many nodes, 1 to 9. Default 4.
+        cache (str | Path | None): An existing folder to keep the lookup files in. Default None.
 
     Returns:
-        pd.DataFrame: DataFrame containing the grid points with columns 'longitude' and 'latitude'.
+        list[GridNode]: Up to n nodes, nearest first.
 
     Raises:
-        ValueError: If bounds is neither a dictionary nor a tuple, or if the keys/values are missing or invalid.
-
-    Todo:
-        Draft function and not yet implemented
+        ValueError: If the domain is unknown or n is not from 1 to 9.
+        FileNotFoundError: If cache is given and does not exist.
+        NodeLookupError: If the server could not give the nodes, e.g. the point is outside the domain.
+        download.CacheMismatchError: If a cached lookup file does not cover the box or can't be read.
     """
-    if isinstance(lat_lon_bbox, dict):
-        required_keys = ['north', 'south', 'east', 'west']
-        if not all(key in lat_lon_bbox for key in required_keys):
-            raise ValueError("Dictionary must contain 'north', 'south', 'east', and 'west' keys.")
-    elif isinstance(lat_lon_bbox, tuple):
-        if len(lat_lon_bbox) != 4:
-            raise ValueError('Tuple must contain exactly 4 values: (north, south, east, west).')
-    else:
-        raise ValueError('Bounds must be a dictionary or tuple.')
+    if domain not in BARRA2_GRID_SPACING:
+        raise ValueError(f'Unknown domain <{domain}>. Domains: {", ".join(BARRA2_DOMAINS)}.')
+    if not 1 <= n <= 9:
+        raise ValueError(f'n must be from 1 to 9, because a box returns at most a 3 x 3 block; got {n}.')
+    # download imports this module, so it can only be imported here, not at the top
+    from barra2_dl.download import download_serial
 
-    if lon_res is None:
-        lon_res = lat_res
-
-    if offset:
-        lat_lon_bbox = {
-            'north': lat_lon_bbox['north'] - lat_res / 2,
-            'south': lat_lon_bbox['south'] + lat_res / 2,
-            'east': lat_lon_bbox['east'] - lon_res / 2,
-            'west': lat_lon_bbox['west'] + lon_res / 2,
-        }
-
-    longitudes = np.arange(lat_lon_bbox['west'], lat_lon_bbox['east'] + lon_res, lon_res)
-    latitudes = np.arange(lat_lon_bbox['south'], lat_lon_bbox['north'] + lat_res, lat_res)
-    long_grid, lat_grid = np.meshgrid(longitudes, latitudes)
-
-    df_point_grid = pd.DataFrame({'latitude': lat_grid.flatten(), 'longitude': long_grid.flatten()})
-
-    return df_point_grid
-
-
-def _find_nearest_point(
-    df_point_grid: pd.DataFrame,
-    target_lat: float | int,
-    target_lon: float | int,
-) -> pd.Series:
-    """Find the nearest point in a DataFrame of latitude, longitude points to a target point (target_lat, target_lon).
-
-    Args:
-        df_point_grid (pd.DataFrame): DataFrame containing the points with 'Longitude' and 'Latitude' columns.
-        target_lon (float): The x-coordinate of the target point.
-        target_lat (float): The y-coordinate of the target point.
-
-    Returns:
-        pd.Series: The row of the nearest point in the DataFrame.
-
-    Todo:
-        Draft function and not yet implemented
-    """
-    # check if target falls within grid
-    min_lat, max_lat = df_point_grid['latitude'].min(), df_point_grid['latitude'].max()
-    min_lon, max_lon = df_point_grid['longitude'].min(), df_point_grid['longitude'].max()
-
-    if not (min_lat <= target_lat <= max_lat) or not (min_lon <= target_lon <= max_lon):
-        raise ValueError("Target latitude and/or longitude are out of the range of the DataFrame's coordinates.")
-
-    distances = ((df_point_grid['latitude'] - target_lat) ** 2 + (df_point_grid['longitude'] - target_lon) ** 2) ** 0.5
-    return cast(pd.Series, df_point_grid.iloc[distances.argmin()])
-
-
-def _format_lat_lon(
-    latitude: float | int,
-    longitude: float | int,
-) -> list[str]:
-    """Format a dictionary containing 'lat' and 'lon' as floats to a string.
-
-    Uses 2 decimal precision, and converts negative values to 'S'.
-
-    Args:
-        longitude (float | int): Longitude
-        latitude (float | int): Latitude
-
-    Returns:
-        list[str]: Formatted string of the latitude and longitude.
-
-    Todo:
-        Draft function and not yet implemented
-    """
-    formatted_lat = ('S' if latitude < 0 else '') + f'{abs(latitude):.2f}'
-    formatted_lon = f'{abs(longitude):.2f}'
-
-    return [formatted_lat, formatted_lon]
+    box = _lookup_box(point, BARRA2_GRID_SPACING[domain])
+    pairs = [_lookup_pair(domain, var, box) for var in ('orog', 'sftlf')]
+    with tempfile.TemporaryDirectory() as scratch:
+        if cache is None:
+            folder = Path(scratch)
+        else:
+            if not Path(cache).is_dir():
+                raise FileNotFoundError(f'The cache folder <{cache}> does not exist.')
+            folder = Path(cache) / 'nodes'
+            folder.mkdir(exist_ok=True)
+        results = download_serial(pairs, folder)
+        failed = [result for result in results if result.status not in ('downloaded', 'skipped')]
+        if failed:
+            reason = '; '.join(f'{result.filename}: {result.error}' for result in failed)
+            raise NodeLookupError(
+                f'Could not get the nodes around {float(point.lat):.4f}, {float(point.lon):.4f} in {domain}: {reason}'
+            )
+        orog, sftlf = (_read_field(folder / name) for _, name in pairs)
+    return _rank_nodes(point, orog, sftlf, n)
 
 
 def distance_km(lat1: float, lon1: float, lat2: ArrayLike, lon2: ArrayLike) -> np.ndarray:
@@ -299,3 +288,56 @@ def inverse_distance_weights(distances: np.ndarray, tolerance: float = 1e-6) -> 
     on_node = distances < tolerance
     weights = on_node.astype(float) if on_node.any() else 1 / distances
     return weights / weights.sum()
+
+
+# endregion
+
+
+# region Helpers
+def _lookup_box(point: LatLonPoint, spacing: float) -> dict[str, float]:
+    """Return the lookup box: one spacing either side of the point, less 1% of a spacing, to keep it off cell edges.
+
+    NCSS counts a cell touching the north or east edge of a box but not one touching the south or west edge, so a box
+    edge exactly on a cell edge is unreliable. With the 1% that happens only for a point 1% of a spacing from a cell
+    boundary, instead of for a point on one (a round coordinate such as 133.415 on AUS-11).
+    """
+    half = spacing - spacing / 100
+    lat, lon = float(point.lat), float(point.lon)
+    return {
+        'north': round(lat + half, 6),
+        'south': round(lat - half, 6),
+        'east': round(lon + half, 6),
+        'west': round(lon - half, 6),
+    }
+
+
+def _lookup_pair(domain: str, var: str, box: dict[str, float]) -> tuple[str, str]:
+    """Return the (url, filename) of one fixed field for the lookup box; the box, at 4 decimals, is in the filename."""
+    url = BARRA2_URL_FX_BBOX.format(domain=domain, model=BARRA2_DOMAINS[domain], var=var, fileout_type='netcdf4', **box)
+    tag = f'n{box["north"]:.4f}_s{box["south"]:.4f}_e{box["east"]:.4f}_w{box["west"]:.4f}'
+    return url, f'{domain}_fx_{var}_{tag}.nc'
+
+
+def _read_field(path: Path) -> xr.DataArray:
+    """Read the (lat, lon) fixed field in a lookup file, loaded and sorted ascending."""
+    with xr.open_dataset(path, engine='h5netcdf') as ds:
+        names = [name for name in ds.data_vars if ds[name].dims == ('lat', 'lon')]
+        if len(names) != 1:
+            raise NodeLookupError(f'Expected one (lat, lon) data variable in <{path.name}>, found {len(names)}.')
+        return ds[names[0]].load().reset_coords(drop=True).astype(float).sortby('lat').sortby('lon')
+
+
+def _rank_nodes(point: LatLonPoint, orog: xr.DataArray, sftlf: xr.DataArray, n: int) -> list[GridNode]:
+    """Return the n nodes of the grids nearest the point, nearest first; ties go to the lower lat then lon."""
+    if not (np.array_equal(orog['lat'], sftlf['lat']) and np.array_equal(orog['lon'], sftlf['lon'])):
+        raise NodeLookupError('The orog and sftlf grids have different nodes.')
+    lats, lons = (grid.ravel() for grid in np.meshgrid(orog['lat'].to_numpy(), orog['lon'].to_numpy(), indexing='ij'))
+    distances = distance_km(float(point.lat), float(point.lon), lats, lons)
+    order = np.lexsort((lons, lats, distances))[:n]
+    orogs, land = orog.to_numpy().ravel(), sftlf.to_numpy().ravel()
+    return [
+        GridNode(float(lats[k]), float(lons[k]), float(distances[k]), float(orogs[k]), float(land[k])) for k in order
+    ]
+
+
+# endregion

@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import sys
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from importlib.metadata import version
 from pathlib import Path
@@ -20,6 +21,7 @@ from barra2_dl.globals import (
     BARRA2_FREQS,
     BARRA2_INDEX,
     BARRA2_NODE_SELECTIONS,
+    BARRA2_NODE_TOLERANCE,
     BARRA2_VAR_ALIASES,
     BARRA2_VAR_INFO,
     BARRA2_WIND_VARS,
@@ -215,14 +217,16 @@ def merge_netcdf_to_dataset(
     node_selection: str = 'nearest',
     versions: dict[str, str] | None = None,
     fixed_pattern: str | None = None,
+    nodes: Sequence[LatLonPoint] | None = None,
+    node_mean: bool = False,
 ) -> xr.Dataset:
     """Merge downloaded netCDF4 files straight into a CF-style xarray Dataset, without a DataFrame.
 
     The files come from point_data_urlfilenames(..., fileout_type='netcdf4') for the nearest node, from
-    point_data_urlfilenames(..., node_selection='average4') for the four-node average, or from area_data_urlfilenames
-    for an area. Each variable's months are joined in time, the variables are merged, and wind speed and direction are
-    derived from the ua/va pairs present. Fixed-field files (with '_fx_' in the name) are skipped. The nearest node
-    has the layout described in to_dataset; the others are described below.
+    point_data_urlfilenames(..., node_selection='average4') for the four-node average, from nodes_data_urlfilenames for
+    chosen nodes, or from area_data_urlfilenames for an area. Each variable's months are joined in time, the variables
+    are merged, and wind speed and direction are derived from the ua/va pairs present. Fixed-field files (with '_fx_'
+    in the name) are skipped. The nearest node has the layout described in to_dataset; the others are described below.
 
     node_selection='average4' averages the four nodes that surround the requested point (not a boundary or area) with
     inverse-distance weights, using the hybrid
@@ -232,6 +236,13 @@ def merge_netcdf_to_dataset(
     which mean each variable is. The four node series are written beside the average as <name>_node variables on a
     node dimension, with node_lat, node_lon, node_distance (km), node_weight and, if fixed_pattern is given, node_orog
     coordinates. lat and lon are the requested site.
+
+    node_selection='nodes' keeps the chosen nodes only, each matched to a node of the response by its exact latitude and
+    longitude (a name that is not a node raises). The layout is that of average4: the <name>_node variables on a node
+    dimension, in the order of nodes, with node_lat, node_lon, node_distance (km, from the requested site) and, if
+    fixed_pattern is given, node_orog. The mean is opt-in: with node_mean the inverse-distance weighted mean of the
+    chosen nodes is written as for average4, with node_weight; without it there are no mean variables and no weights.
+    lat and lon are the requested site.
 
     node_selection='area' keeps every node: lat and lon are dimensions, the variables are (time[, height], lat, lon),
     and orog, if fixed_pattern is given, is a (lat, lon) variable. There is no requested site.
@@ -247,15 +258,18 @@ def merge_netcdf_to_dataset(
         node_selection (str): 'nearest' (default), 'average4' or 'area'.
         versions (dict[str, str] | None): Dataset version of each variable, e.g. from
             download.resolve_variable_versions. Recorded as attributes; 'latest' where unknown.
-        fixed_pattern (str | None): Filename pattern of the downloaded orog grid for average4 and area, e.g.
+        fixed_pattern (str | None): Filename pattern of the downloaded orog grid for average4, nodes and area, e.g.
             f'{prefix}_AUS-11_fx_average4_orog.nc'.
+        nodes (Sequence[LatLonPoint] | None): The chosen nodes, exact values, for node_selection='nodes'.
+        node_mean (bool): With 'nodes', also write the weighted mean of the chosen nodes. Default False.
 
     Returns:
         xr.Dataset: Ready for to_netcdf().
 
     Raises:
         ValueError: If node_selection is unknown, a site is needed and missing, no file matches, a file isn't a
-            single-variable file of the right kind, the files hold more than one node, or the site is outside the grid.
+            single-variable file of the right kind, the files hold more than one node, the site is outside the grid,
+            nodes are missing for 'nodes' or a chosen node is not a node of the files.
     """
     if node_selection not in BARRA2_NODE_SELECTIONS:
         raise ValueError(f'node_selection <{node_selection}> must be one of {", ".join(BARRA2_NODE_SELECTIONS)}.')
@@ -263,22 +277,26 @@ def merge_netcdf_to_dataset(
         grids, units = _read_grids(_data_files(filein_folder, filename_pattern, node_selection))
         return _area_dataset(grids, units, _read_fixed_grid(filein_folder, fixed_pattern), (domain, freq), versions)
     site = _site(requested, node_selection)
+    if node_selection == 'nodes' and not nodes:
+        raise ValueError('node_selection <nodes> needs nodes, the exact latitude and longitude of each chosen node.')
     files = _data_files(filein_folder, filename_pattern, node_selection)
     if node_selection == 'nearest':
         return _nearest_dataset(files, (domain, freq), site, orog, versions)
     grids, units = _read_grids(files)
-    return _average4_dataset(
-        grids, units, _read_fixed_grid(filein_folder, fixed_pattern), (domain, freq), site, versions
-    )
+    fixed = _read_fixed_grid(filein_folder, fixed_pattern)
+    if node_selection == 'nodes':
+        return _nodes_dataset(grids, units, fixed, (domain, freq), site, (list(nodes or []), node_mean), versions)
+    return _average4_dataset(grids, units, fixed, (domain, freq), site, versions)
 
 
 def dataset_to_frames(ds: xr.Dataset) -> dict[str, pd.DataFrame]:
-    """Convert a point or four-node-average Dataset to DataFrames for csv output.
+    """Convert a point, four-node-average or chosen-nodes Dataset to DataFrames for csv output.
 
     The frames have the same columns as the csv route (BARRA2_INDEX, then e.g. ua50m[unit="m s-1"], v50m ...), with
     timestamps as served, so variables stamped at :30 get their own rows. A nearest-node Dataset gives one frame. A
     four-node average gives the average, keyed 'average4', and one frame per node, keyed node1 to node4, so each can be
-    written to its own file.
+    written to its own file. Chosen nodes give one frame per node, node1 to nodeN in the order chosen, and the mean,
+    keyed 'nodes', only if it was asked for.
 
     Args:
         ds (xr.Dataset): From merge_netcdf_to_dataset or to_dataset.
@@ -291,7 +309,8 @@ def dataset_to_frames(ds: xr.Dataset) -> dict[str, pd.DataFrame]:
     """
     if 'lat' in ds.dims:
         raise ValueError('An area is a grid and cannot be written as csv; write it as netCDF.')
-    frames = {str(ds.attrs.get('node_selection', 'nearest')): _frame(ds, None)}
+    has_main = any(not str(name).endswith('_node') and name != 'time_bnds' for name in ds.data_vars)
+    frames = {str(ds.attrs.get('node_selection', 'nearest')): _frame(ds, None)} if has_main else {}
     if 'node' in ds.dims:
         frames |= {f'node{int(node) + 1}': _frame(ds, int(node)) for node in ds['node'].to_numpy()}
     return frames
@@ -589,10 +608,10 @@ def _site(requested: LatLonPoint | None, node_selection: str) -> LatLonPoint:
 def _data_files(folder: str, pattern: str, node_selection: str) -> list[Path]:
     """Return the files matching the pattern that belong to the node selection; raise if there are none.
 
-    Fixed-field files are always left out. Grid files are named with average4 or area, so a loose pattern such as
+    Fixed-field files are always left out. Grid files are named with average4, nodes or area, so a loose pattern such as
     f'{prefix}_AUS-11_1hr_*.nc' can match them all and still merge only the kind asked for.
     """
-    grid_tags = {'average4': '_average4_', 'area': '_area_'}
+    grid_tags = {'average4': '_average4_', 'nodes': '_nodes_', 'area': '_area_'}
     files = []
     for file in sorted(Path(folder).glob(pattern)):
         wanted = grid_tags[node_selection] in file.name if node_selection in grid_tags else True
@@ -744,6 +763,67 @@ def _average4_dataset(
     if orogs is not None:
         coords['node_orog'] = orogs
     return _add_nodes(ds, node_datasets, coords)
+
+
+def _node_cell(lats: np.ndarray, lons: np.ndarray, node: LatLonPoint, domain: str) -> tuple[int, int]:
+    """Return the (lat, lon) index of the grid node a chosen node names, or raise ValueError if it is not a node."""
+    lat_index, lon_index = int(np.abs(lats - float(node.lat)).argmin()), int(np.abs(lons - float(node.lon)).argmin())
+    off_lat, off_lon = abs(lats[lat_index] - float(node.lat)), abs(lons[lon_index] - float(node.lon))
+    if off_lat > BARRA2_NODE_TOLERANCE or off_lon > BARRA2_NODE_TOLERANCE:
+        grid_lats, grid_lons = (grid.ravel() for grid in np.meshgrid(lats, lons, indexing='ij'))
+        near = np.argsort(distance_km(float(node.lat), float(node.lon), grid_lats, grid_lons))[:4]
+        listed = '; '.join(f'{grid_lats[k]!r}, {grid_lons[k]!r}' for k in near)
+        raise ValueError(
+            f'{float(node.lat)!r}, {float(node.lon)!r} is not a node of {domain}. The nodes near it: {listed}. '
+            'Copy the exact values from mapping.nearest_nodes.'
+        )
+    return lat_index, lon_index
+
+
+def _nodes_dataset(
+    grids: dict[str, xr.DataArray],
+    units: dict[str, str],
+    fixed: xr.DataArray | None,
+    domain_freq: tuple[str, str],
+    requested: LatLonPoint,
+    chosen: tuple[list[LatLonPoint], bool],
+    versions: dict[str, str] | None,
+) -> xr.Dataset:
+    """Pick the chosen nodes out of the grid, in the order chosen, with their mean if asked for."""
+    nodes, node_mean = chosen
+    template = next(iter(grids.values()))
+    lats, lons = template['lat'].to_numpy(), template['lon'].to_numpy()
+    cells = [_node_cell(lats, lons, node, domain_freq[0]) for node in nodes]
+    node_lat, node_lon = np.array([lats[a] for a, _ in cells]), np.array([lons[b] for _, b in cells])
+    distances = distance_km(float(requested.lat), float(requested.lon), node_lat, node_lon)
+    orogs = (
+        np.array(
+            [float(fixed.sel(lat=la, lon=lo, method='nearest')) for la, lo in zip(node_lat, node_lon, strict=True)]
+        )
+        if fixed is not None
+        else None
+    )
+    per_node = [_node_series(grids, a, b) for a, b in cells]
+    for series in per_node:
+        _add_wind(series, units)
+    site = (float(requested.lat), float(requested.lon))
+    coords = {'node_lat': node_lat, 'node_lon': node_lon, 'node_distance': distances}
+    if orogs is not None:
+        coords['node_orog'] = orogs
+    node_datasets = [
+        _build_dataset(per_node[k], units, (node_lat[k], node_lon[k]), domain_freq, requested, None, 'nodes', versions)
+        for k in range(len(cells))
+    ]
+    if node_mean:
+        weights = inverse_distance_weights(distances)
+        mean_orog = float(weights @ orogs) if orogs is not None else None
+        ds = _build_dataset(
+            _average_series(per_node, weights), units, site, domain_freq, requested, mean_orog, 'nodes', versions
+        )
+        return _add_nodes(_label_node_means(ds), node_datasets, {**coords, 'node_weight': weights})
+    ds = _build_dataset(per_node[0], units, site, domain_freq, requested, None, 'nodes', versions)
+    mains = [name for name in ds.data_vars if name != 'time_bnds']
+    return _add_nodes(ds, node_datasets, coords).drop_vars(mains)
 
 
 def _label_node_means(ds: xr.Dataset) -> xr.Dataset:
@@ -935,7 +1015,8 @@ def _csv_header(ds: xr.Dataset, frame_name: str) -> list[tuple[str, str]]:
     Every key is always present, empty when unknown, so the layout is stable. The four-node average also has a Node
     line per node. Header lines counts the lines up to and including the blank line after the header.
     """
-    node = int(frame_name.removeprefix('node')) - 1 if frame_name.startswith('node') else None
+    numbered = re.fullmatch(r'node(\d+)', frame_name)
+    node = int(numbered.group(1)) - 1 if numbered else None
     requested = (float(ds['requested_lat']), float(ds['requested_lon']))
     if node is None:
         lat, lon = float(ds['lat']), float(ds['lon'])
@@ -967,7 +1048,7 @@ def _csv_header(ds: xr.Dataset, frame_name: str) -> list[tuple[str, str]]:
         ('License', ds.attrs['license']),
         ('References', ds.attrs['references']),
     ]
-    if frame_name == 'average4':
+    if frame_name in ('average4', 'nodes'):
         rows += [(f'Node {k + 1}', _node_line(ds, k)) for k in range(ds.sizes['node'])]
     rows.append(('Header lines', len(rows) + 2))
     return [(key, _csv_text(value)) for key, value in rows]

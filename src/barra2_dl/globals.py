@@ -14,6 +14,7 @@ __all__ = [
     'BARRA2_GRID_SPACING',
     'BARRA2_INDEX',
     'BARRA2_NODE_SELECTIONS',
+    'BARRA2_NODE_TOLERANCE',
     'BARRA2_OUTPUT_FORMATS',
     'BARRA2_PRESETS',
     'BARRA2_PRESET_DEFAULT',
@@ -108,23 +109,25 @@ BARRA2_PRESETS = {
 # Preset used when the user picks none
 BARRA2_PRESET_DEFAULT = 'wind+density'
 
-# barra2_aus11_extents http://www.bom.gov.au/research/publications/researchreports/BRR-067.pdf
-# Todo BARRA2_AU11_LATLONBBOX = LatLonBBox(north=12.95, south=-57.97, east=207.39, west=88.48)
 
 # Grid spacing of each domain in degrees (about 11 km and 4 km). Sizes the download window around a point for the
 # four-node average; the nodes themselves always come from the bounding-box response, never from this arithmetic.
 BARRA2_GRID_SPACING = {'AUS-11': 0.11, 'AUST-04': 0.04}
 
-# How the nodes for a point are chosen: the nearest node (point request), the four nodes around the point averaged, or
-# every node in a user-given box (netCDF only)
-BARRA2_NODE_SELECTIONS = ('nearest', 'average4', 'area')
+# How the nodes for a point are chosen: the nearest node (point request), the four nodes around the point averaged,
+# every node in a user-given box, or nodes chosen by their exact latitude and longitude (netCDF only for the last two)
+BARRA2_NODE_SELECTIONS = ('nearest', 'average4', 'area', 'nodes')
+
+# How close, in degrees, a chosen node's latitude and longitude must be to a node of the grid to name it. Far below the
+# smallest spacing (0.04), so no two nodes are confused, and enough to forgive a value rounded by hand.
+BARRA2_NODE_TOLERANCE = 1e-4
 
 # What run_site writes (csv files or a netCDF file), and the format its downloads are requested in
 BARRA2_OUTPUT_FORMATS = ('csv', 'netcdf')
 BARRA2_DOWNLOAD_FORMATS = ('netcdf4', 'csv')
 
 # The values above and the statuses of a download, as types for interfaces to share
-type NodeSelection = Literal['nearest', 'average4', 'area']
+type NodeSelection = Literal['nearest', 'average4', 'area', 'nodes']
 type OutputFormat = Literal['csv', 'netcdf']
 type DownloadFormat = Literal['netcdf4', 'csv']
 type FileStatus = Literal['downloaded', 'skipped', 'failed', 'cancelled']

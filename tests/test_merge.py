@@ -751,6 +751,181 @@ def test_merge_netcdf_to_dataset_fixed_file_that_is_not_a_grid() -> None:
 # endregion
 
 
+# region merge_netcdf_to_dataset (nodes)
+# the grid fixtures hold the 3 x 3 nodes at lat -23.65, -23.54, -23.43 and lon 133.25, 133.36, 133.47
+SURROUNDING = [
+    LatLonPoint(-23.65, 133.36),
+    LatLonPoint(-23.65, 133.47),
+    LatLonPoint(-23.54, 133.36),
+    LatLonPoint(-23.54, 133.47),
+]
+CHOSEN = [LatLonPoint(-23.54, 133.36), LatLonPoint(-23.43, 133.47)]
+
+
+@pytest.fixture
+def nodes_folder(tmp_path: Path) -> Path:
+    """The average4 grid fixtures copied under nodes names, as a nodes download would leave them."""
+    for source in DATA.glob('grid_AUS-11_*average4_*.nc'):
+        shutil.copy(source, tmp_path / source.name.replace('grid_', 'site_').replace('average4', 'nodes_n1_s2_e3_w4'))
+    return tmp_path
+
+
+def _nodes(
+    folder: Path,
+    nodes: list[LatLonPoint] | None = None,
+    *,
+    node_mean: bool = False,
+    fixed: bool = True,
+    site: LatLonPoint = GRID_SITE,
+) -> xr.Dataset:
+    """The grid fixtures merged as chosen nodes."""
+    return merge_netcdf_to_dataset(
+        str(folder),
+        'site_AUS-11_1hr_nodes_*.nc',
+        domain='AUS-11',
+        freq='1hr',
+        requested=site,
+        node_selection='nodes',
+        fixed_pattern='site_AUS-11_fx_nodes_*_orog.nc' if fixed else None,
+        nodes=CHOSEN if nodes is None else nodes,
+        node_mean=node_mean,
+    )
+
+
+def test_merge_netcdf_to_dataset_nodes_keeps_the_chosen_nodes_in_the_order_given(nodes_folder: Path) -> None:
+    """The node dimension holds exactly the chosen nodes, as served, in the order the user gave them."""
+    ds = _nodes(nodes_folder, list(reversed(CHOSEN)))
+
+    assert ds['node_lat'].to_numpy().tolist() == pytest.approx([-23.43, -23.54])
+    assert ds['node_lon'].to_numpy().tolist() == pytest.approx([133.47, 133.36])
+    assert ds.attrs['node_selection'] == 'nodes'
+    assert (float(ds['lat']), float(ds['lon'])) == (GRID_SITE.lat, GRID_SITE.lon)
+
+
+def test_merge_netcdf_to_dataset_nodes_without_a_mean_has_node_series_only(nodes_folder: Path) -> None:
+    """No mean variables and no weights unless the mean is asked for."""
+    ds = _nodes(nodes_folder)
+
+    assert {str(name).removesuffix('_node') for name in ds.data_vars if name != 'time_bnds'} >= {'ua', 'va'}
+    assert all(str(name).endswith('_node') for name in ds.data_vars if name != 'time_bnds')
+    assert 'node_weight' not in ds.coords
+    assert ds.sizes['node'] == 2
+
+
+def test_merge_netcdf_to_dataset_nodes_series_match_the_grid_at_those_nodes(nodes_folder: Path) -> None:
+    """Each node's series is the grid's series at that node, not a neighbour's."""
+    ds = _nodes(nodes_folder)
+    average4 = _average4()
+
+    first = ds['ua_node'].isel(node=0, height=0).to_numpy()
+    lat, lon = average4['node_lat'].to_numpy(), average4['node_lon'].to_numpy()
+    index = int(np.flatnonzero(np.isclose(lat, -23.54) & np.isclose(lon, 133.36))[0])
+    expected = average4['ua_node'].isel(node=index, height=0)
+    np.testing.assert_allclose(first, expected.to_numpy())
+
+
+def test_merge_netcdf_to_dataset_nodes_distance_is_from_the_requested_site(nodes_folder: Path) -> None:
+    """node_distance is the great-circle distance in km from the site to each node."""
+    ds = _nodes(nodes_folder)
+
+    expected = [float(distance_km(GRID_SITE.lat, GRID_SITE.lon, node.lat, node.lon)) for node in CHOSEN]
+    assert ds['node_distance'].to_numpy().tolist() == pytest.approx(expected)
+    assert ds['node_distance'].attrs['units'] == 'km'
+
+
+def test_merge_netcdf_to_dataset_nodes_mean_of_the_surrounding_four_equals_average4(nodes_folder: Path) -> None:
+    """Chosen as the four nodes around the site, the mean is the four-node average (same weights, same method)."""
+    ds = _nodes(nodes_folder, SURROUNDING, node_mean=True)
+    expected = _average4()
+
+    for name in ('ua', 'va', 'wind_speed', 'wind_from_direction'):
+        np.testing.assert_allclose(ds[name].to_numpy(), expected[name].to_numpy())
+    np.testing.assert_allclose(np.sort(ds['node_weight'].to_numpy()), np.sort(expected['node_weight'].to_numpy()))
+    assert float(ds['node_weight'].sum()) == pytest.approx(1.0)
+    assert ds['wind_speed'].attrs['cell_methods'].endswith('node: mean (scalar)')
+
+
+def test_merge_netcdf_to_dataset_nodes_orog_is_per_node_when_the_grid_is_given(nodes_folder: Path) -> None:
+    """With the orog grid each node has its altitude; the mean's altitude attribute is their weighted mean."""
+    ds = _nodes(nodes_folder, node_mean=True)
+
+    assert ds['node_orog'].dims == ('node',)
+    assert float(ds.attrs['orog']) == pytest.approx(float((ds['node_orog'] * ds['node_weight']).sum()))
+    assert 'node_orog' not in _nodes(nodes_folder, fixed=False).coords
+
+
+def test_merge_netcdf_to_dataset_nodes_forgives_a_value_rounded_by_hand(nodes_folder: Path) -> None:
+    """A latitude a few metres off a node still names it, as the tolerance is far below any grid spacing."""
+    ds = _nodes(nodes_folder, [LatLonPoint(-23.540049, 133.36)])
+
+    assert float(ds['node_lat'][0]) == pytest.approx(-23.54)
+
+
+@pytest.mark.parametrize('node', [LatLonPoint(-23.55, 133.36), LatLonPoint(-23.54, 133.40)])
+def test_merge_netcdf_to_dataset_nodes_rejects_a_value_that_is_not_a_node(
+    nodes_folder: Path, node: LatLonPoint
+) -> None:
+    """A made-up node raises, naming the nodes near it and pointing at mapping.nearest_nodes."""
+    with pytest.raises(ValueError, match=r'is not a node of AUS-11.*nearest_nodes'):
+        _nodes(nodes_folder, [node])
+
+
+def test_merge_netcdf_to_dataset_nodes_needs_nodes(nodes_folder: Path) -> None:
+    """The nodes selection without nodes is an error."""
+    with pytest.raises(ValueError, match='needs nodes'):
+        merge_netcdf_to_dataset(
+            str(nodes_folder),
+            'site_AUS-11_1hr_nodes_*.nc',
+            domain='AUS-11',
+            freq='1hr',
+            requested=GRID_SITE,
+            node_selection='nodes',
+        )
+
+
+def test_dataset_to_frames_nodes_gives_a_frame_per_node_and_the_mean_only_if_asked(nodes_folder: Path) -> None:
+    """Without the mean the frames are node1 to nodeN; with it the mean comes first, keyed nodes."""
+    assert list(dataset_to_frames(_nodes(nodes_folder))) == ['node1', 'node2']
+    assert list(dataset_to_frames(_nodes(nodes_folder, node_mean=True))) == ['nodes', 'node1', 'node2']
+
+
+def test_dataset_to_frames_nodes_frames_carry_each_nodes_position(nodes_folder: Path) -> None:
+    """Each node frame has its node's latitude and longitude and its label."""
+    frames = dataset_to_frames(_nodes(nodes_folder))
+
+    assert frames['node2'].loc[0, 'station'] == 'node2'
+    assert frames['node2'].loc[0, BARRA2_INDEX[2]] == pytest.approx(-23.43)
+    assert frames['node2'].loc[0, BARRA2_INDEX[3]] == pytest.approx(133.47)
+
+
+def test_write_csv_nodes_names_files_and_writes_node_lines_in_the_mean_header(
+    nodes_folder: Path, tmp_path: Path
+) -> None:
+    """One file per node, and the mean's file, with Node lines in the mean's header; no weight without a mean."""
+    out = tmp_path / 'out'
+    out.mkdir()
+
+    paths = write_csv(_nodes(nodes_folder, node_mean=True), out, 'site')
+    plain = write_csv(_nodes(nodes_folder), out, 'plain')
+
+    assert [path.name for path in paths] == [
+        f'site_AUS-11_1hr_{name}_20230101_20230103.csv' for name in ('nodes', 'node1', 'node2')
+    ]
+    mean_header = read_csv(paths[0])[1]
+    assert mean_header['Node selection'] == 'nodes'
+    assert mean_header['Node 1'].startswith('lat -23.54')
+    assert 'weight' in mean_header['Node 1']
+    assert [path.name for path in plain] == [f'plain_AUS-11_1hr_node{k}_20230101_20230103.csv' for k in (1, 2)]
+    node_header = read_csv(plain[1])[1]
+    assert float(node_header['Latitude']) == pytest.approx(-23.43)
+    assert float(node_header['Distance to node']) == pytest.approx(
+        float(distance_km(GRID_SITE.lat, GRID_SITE.lon, -23.43, 133.47))
+    )
+
+
+# endregion
+
+
 # region merge_netcdf_to_dataset (area)
 @pytest.fixture
 def area(tmp_path: Path) -> Callable[..., xr.Dataset]:
