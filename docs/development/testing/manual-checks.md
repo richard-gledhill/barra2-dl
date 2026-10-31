@@ -8,7 +8,7 @@ record the result in the table at the end of each check.
 **Why:** `merge.write_csv` opens each csv with a `key,value` [metadata header](../../how-to-use.md#csv-metadata-header).
 Windographer's pages say it finds the header block, the column-name row and the first data row itself, and reads
 latitude, longitude and elevation "from the file header", but give no syntax for those lines
-(RFC-007's SPEC, "Findings from the Windographer pages", archived under `plan/archive/` when it ships). Only an import
+([RFC-007's SPEC](../plan/archive/2026-10-cache-validation/SPEC.md), "Findings from the Windographer pages"). Only an import
 settles it. Run it again if the header layout (`merge._csv_header`) or the column names change.
 
 **Files:** write both from the example fixtures or a real run (`scripts/example_barra2_dl_netcdf.py`):

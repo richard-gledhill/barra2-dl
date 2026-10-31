@@ -1,7 +1,7 @@
 # SPEC: cache validation and csv metadata header (RFC-007)
 
-Requirement: [RFC-007](../requirements/cache-validation-csv-metadata-prd.md); its decisions are in section 8 and are
-not reopened here. Style and gates: [conventions.md](../conventions.md), [constraints.md](../constraints.md).
+Requirement: [RFC-007](../../../requirements/cache-validation-csv-metadata-prd.md); its decisions are in section 8 and are
+not reopened here. Style and gates: [conventions.md](../../../conventions.md), [constraints.md](../../../constraints.md).
 
 ## Scope
 
