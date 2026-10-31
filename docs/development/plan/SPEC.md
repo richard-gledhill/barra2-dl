@@ -8,7 +8,8 @@ Style and gates: [conventions.md](../conventions.md), [constraints.md](../constr
 - Slice 1 (the engine) shipped in #147.
 - Slice 1b (research) is done and reviewed: see "Slice 1b addendum" for the owner's decisions.
 - Slice 2 (node lookup, chosen nodes) has its addendum, "Slice 2 addendum" at the end, approved by the owner on 2026-10-31, and shipped in #150.
-- Slice 2b (polygon boundary) has its addendum, "Slice 2b addendum" at the end, approved by the owner on 2026-10-31.
+- Slice 2b (polygon boundary) has its addendum, "Slice 2b addendum", approved by the owner on 2026-10-31, and shipped in #152.
+- Slice 3 (toolkit spikes and ADR-005) has its addendum, "Slice 3 addendum" at the end, proposed for the owner's review; nothing is built until it is approved.
 
 ## Scope
 
@@ -815,3 +816,228 @@ Owner's answers of 2026-10-31; the option tables above are the reasoning.
    of magnitude of headroom, so it stands. The figures are a rough estimate, not measured.
 5. **Turbine points:** out of scope. A site is either a boundary or user-defined points (a point, the four around it, or chosen
    `nodes`). No site group is planned and none goes in the backlog.
+
+## Slice 3 addendum: toolkit spikes and ADR-005 (`docs/gui-toolkit-adr`)
+
+Written 2026-10-31, when slice 3 started. **Status: proposed, for the owner's review. Nothing is built, installed or added to the
+repo's dependencies until the owner approves this addendum.** It does not reopen RFC-005 section 8, the section 9 answers, ADR-004,
+or the slice 1b, 2 and 2b owner decisions.
+
+**Scope.** Choose the GUI toolkit (RFC-005 5.2, decision 3) by building the same thin slice in six candidates, assessing them with
+a yes/no checklist, and recording the choice as ADR-005. Spike code is throwaway: it is never merged to `main`. The slice's PR holds the
+ADR, a research note with the evidence, and plan updates, and nothing else. Out of scope: the GUI skeleton (slice 4), the real map
+and imports (slice 5), any `gui` extra, `barra2_dl/gui/` code, a CLI, and a Windows executable (decision 4).
+
+### Decisions already made (not reopened)
+
+| Question | Decision |
+|---|---|
+| How the toolkit is chosen | Time-boxed spikes of one thin slice, judged on look and ease of use for a non-programmer; owner prefers Streamlit or a similar web interface (RFC decision 3) |
+| Candidates | Streamlit, NiceGUI, Panel, Dash (Plotly) and Flet are built; tkinter is judged on paper only, as the baseline (owner, 2026-10-30). A sixth spike, a Jupyter notebook with `ipywidgets` and `ipyleaflet`, served as an app with Voila, was added by the owner on 2026-10-31 |
+| Layering | `barra2_dl/gui/` beside the library; the library never imports an interface; an interface imports only `__all__` names (ADR-004) |
+| Map | The nodes selected or used for a site are drawn on the map, not only listed (owner, 2026-10-31); drawing a polygon on the map is a criterion |
+| Packaging | Optional `gui` extra and entry point `barra2-dl-gui = "barra2_dl.gui:main"` (RFC 5.3); no executable in v1 |
+| Console output | Keep the log-and-print convention for now; revisit at slice 4 (section 9, answer 3). The convention is the owner's to change |
+
+### Proposed decisions (for the owner)
+
+| # | Question | Proposal |
+|---|---|---|
+| A | Time box | 4 hours of work per spike, a hard stop. A feature not working at the stop is answered "no" and noted, not finished. About 24 hours of spikes, 1 hour for tkinter on paper, 3 for the note |
+| B | Where spike code lives | Branch `chore/gui-toolkit-spikes` (a Conventional Commits type, so the branch-name check passes), in `spikes/<toolkit>/` plus `spikes/common/`. Never merged and never a PR. Pushed so the work is not lost, and tagged `rfc005-spikes` when the spikes finish, so ADR-005 can cite a commit that stays reproducible. See "Options: where spike code lives" |
+| C | Environments | Each spike installs into its own scratch virtual environment outside the repo (`uv venv` under the scratchpad folder, `uv pip install -e <worktree>` plus the spike's `requirements.txt`). The spike branch never changes `pyproject.toml` or `uv.lock`; `git diff main -- pyproject.toml uv.lock` must be empty, and `uv sync` is never run with toolkit packages |
+| D | Evidence home | A research note, `docs/development/research/gui-toolkit-spikes.md` (raw evidence: checklists, timings, sizes, pin checks, screenshots, the `uv pip freeze` of each spike), and ADR-005 (the decision, short, linking the note). Screenshots are small PNGs in `docs/development/research/gui-toolkit-spikes/` |
+| E | Assessment | A yes/no checklist against the target features, below, with a final comment box per toolkit. The owner assesses every item; Claude supplies the evidence beside it. No weights and no scores (owner, 2026-10-31) |
+| F | Decision rule | A "no" on a gate item removes the toolkit unless the owner waives it in the comment box. Otherwise the owner decides from the checklists and comments. There is no score, no automatic winner and no tie-break |
+| G | Spikes without the network | A shared fake NCSS server (`spikes/common/fake_ncss.py`) patches `requests.get` from the `tests/data/` fixtures, with a short delay per file so progress and cancel are visible. It is the one thing a spike uses beyond the public API, because it stands in for the network. It works only for the fixture points (`scripts/build_test_fixtures.py`). A switch (`SPIKE_LIVE=1`) turns it off for one real month, run once per spike so the owner sees real data |
+| H | Map and draw libraries | Left to the spike author within the time box, from the candidates in the table below. A toolkit with no usable polygon drawing is answered "no" on items 14 to 16 and the workaround, if any, is noted. The health of a third-party map component counts under maintenance, because the GUI would depend on it too |
+| I | Other toolkits | Gradio, Reflex, pywebview with HTML, Qt (PySide6) and Textual are not built. ADR-005 names each in one line under alternatives, from paper, so the record shows they were considered. The owner's list of six stands. Solara, which is built on the same notebook widgets, is named in the notebook spike's alternatives |
+
+### The thin slice every spike builds
+
+One page, built the same way in every toolkit, calling only `__all__` names of `barra2_dl` modules (ADR-004 rule 1) and `globals`
+constants; no private name, and no logic that a second interface would need (rule 3). Anything that is not widgets, layout, state or
+threading, and that a spike author has to write, is a finding for the engine, not code to keep.
+
+1. **Form to `Settings`/`Site`.** Fields: latitude and longitude (or, after a polygon is drawn, the polygon), start and end date,
+   domain, frequency, preset and node selection (`nearest`, `average4`, chosen `nodes`), with choices from `BARRA2_DOMAINS`,
+   `BARRA2_FREQS`, `BARRA2_PRESETS` and `BARRA2_NODE_SELECTIONS`, never retyped. A site name and the output folder (a scratch one).
+   The form builds the dataclasses through `site_from_dict` or the constructors, calls `project.validate` and shows each `Problem`
+   against the field named by its `key`; invalid combinations (`20min` on AUS-11) are shown, not hidden.
+2. **Map: site and nodes.** On "Find nodes", call `mapping.nearest_nodes` and draw the site and the returned nodes, each popup
+   or tooltip showing `distance_km`, `orog` and `sftlf`. The user can pick which nodes to use (click a node or tick a list),
+   which sets `Site.nodes`. Nodes picked are drawn differently from those only offered. A click on the map also sets the site
+   point.
+3. **Map: nodes used after the run.** At the end of a run the nodes in the run summary (`site_result_to_dict(result)['nodes']`)
+   are drawn on the map, requested position and actual node, so the "used" half of the owner's requirement is shown too.
+4. **Polygon drawing.** Draw a polygon on the map, convert it to GeoJSON text and build a `Polygon` with
+   `mapping.polygon_from_geojson`; a `BoundaryFileError` is shown as an error. A drawn polygon makes the site a boundary site.
+   (A pre-run preview of the nodes a polygon will use is not in the engine; if a spike author wants it, it is a finding for slice
+   5, not spike work.)
+5. **Background run.** `project.plan_site` shows "N files, M cached". "Run" starts `project.run_site(site, settings, progress,
+   cancel)` on a worker thread; the callback drives a progress bar and a "file i of n" line; "Cancel" sets the
+   `threading.Event`. The page stays responsive while it runs (the form can be read and the map panned), and a second browser tab
+   or a page reload during a run is observed and recorded, not fixed.
+6. **Run summary.** At the end show `site_result_to_dict(result)`: status, outputs, missing months, the files table, nodes and
+   their distances. A `failed` run (the fake server can return a 404 for one variable) and a `cancelled` run both display.
+7. **One command.** A `main()` in `spikes/<toolkit>/app.py` that starts the server (or window) and opens the browser, shaped as
+   the future `barra2_dl.gui:main` would be.
+
+### Candidates and the map and draw components to try
+
+The component names are starting points from the author's knowledge at the time of writing; the spike confirms what exists, works
+and is maintained, and the exact versions go in the note.
+
+| Candidate | Model | Map and polygon drawing to try | Questions the spike must answer |
+|---|---|---|---|
+| **Streamlit** | Script reruns on each interaction | `streamlit-folium` with folium's `Draw` plugin (returns drawn GeoJSON); `pydeck` has no draw tool | A worker thread needs the script run context to update widgets; what survives a rerun, a reload and a second tab; how `main()` launches `streamlit run`; usage statistics and other outbound calls at start-up; whether one process can share a server with an API (ADR-004 asks) |
+| **NiceGUI** | Event-driven on FastAPI | Built-in `ui.leaflet`, with its draw control | Looks out of the box; date and file widgets; the native-window mode and what it needs; per-client state; FastAPI shared with an API |
+| **Panel** | Event-driven (Bokeh server, Param) | `ipyleaflet` with `DrawControl`, or `folium` | Dependency weight and pins (bokeh, param, numpy, pandas); time to a good-looking page; updating widgets from a thread |
+| **Dash** | Callbacks on a Flask server | `dash-leaflet` with `EditControl` | Background callbacks against a plain thread polled by `dcc.Interval`; extra dependencies for background callbacks; look |
+| **Flet** | Flutter client, Python backend | `flet-map` (polygon layers and tap events; check whether drawing is built in or has to be built from taps) | Whether polygon drawing is possible in the time box; desktop window versus web mode; the cost of freezing a desktop build, the one candidate where that is the point; Python 3.14 support of the client |
+| **Notebook** (`ipywidgets`, `ipyleaflet`, Voila) | Widgets in a Jupyter kernel; Voila serves the notebook as an app with the code cells hidden | `ipyleaflet` with `DrawControl`, which Panel's `ipyleaflet` route also uses | Run both as a notebook and under Voila, and score the Voila app mode, which is what an analyst would use; the kernel is busy unless `run_site` is on a thread, so progress and cancel need the worker-thread pattern; how `barra2-dl-gui` would launch Voila on a shipped notebook (G7); the Jupyter dependency set against the library's pins; testing with `nbclient` and no display; freeze cost (expected poor); whether `scripts/*.ipynb` and the jupytext pairs could share code |
+| **tkinter** (paper) | Event loop, standard library | `tkintermapview` (a tkinter map widget with polygons) | Judged from documentation only, not built: look, map and drawing, thread hand-off through a queue and `after`, display-free testing, freezing cost |
+
+### The checklist and how it is assessed
+
+Each toolkit gets the same checklist of yes/no questions against the target features, and a final comment box. **The owner
+assesses every item**, after running the spike (about 10 minutes each) and looking at the screenshots. Claude fills the evidence
+column beforehand with measured facts (install size, versions, timings, line counts, what was observed) so the owner is not
+guessing, but the yes or no is the owner's. The sheet is `spikes/common/checklist.md`, copied per toolkit into the note. There are no
+weights and no scores. Items marked **gate** are must-haves: a "no" removes the toolkit unless the owner waives it in the comment box.
+
+| # | Question: does it... | Evidence Claude supplies |
+|---|---|---|
+| **Gates** | | |
+| 1 | **gate** Use only `__all__` names and `globals` constants, with all thin-slice items except polygon drawing working? | Import check output |
+| 2 | **gate** Draw the offered, chosen and used nodes on the map, distinguishable from each other? | Screenshots |
+| 3 | **gate** Stop a run on Cancel, with the result reading `cancelled`? | Run log |
+| 4 | **gate** Install against the library's pins with no loosening, on Python 3.12, 3.13 and 3.14 on Windows? | Resolver output and versions chosen |
+| 5 | **gate** Have an MIT, BSD or Apache-2.0 (or similar) licence for the toolkit and every component used? | Licence from installed metadata |
+| **Looks and ease** | | |
+| 6 | Look good enough for wind analysts at desktop width? | Screenshots |
+| 7 | Still work and look fine at a narrow laptop width? | Screenshots |
+| 8 | Let an analyst find the next step without help? | n/a (owner's judgement) |
+| 9 | Start with one command? | The command |
+| 10 | Show validation messages beside the field they concern, and invalid combinations clearly? | Screenshots |
+| **Map** | | |
+| 11 | Pan, zoom and tiles feel smooth? | n/a |
+| 12 | Let you select a node by clicking it? | Observed |
+| 13 | Show distance, altitude and land fraction for a node? | Screenshots |
+| **Polygon** | | |
+| 14 | Let you draw a polygon on the map? | Screenshots |
+| 15 | Let you edit and delete it? | Observed |
+| 16 | Give a valid `Polygon` through `polygon_from_geojson`? | Output |
+| **Background run** | | |
+| 17 | Show live progress while `run_site` runs? | Timings |
+| 18 | Stay responsive during a run (pan the map, read the form)? | Observed |
+| 19 | Behave acceptably on page reload and on a second tab during a run? | What happened |
+| 20 | Show a failed and a cancelled run properly in the summary? | Screenshots |
+| 21 | Need only modest threading code? | Lines of threading code |
+| **Install, packaging, health** | | |
+| 22 | Have an acceptable install size and number of new packages? | MB, files, packages, resolution time |
+| 23 | Make no unwanted outbound calls or telemetry at start-up? | Network observed at start-up |
+| 24 | Fit the `gui` extra and a `barra2-dl-gui` entry point cleanly? | The `main()` shape |
+| 25 | Allow a display-free smoke test of one fake download? | Method and cost |
+| 26 | Look actively maintained (a release in the last 12 months), including the map component? | Last release dates |
+| 27 | Look feasible to freeze to a desktop executable later? | Measured for Flet only; paper for the rest |
+
+**Final comment box** per toolkit, written by the owner: anything the questions missed, waivers of a gate, and the toolkit's overall
+standing (for example "first choice", "acceptable", "reject"). Code size and the console-output findings (next section) are shown
+beside the checklist as information, not as questions.
+
+### Console output: what the spikes observe
+
+The convention logs and writes progress to stdout. From a worker thread a GUI server prints that to its console. For the same
+one-year run on the fake server, each spike records: (a) lines written to the server console, and whether the toolkit captures,
+duplicates or hides them; (b) whether a `logging` handler on the `barra2_dl` logger can feed a log pane in the UI, and whether the
+progress callback alone is enough for a user; (c) whether redirecting stdout in the worker is safe (it is process-wide, so likely
+not in a threaded server). The note ends with the findings and a recommendation among the options already on the table (keep the
+dual pattern; the library logs and interfaces print; a `verbose` argument). **Changing the convention is the owner's call, made at
+slice 4**; this slice only produces the evidence.
+
+### Options: where spike code lives
+
+| Option | For | Against |
+|---|---|---|
+| **a. A never-merged branch with `spikes/`, tagged (proposed)** | Same repo, same hooks, reproducible from a tag, the ADR can link a commit, no new account or repo | The pre-commit hooks (ruff check and format) run on spike code, so it must pass them (never suppressed); a pushed branch may trigger CI jobs, whose failures are noise to tidy |
+| b. A scratch folder outside the repo, not in git | No hooks, no clutter | Not reproducible later; the ADR could not point at anything |
+| c. A separate public repository | No hooks or CI of this repo | The owner must create and keep it; a second place to look; more than six small apps need |
+
+### Packaging and `pyproject.toml` during the spikes
+
+Nothing changes in the repo's dependencies. There is no `gui` extra, no `[project.scripts]` entry and no `uv.lock` change in this
+slice or on the spike branch. Each spike's `requirements.txt` lists only its toolkit and components. The pin check (criterion 6)
+resolves them together with the library's own dependencies in a scratch environment for Python 3.12, 3.13 and 3.14
+(`uv pip compile`, then an install per version), recording the versions chosen for numpy, pandas, xarray, h5py and requests and
+whether any differs from the library's current lock. The `gui` extra is added at slice 4 with the chosen toolkit, and `deptry` and
+the lockfile check start covering it then.
+
+### The ADR
+
+`docs/development/adr/ADR-005-gui-toolkit.md`, "Status: Proposed" until the owner accepts it, with a row in `adr/README.md`. It
+follows the ADR README (context, decision, alternatives and why they lost, consequences):
+
+- **Context.** RFC-005 5.2, the owner's preference, the thin slice, the gates and the checklist in short.
+- **Decision.** The chosen toolkit and map/draw component, with the versions the spike used.
+- **Evidence.** The six completed checklists, with the comment boxes (tkinter from paper), and links to the research note and the
+  `rfc005-spikes` tag with its commit.
+- **Alternatives considered.** Each of the others and why it lost, in one or two lines; the toolkits in decision I, one line each.
+- **Consequences.** The shape of `gui/` and `main()` for that toolkit; the threading pattern slice 4 must use; the `gui` extra's
+  pins; the console-output findings and the choices for slice 4; the freeze cost; whether an API could share its server (ADR-004's
+  note); the map component's maintenance risk and the fallback if it is abandoned; what the spikes could not settle.
+
+The decision rule is proposal F. ADR-005 does not replace ADR-004, and a toolkit later dropped gets a superseding ADR.
+
+### Tests and acceptance
+
+There is no library code, so no unit tests. Acceptance:
+
+- ADR-005 is merged with the decision, the checklists, the alternatives and the consequences listed above, and its row in
+  `adr/README.md`.
+- `docs/development/research/gui-toolkit-spikes.md` and its screenshots are merged and listed in `research/README.md`. The findings
+  are reproducible: for each spike it gives the tag and commit, the exact commands, the Python version, the full `uv pip freeze`,
+  the date, and how each number (install size, timings, line counts) was measured.
+- **No spike code, dependency or `gui` extra is on `main`**: the slice's diff touches only `docs/development/` and no file under
+  `src/`, `tests/`, `scripts/`, `pyproject.toml` or `uv.lock`. The spike branch's diff to `main` for `pyproject.toml` and `uv.lock`
+  is empty.
+- The owner's completed checklist and comment box for every toolkit are in the note, with the date of the walkthrough.
+- `make check` and `make docs-test` pass with no suppression added. (`make test` is not required: no code changes.)
+- The slice 4 addendum can start from the ADR with no open toolkit question; anything the spikes could not settle is a named open
+  item in the ADR.
+
+### Timeline (each step waits for the owner's go)
+
+| Step | What | About |
+|---|---|---|
+| 0 | Owner reviews and approves this addendum (this PR) and answers its questions | owner |
+| 1 | Set up: spike branch and worktree, `spikes/common` (fake NCSS server, shared form spec, checklist sheet), scratch environments, and a pin and wheel dry run for all six on 3.12 to 3.14. A toolkit failing G4 or G5 outright is flagged to the owner now, before time is spent on it | 2 h |
+| 2 | Spike 1 Streamlit, then spike 2 NiceGUI (the likelier choices). Optional checkpoint: the owner looks at these two before the rest | 4 h each |
+| 3 | Spikes 3 to 6: Panel, Dash, Flet (including the freeze attempt), notebook with Voila | 4 h each |
+| 4 | tkinter on paper | 1 h |
+| 5 | The note: measurements, console-output findings, the evidence column of each checklist, screenshots | 3 h |
+| 6 | Owner's walkthrough: run each spike with one command, complete the checklist and comment box (about 10 minutes each), choose | owner |
+| 7 | ADR-005 written to the owner's choice; spike branch tagged; PR `docs: ADR-005 GUI toolkit (slice 3)`; merge. The slice 4 addendum follows | 2 h |
+
+### Not in scope, noted for later slices
+
+- Slice 4: the `gui` extra, `barra2-dl-gui`, the skeleton, the real threading pattern, the display-free smoke test, the
+  console-output decision, and the cache-mismatch rename flow (slice 1 decision F).
+- Slice 5: a pre-run preview of the nodes a polygon will use, the optional node layer, imports, the summary view, and listing the
+  nodes of a plain box `area` in the summary (backlog).
+- A hosted or multi-user deployment, an executable, and any change to the engine; a gap the spikes find in the engine is reported in
+  the note and the ADR, not fixed here.
+
+### Decisions
+
+Owner's answers of 2026-10-31 to the proposals above (A to I) and the questions on the PR. The proposals are accepted as written,
+except E and F, which the owner replaced as described.
+
+1. **A, B, C, D, G, H, I:** accepted as proposed. The spike list is six (the notebook with Voila was added).
+2. **E and F replaced:** no weights and no scores. A yes/no checklist against the target features, each item assessed by the owner,
+   with a final comment box per toolkit; the owner decides from the checklists and comments (see "The checklist and how it is
+   assessed").
+3. **Gates:** accepted. They are the first five checklist items; a "no" removes the toolkit unless the owner waives it.
+4. **Console output:** the spikes only gather evidence; the owner decides at slice 4.
+5. **Checkpoint:** the owner looks at Streamlit and NiceGUI before the other four are built.
+6. **Map and draw libraries:** the spike author picks them within the time box.

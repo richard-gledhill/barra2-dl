@@ -39,7 +39,13 @@ Resumed 2026-10-31 after RFC-007 shipped. The owner answered RFC section 9 on 20
 - [x] Example boundary, docs, live tests; `make check`, `make test`, `make docs-test`; PR
 
 ## Slice 3: toolkit spikes and ADR
-- [ ] SPEC addendum; five spikes (Streamlit, NiceGUI, Panel, Dash, Flet), tkinter on paper; ADR; PR
+- [x] SPEC addendum written (PR `docs: slice 3 SPEC addendum (toolkit spikes)`); awaiting the owner's review and answers
+- [ ] Owner answers recorded under "Decisions" in the addendum; spikes start only when the owner says
+- [ ] Set up: spike branch `chore/gui-toolkit-spikes`, `spikes/common` (fake NCSS server), scratch environments, pin and wheel dry run
+- [ ] Spikes: Streamlit, NiceGUI (optional owner checkpoint), Panel, Dash, Flet (with the freeze attempt), notebook with Voila; 4 h each
+- [ ] tkinter on paper; console-output findings
+- [ ] Research note `docs/development/research/gui-toolkit-spikes.md` with screenshots; owner's walkthrough and checklists
+- [ ] ADR-005 and `adr/README.md` row; tag `rfc005-spikes`; `make check`, `make docs-test`; PR (no spike code on `main`)
 
 ## Slice 4: `feat/gui-skeleton`
 - [ ] SPEC addendum; `gui` extra, entry point, form, background run, carry selected/used nodes through, smoke test; PR

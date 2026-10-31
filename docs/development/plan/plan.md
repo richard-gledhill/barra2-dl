@@ -43,11 +43,13 @@ by pattern); the jupytext sync of the notebook must not reformat unrelated cells
    as `pyshp`); WGS84 only. An area download fetches the polygon's bounding box and keeps the nodes inside it.
    `Site` gains an optional `polygon` and the project file a `polygon = "farm.geojson"` key. Detailed in the SPEC
    "Slice 2b addendum" (approved): cell-overlap mask, opt-in area-weighted mean, netCDF only.
-3. **Toolkit spikes** (`docs/gui-toolkit-adr`): time-boxed Streamlit, NiceGUI, Panel, Dash (Plotly) and Flet builds of
-   the same thin slice (RFC 5.2); an ADR records the choice. Spike code is throwaway and not merged. Drawing a polygon on the map is a spike criterion. The owner added
-   Dash and Flet to the RFC's list on 2026-10-30; Flet also shows what freezing a desktop-native build would cost.
-   tkinter stays the baseline and is judged on paper, not built. The RFC text is unchanged until the owner approves
-   an edit.
+3. **Toolkit spikes** (`docs/gui-toolkit-adr`; spikes on the never-merged branch `chore/gui-toolkit-spikes`): time-boxed
+   (4 hours each) Streamlit, NiceGUI, Panel, Dash (Plotly), Flet and notebook-with-Voila (added 2026-10-31) builds of the same thin slice (RFC 5.2); tkinter is
+   judged on paper. A yes/no checklist the owner completes for each toolkit, with a comment box; polygon drawing on the map and the
+   nodes drawn on the map are criteria. The result is a research note with the evidence and ADR-005. No spike code,
+   dependency or `gui` extra reaches `main`. Detailed in the SPEC "Slice 3 addendum" (proposed, awaiting the owner's
+   review). The owner added Dash and Flet to the RFC's list on 2026-10-30; Flet also shows what freezing a desktop-native
+   build would cost. The RFC text is unchanged until the owner approves an edit.
 4. **GUI skeleton** (`feat/gui-skeleton`): `gui` extra, `barra2-dl-gui` entry point, form to `Settings`/`Site`, background
    `run_site` with progress and cancel, display-free smoke test.
 5. **Map, import, summary view** (`feat/gui-map-import`): node preview with distances, **the nodes selected or used for a
