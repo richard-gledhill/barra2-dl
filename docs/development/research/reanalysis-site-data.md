@@ -1,11 +1,24 @@
 # Reanalysis site data: research note for slices 2 to 5 of RFC-005
 
-Status: For owner review. Researched 2026-10-31 for [slice 1b](../plan/SPEC.md); the recommendations are mine and
-nothing here changes a requirements doc or a decision.
+Status: Reviewed by the owner on 2026-10-31; four decisions recorded under "Owner decisions". Researched 2026-10-31 for
+[slice 1b](../plan/SPEC.md); the recommendations are mine and nothing here changes a requirements doc.
 
 **Method.** Web searches (standard mode) and reads of the pages named under Sources, plus live tests of the NCSS server
 for question 4. The searches were short: they found little on the exact questions, and where a claim comes from a search
 summary, or from my own knowledge of a standard, the text says so. Nothing here is quoted at length.
+
+## Owner decisions
+
+Made on 2026-10-31 after reviewing this note. They settle the questions the SPEC's design table marks for slice 2b:
+
+- **Boundary smaller than one cell:** the node whose cell holds the centroid. `average4` at the centroid stays an option.
+- **Site mean for a boundary:** an opt-in extra series, weighted by each cell's overlap with the polygon, using the hybrid
+  method. The node series are always written.
+- **Node inclusion rule:** a node is kept if its cell overlaps the polygon, as NCSS returns it. A node-inside filter can
+  be added later.
+- **Shapefiles:** not in v1. Boundary files are GeoJSON and KML, read with the standard library; `pyshp` is not added.
+
+The other recommendations stand as advice for the slices that use them; each slice's SPEC addendum records what it adopts.
 
 ## Summary
 

@@ -6,7 +6,7 @@ Style and gates: [conventions.md](../conventions.md), [constraints.md](../constr
 ## Slice status
 
 - Slice 1 (the engine) shipped in #147.
-- Slice 1b (research) is in progress: see "Slice 1b addendum" at the end.
+- Slice 1b (research) is done and reviewed: see "Slice 1b addendum" at the end for the owner's decisions.
 
 ## Scope
 
@@ -281,3 +281,14 @@ the fixture builder and pinned by tests; `make check`, `make test` and `make doc
 note. The slice 2b addendum is written only after that review.
 
 **Not in scope.** Choosing the answers: the table of open questions stays open until the owner decides, slice by slice.
+
+**Owner decisions after the note (2026-10-31).** These resolve rows of the design table above for slice 2b; nothing else in the
+table is decided yet.
+
+| Question | Decision |
+|---|---|
+| Default output for a boundary | All nodes whose cell overlaps the polygon, one series each, plus an opt-in site mean |
+| Site mean | An opt-in extra series, weighted by each cell's overlap with the polygon, using the hybrid method |
+| Polygon smaller than one grid cell | The node whose cell holds the centroid (`average4` at the centroid stays an option) |
+| Node inclusion rule | The cell overlaps the polygon, as NCSS returns it |
+| Boundary file types | GeoJSON and KML with the standard library; no shapefile and no `pyshp` in v1 |

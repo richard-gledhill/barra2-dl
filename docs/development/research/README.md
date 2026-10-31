@@ -6,4 +6,4 @@ finding that contradicts a decision is reported, not applied.
 
 | Note | For | Status |
 |---|---|---|
-| [reanalysis-site-data.md](reanalysis-site-data.md) | RFC-005 slices 2 to 5: node choice, averaging, boundaries, file formats, mast conventions | For owner review (2026-10-31) |
+| [reanalysis-site-data.md](reanalysis-site-data.md) | RFC-005 slices 2 to 5: node choice, averaging, boundaries, file formats, mast conventions | Reviewed 2026-10-31; decisions recorded in the note |
