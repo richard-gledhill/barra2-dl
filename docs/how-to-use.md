@@ -277,7 +277,7 @@ Time zone,UTC
 Time stamp,instantaneous at the stamp; time-mean variables (pr, rsds) are stamped mid-step
 Dataset versions,v20240516
 Downloaded,2026-10-31
-Created by,barra2-dl 0.3.1
+Created by,barra2-dl 0.4.0
 License,"CC BY 4.0, Bureau of Meteorology"
 References,http://www.bom.gov.au/research/publications/researchreports/BRR-067.pdf
 Header lines,22
