@@ -15,7 +15,7 @@ import xarray as xr
 
 import barra2_dl.project
 from barra2_dl.download import FileResult
-from barra2_dl.mapping import LatLonBBox, LatLonPoint
+from barra2_dl.mapping import LatLonBBox, LatLonPoint, nearest_nodes
 from barra2_dl.merge import read_csv
 from barra2_dl.project import (
     Problem,
@@ -833,6 +833,25 @@ def test_run_site_nodes_that_are_not_grid_nodes_fail_the_site_and_keep_the_cache
     assert result.outputs == []
     assert len(list(settings.cache.iterdir())) == 4
     assert result.summary_path.exists()
+
+
+@live_network
+@pytest.mark.parametrize('domain', ['AUS-11', 'AUST-04'])
+def test_run_site_nodes_live(domain: str, tmp_path: Path) -> None:
+    """One month of a nodes site, with the two nearest nodes from the live lookup and their mean, runs end to end."""
+    settings = _settings(tmp_path, domain=domain, preset='wind')
+    settings.cache.mkdir()
+    point = LatLonPoint(-23.5527472, 133.3961111)
+    found = nearest_nodes(point, domain, 2, cache=settings.cache)
+    site = Site('live', point, nodes=[LatLonPoint(node.lat, node.lon) for node in found], node_mean=True)
+
+    result = run_site(site, settings)
+
+    assert result.status == 'ok', result.error
+    assert [path.name.split('_')[3] for path in result.outputs] == ['nodes', 'node1', 'node2']
+    assert [node['lat'] for node in result.nodes] == pytest.approx([node.lat for node in found])
+    assert [node['lon'] for node in result.nodes] == pytest.approx([node.lon for node in found])
+    assert sum(node['weight'] for node in result.nodes) == pytest.approx(1.0)
 
 
 def test_run_site_nodes_rejects_invalid_nodes_before_any_request(server: _Server, tmp_path: Path) -> None:

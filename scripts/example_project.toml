@@ -6,7 +6,7 @@
 domain = "AUS-11"          # or "AUST-04"
 freq = "1hr"               # or "20min" on AUST-04
 preset = "wind+density"    # a key of BARRA2_PRESETS
-node_selection = "nearest" # or "average4"; a site with a box is an area automatically
+node_selection = "nearest" # or "average4"; a site with a box is an area, and one with nodes a nodes download, automatically
 format = "csv"             # the output: "csv" (with a metadata header) or "netcdf"
 download = "netcdf4"       # or "csv" for a nearest-node point site with csv output (the csv route)
 start = "2023-01-01"
@@ -25,6 +25,13 @@ name = "mast-south"
 lat = -23.75
 lon = 133.40
 node_selection = "average4"   # any site can override domain, freq, preset, node_selection, format, download, start, end
+
+[[site]]
+name = "mast-nodes"
+lat = -23.55                   # the site the nodes are measured from
+lon = 133.40
+nodes = [[-23.54, 133.36], [-23.54, 133.47]]   # exact node values, copied from mapping.nearest_nodes, never worked out
+node_mean = true               # optional: also write the inverse-distance mean of these nodes
 
 [[site]]
 name = "farm-area"

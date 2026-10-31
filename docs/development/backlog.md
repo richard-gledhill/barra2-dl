@@ -8,7 +8,6 @@ fail loudly once the bug is fixed, so remove the `xfail` in the same change.
 
 | Item | Detail | Pinned by |
 |---|---|---|
-| Tuple bounds crash | `_generate_point_grid` validates a 4-tuple `(north, south, east, west)` as its docstring promises, then indexes it by key and raises `TypeError`. Unwired helper. | `tests/test_mapping.py::test_generate_point_grid_tuple` |
 | `None_` filename prefix | `point_data_urlfilenames(..., fileout_prefix=None)` produces filenames starting `None_`. | `tests/test_download.py::test_point_data_urlfilenames_default_prefix` |
 
 ## Manual checks owed
@@ -19,9 +18,8 @@ fail loudly once the bug is fixed, so remove the `xfail` in the same change.
 
 ## Deferred features (from existing `Todo` notes)
 
-- The draft grid helpers in `mapping.py` (`_generate_point_grid`, `_find_nearest_point`, `_format_lat_lon`) and the
-  `LatLonBBox` constants in `globals.py` are still unwired. RFC-003 downloads grids through NCSS bounding boxes and takes
-  the nodes from the response, so decide whether to finish or delete them.
+- Reuse a covering file for a `nearest_nodes` lookup of a nearby point (today each distinct point has its own pair of
+  small files in `<cache>/nodes`).
 - Download only new data using the existing time range (`_list_timestamp_range`), with a validity check for files
   downloaded in the last three months.
 - Default `fileout_prefix` and naming files by BARRA2 node.

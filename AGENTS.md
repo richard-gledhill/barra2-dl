@@ -116,10 +116,11 @@ There is no class-based orchestrator — callers (see `scripts/example_barra2_dl
 
 5. **`mapping.py`** — geo helpers: `Latitude`/`Longitude` are `float` subclasses
    that validate range on construction (±90 / ±180); `LatLonPoint` and
-   `LatLonBBox` are dataclasses built on top of them. `_generate_point_grid`,
-   `_find_nearest_point`, and `_format_lat_lon` are draft/unused helpers (marked
-   `Todo` in their docstrings) for a not-yet-implemented gridded/nearest-node
-   workflow — don't assume they're wired into `download.py` yet.
+   `LatLonBBox` are dataclasses built on top of them. `nearest_nodes(point, domain, n)`
+   returns the `GridNode`s around a point from two small NCSS box requests (the nodes
+   always come from the server, never from arithmetic on a grid origin), and is the
+   one place `mapping` reaches `download`, through a function-level import because
+   `download` imports `mapping`.
 
 End-to-end usage lives in `scripts/example_barra2_dl_csv.py` and `scripts/example_barra2_dl_netcdf.py` (each also as a
 Jupyter notebook of the same name, via jupytext `#%%` cell markers; keep each pair in step):

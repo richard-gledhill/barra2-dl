@@ -68,7 +68,8 @@ https://opus.nci.org.au/pages/viewpage.action?pageId=264241166
 - Point data download to closest node from BARRA2 AUS-11 (BARRA-R2) and AUST-04 (BARRA-C2) reanalysis data,
   1-hourly by default, and 20-minute on AUST-04
 - Node selection: the nearest node, an inverse-distance average of the four nodes around the point (with the four node
-  series written too), or every node in an area (netCDF only)
+  series written too), nodes you choose by their exact latitude and longitude after a `nearest_nodes` lookup (with an
+  optional mean), or every node in an area (netCDF only)
 - Wind at 10, 50, 100, 150, 200, 250 and 1500 m; the 10 m wind (`uas`/`vas`) is output as `ua10m`/`va10m` so every
   height is named alike
 - Variable presets for wind energy assessment: `wind`, `wind+density` (the default: winds plus pressure,
