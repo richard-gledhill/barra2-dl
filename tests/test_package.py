@@ -116,3 +116,25 @@ def test_undeclared_imports_finds_a_private_name(tmp_path: Path) -> None:
     )
 
     assert _undeclared_imports(sample) == ['barra2_dl.download._download_file']
+
+
+def _import_mapping_first() -> list[str]:
+    """Run in a fresh interpreter: import mapping before download, which imports mapping, and look a node up."""
+    import barra2_dl.mapping as mapping
+
+    return [name for name in ('GridNode', 'nearest_nodes') if hasattr(mapping, name)]
+
+
+def test_importing_mapping_first_works_despite_download_importing_mapping() -> None:
+    """Mapping imports download only inside nearest_nodes, so there is no import cycle whichever is imported first."""
+    with ProcessPoolExecutor(max_workers=1, mp_context=multiprocessing.get_context('spawn')) as pool:
+        assert pool.submit(_import_mapping_first).result() == ['GridNode', 'nearest_nodes']
+
+
+def test_node_selection_type_matches_the_constant() -> None:
+    """The Literal type and the tuple of node selections list the same values."""
+    from typing import get_args
+
+    from barra2_dl.globals import BARRA2_NODE_SELECTIONS, NodeSelection
+
+    assert get_args(NodeSelection.__value__) == BARRA2_NODE_SELECTIONS
