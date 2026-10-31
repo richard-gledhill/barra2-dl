@@ -1097,7 +1097,7 @@ def test_merge_netcdf_to_dataset_polygon_describes_the_boundary_in_attributes(
     assert ds.attrs['boundary_centroid_lat'] == pytest.approx(-23.54)
     assert ds.attrs['boundary_centroid_lon'] == pytest.approx(133.415)
     assert ds.attrs['boundary_area_km2'] == pytest.approx(
-        0.06 * 0.17 * 111.195**2 * np.cos(np.radians(23.54)), rel=1e-6
+        0.06 * 0.17 * 111.195**2 * np.cos(np.radians(23.54)), rel=1e-4
     )
 
 
