@@ -3,6 +3,7 @@
 import io
 import os
 import re
+import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -52,6 +53,29 @@ class _FakeResponse:
     def text(self) -> str:
         """The content decoded as text."""
         return self.content.decode()
+
+
+@pytest.fixture(autouse=True)
+def sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """Replace time.sleep so retries don't wait; the list collects the delays asked for."""
+    delays: list[float] = []
+    monkeypatch.setattr(barra2_dl.download.time, 'sleep', delays.append)
+    return delays
+
+
+def _script_get(monkeypatch: pytest.MonkeyPatch, replies: list[_FakeResponse | Exception]) -> list[str]:
+    """Replace requests.get with one that gives each reply in turn (raising an exception), then repeats the last."""
+    requested: list[str] = []
+
+    def _get(url: str, **_kwargs) -> _FakeResponse:
+        requested.append(url)
+        reply = replies[min(len(requested), len(replies)) - 1]
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+    monkeypatch.setattr(barra2_dl.download.requests, 'get', _get)
+    return requested
 
 
 @pytest.fixture
@@ -871,6 +895,22 @@ def test_download_serial_offline(fake_get: list[str], tmp_path: Path) -> None:
     assert sorted(p.name for p in tmp_path.iterdir()) == ['file_0.csv', 'file_1.csv', 'file_2.csv']
 
 
+def test_download_serial_cancel_mid_run_stops_new_requests(fake_get: list[str], tmp_path: Path) -> None:
+    """Setting cancel from progress stops the next request; the files not yet tried come back cancelled."""
+    cancel = threading.Event()
+    urlfilenames = [(f'https://example.test/{i}', f'file_{i}.csv') for i in range(4)]
+
+    results = barra2_dl.download.download_serial(
+        urlfilenames,
+        tmp_path,
+        progress=lambda done, _total, _result: cancel.set() if done == 2 else None,
+        cancel=cancel,
+    )
+
+    assert [result.status for result in results] == ['downloaded', 'downloaded', 'cancelled', 'cancelled']
+    assert fake_get == [url for url, _ in urlfilenames[:2]]
+
+
 def test_download_serial_empty_list(fake_get: list[str], tmp_path: Path) -> None:
     """An empty list downloads nothing."""
     barra2_dl.download.download_serial([], tmp_path)
@@ -907,21 +947,28 @@ def test_download_multithread(domain: str, freq: str, tmp_path: Path) -> None:
         assert filename.exists()
 
 
-@pytest.mark.parametrize('cpus', [1, 2, 8])
-def test_download_multithread_pool_size(cpus: int, monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
-    """Downloads every file whatever the cpu count, including a single-cpu machine."""
-    downloaded: list[tuple[str, str, str]] = []
+@pytest.mark.parametrize(('workers', 'expected'), [(None, 4), (2, 2), (8, 8), (0, 1)])
+def test_download_multithread_pool_size(
+    workers: int | None, expected: int, fake_get: list[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The pool has workers threads (4 by default), never fewer than one, whatever the cpu count."""
+    sizes: list[int] = []
+    real_pool = barra2_dl.download.ThreadPool
 
-    def fake_download_file(url: str, file_name: str, folder_path) -> None:
-        downloaded.append((url, file_name, str(folder_path)))
+    def recording_pool(size: int):
+        sizes.append(size)
+        return real_pool(size)
 
-    monkeypatch.setattr(barra2_dl.download, 'cpu_count', lambda: cpus)
-    monkeypatch.setattr(barra2_dl.download, '_download_file', fake_download_file)
-    urlfilenames = [(f'https://example.test/{i}', f'file_{i}.csv') for i in range(5)]
+    monkeypatch.setattr(barra2_dl.download, 'ThreadPool', recording_pool)
+    urlfilenames = [(f'https://example.test/{i}', f'file_{i}.csv') for i in range(3)]
 
-    barra2_dl.download.download_multithread(urlfilenames, tmp_path)
+    if workers is None:
+        results = barra2_dl.download.download_multithread(urlfilenames, tmp_path)
+    else:
+        results = barra2_dl.download.download_multithread(urlfilenames, tmp_path, workers=workers)
 
-    assert sorted(downloaded) == sorted((url, name, str(tmp_path)) for url, name in urlfilenames)
+    assert sizes == [expected]
+    assert [result.status for result in results] == ['downloaded'] * 3
 
 
 def test_download_multithread_offline(fake_get: list[str], tmp_path: Path) -> None:
@@ -932,6 +979,72 @@ def test_download_multithread_offline(fake_get: list[str], tmp_path: Path) -> No
 
     assert sorted(fake_get) == sorted(url for url, _ in urlfilenames)
     assert len(list(tmp_path.iterdir())) == 5
+
+
+@pytest.mark.parametrize('download', ['download_serial', 'download_multithread'])
+def test_download_results_come_back_in_input_order(
+    download: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Each input has a result, in input order: downloaded, skipped or failed."""
+    (tmp_path / 'file_1.csv').write_bytes(b'cached')
+    monkeypatch.setattr(
+        barra2_dl.download.requests,
+        'get',
+        lambda url, **_k: _FakeResponse(404, b'') if url.endswith('/2') else _FakeResponse(),
+    )
+    urlfilenames = [(f'https://example.test/{i}', f'file_{i}.csv') for i in range(4)]
+
+    results = getattr(barra2_dl.download, download)(urlfilenames, tmp_path)
+
+    assert [(result.filename, result.status) for result in results] == [
+        ('file_0.csv', 'downloaded'),
+        ('file_1.csv', 'skipped'),
+        ('file_2.csv', 'failed'),
+        ('file_3.csv', 'downloaded'),
+    ]
+
+
+@pytest.mark.parametrize('download', ['download_serial', 'download_multithread'])
+def test_download_progress_is_called_once_per_file_from_the_calling_thread(
+    download: str, fake_get: list[str], tmp_path: Path
+) -> None:
+    """progress(done, total, result) runs for each file in order, on the thread that called the download."""
+    calls: list[tuple[int, int, str, int]] = []
+
+    def progress(done: int, total: int, result: barra2_dl.download.FileResult) -> None:
+        calls.append((done, total, result.filename, threading.get_ident()))
+
+    urlfilenames = [(f'https://example.test/{i}', f'file_{i}.csv') for i in range(3)]
+
+    getattr(barra2_dl.download, download)(urlfilenames, tmp_path, progress=progress)
+
+    assert [call[:3] for call in calls] == [(1, 3, 'file_0.csv'), (2, 3, 'file_1.csv'), (3, 3, 'file_2.csv')]
+    assert {call[3] for call in calls} == {threading.get_ident()}
+
+
+@pytest.mark.parametrize('download', ['download_serial', 'download_multithread'])
+def test_download_cancelled_before_the_start_makes_no_request(
+    download: str, fake_get: list[str], tmp_path: Path
+) -> None:
+    """With cancel already set every file comes back cancelled and nothing is requested or written."""
+    cancel = threading.Event()
+    cancel.set()
+    urlfilenames = [(f'https://example.test/{i}', f'file_{i}.csv') for i in range(3)]
+
+    results = getattr(barra2_dl.download, download)(urlfilenames, tmp_path, cancel=cancel)
+
+    assert [result.status for result in results] == ['cancelled'] * 3
+    assert fake_get == []
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize('download', ['download_serial', 'download_multithread'])
+def test_download_missing_folder_raises(download: str, fake_get: list[str], tmp_path: Path) -> None:
+    """A missing cache folder still raises before any request."""
+    with pytest.raises(FileNotFoundError):
+        getattr(barra2_dl.download, download)([('https://example.test/a', 'a.csv')], tmp_path / 'missing')
+
+    assert fake_get == []
 
 
 # endregion
@@ -1050,6 +1163,82 @@ def test_download_file_existing_file_is_skipped(fake_get: list[str], tmp_path: P
 
     assert fake_get == []
     assert (tmp_path / 'a.csv').read_bytes() == b'original'
+
+
+def test_download_file_result_downloaded(fake_get: list[str], tmp_path: Path) -> None:
+    """A download returns its filename, status, status code and the one attempt."""
+    result = barra2_dl.download._download_file('https://example.test/a', 'a.csv', tmp_path)
+
+    assert result == barra2_dl.download.FileResult('a.csv', 'downloaded', 200, 1)
+
+
+def test_download_file_result_skipped(fake_get: list[str], tmp_path: Path) -> None:
+    """An existing file is reported as skipped, with no attempt."""
+    (tmp_path / 'a.csv').write_bytes(b'original')
+
+    result = barra2_dl.download._download_file('https://example.test/a', 'a.csv', tmp_path)
+
+    assert result == barra2_dl.download.FileResult('a.csv', 'skipped')
+
+
+def test_download_file_404_is_not_retried(monkeypatch: pytest.MonkeyPatch, sleeps: list[float], tmp_path: Path) -> None:
+    """A 404 fails at once: one attempt, no waiting, nothing written."""
+    requested = _script_get(monkeypatch, [_FakeResponse(404, b'missing')])
+
+    result = barra2_dl.download._download_file('https://example.test/a', 'a.csv', tmp_path)
+
+    assert result == barra2_dl.download.FileResult('a.csv', 'failed', 404, 1, 'Status code: 404')
+    assert len(requested) == 1
+    assert sleeps == []
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    'bad_reply',
+    [_FakeResponse(503, b'busy'), _FakeResponse(200, b''), requests.ConnectionError('reset'), requests.Timeout('slow')],
+    ids=['5xx', 'empty', 'connection-error', 'timeout'],
+)
+def test_download_file_retries_then_succeeds(
+    bad_reply: _FakeResponse | Exception, monkeypatch: pytest.MonkeyPatch, sleeps: list[float], tmp_path: Path
+) -> None:
+    """A transient failure is retried after 1 then 2 seconds, and a later success is written."""
+    requested = _script_get(monkeypatch, [bad_reply, bad_reply, _FakeResponse()])
+
+    result = barra2_dl.download._download_file('https://example.test/a', 'a.csv', tmp_path)
+
+    assert result == barra2_dl.download.FileResult('a.csv', 'downloaded', 200, 3)
+    assert len(requested) == 3
+    assert sleeps == [1, 2]
+    assert (tmp_path / 'a.csv').exists()
+
+
+@pytest.mark.parametrize(
+    ('bad_reply', 'status_code', 'error'),
+    [
+        (_FakeResponse(500, b'x'), 500, 'Status code: 500'),
+        (_FakeResponse(200, b''), 200, 'The response was empty.'),
+        (requests.ConnectionError('reset'), None, 'ConnectionError: reset'),
+        (requests.Timeout('slow'), None, 'Timeout: slow'),
+    ],
+    ids=['5xx', 'empty', 'connection-error', 'timeout'],
+)
+def test_download_file_gives_up_after_four_attempts(
+    bad_reply: _FakeResponse | Exception,
+    status_code: int | None,
+    error: str,
+    monkeypatch: pytest.MonkeyPatch,
+    sleeps: list[float],
+    tmp_path: Path,
+) -> None:
+    """Three retries (four attempts) waiting 1, 2 and 4 seconds, then a failed result: nothing is raised or written."""
+    requested = _script_get(monkeypatch, [bad_reply])
+
+    result = barra2_dl.download._download_file('https://example.test/a', 'a.csv', tmp_path)
+
+    assert result == barra2_dl.download.FileResult('a.csv', 'failed', status_code, 4, error)
+    assert len(requested) == 4
+    assert sleeps == [1, 2, 4]
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_download_file_missing_folder(fake_get: list[str], tmp_path: Path) -> None:

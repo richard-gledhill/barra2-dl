@@ -88,7 +88,7 @@ urlfilenames = barra2_dl.download.point_data_urlfilenames(
     domain = domain,
     freq = freq,
 )
-# Use download_multithread with n-1 threads or download_serial with 1 thread
+# Use download_multithread (4 parallel downloads by default, set with workers=) or download_serial
 barra2_dl.download.download_multithread(urlfilenames, cache_dir)
 #%% md
 # ## Combine data

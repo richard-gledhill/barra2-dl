@@ -112,6 +112,23 @@ dimension, units and cell methods as attributes, the node altitude and provenanc
 site, named `<prefix>_<domain>_<freq>_<selection>_<start>_<end>.nc`.
 _Avoid_: Treating a Dataset as a grid (a gridded download is not implemented)
 
+**Project file**:
+A TOML file with a `[settings]` table and one `[[site]]` per mast, point or area, read by `project.load_project` into
+`Settings` and `Site` dataclasses. A form builds the same dataclasses, so both go through `project.validate` and
+`project.run_site`. Unknown keys are errors.
+_Avoid_: Config file (it holds the sites too)
+
+**Site**:
+One place to get data for, named (the name is the filename prefix) with a point or a box, and any settings it overrides.
+A point is a nearest-node or four-node-average download; a box is an area download.
+_Avoid_: Mast (a mast is one kind of site)
+
+**Run summary**:
+`<name>_run_summary.json`, written by `project.run_site` for every outcome: the inputs, versions, the result of every
+file, the missing months, the outputs and the requested and actual node(s). `project.site_result_to_dict` is its one
+serialiser.
+_Avoid_: Log (it is data for a reader or an interface, not progress messages)
+
 **Metadata header**:
 The `key,value` block at the top of a csv written by `merge.write_csv` or `merge.write_df_csv`, ending in a blank line: source, node, elevation,
 requested point, time zone, dataset versions and download date, mirroring the Dataset attributes. `merge.read_csv`
