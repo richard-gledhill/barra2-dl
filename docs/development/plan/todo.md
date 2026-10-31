@@ -21,7 +21,15 @@ Resumed 2026-10-31 after RFC-007 shipped. The owner answered RFC section 9 on 20
 - [x] Owner review of the note (decisions recorded in the SPEC); PR
 
 ## Slice 2: `feat/nearest-nodes`
-- [ ] SPEC addendum; `mapping.nearest_nodes`; tests; PR
+- [x] SPEC addendum written (PR `docs: slice 2 SPEC addendum (nearest_nodes)`); owner review pending
+- [ ] Owner answers the four questions at the end of the addendum
+- [ ] Fixtures: `save_node_lookups` in `scripts/build_test_fixtures.py` (live, once)
+- [ ] `mapping`: `GridNode`, `NodeLookupError`, `nearest_nodes` (cache, shrunk box); delete the draft helpers if approved; tests
+- [ ] `globals`: `nodes` in `BARRA2_NODE_SELECTIONS` and `NodeSelection`; `download.nodes_data_urlfilenames`; tests
+- [ ] `merge`: `node_selection='nodes'`, `node_mean`, frames and header without a mean; tests
+- [ ] `project`: `Site.nodes`/`node_mean`, validation rows, `run_site` nodes route, summary; tests
+- [ ] Example project and netCDF example cells (`.py` and `.ipynb`); docs (how-to-use, CONTEXT, README, AGENTS); live tests
+- [ ] `make check`, `make test`, `make docs-test`, end-to-end run; PR
 
 ## Slice 2b: `feat/polygon-boundary` (beyond RFC-005; owner request)
 - [ ] SPEC addendum; `mapping.Polygon`, file readers, node mask, `Site.polygon`, project-file key; tests; PR
