@@ -8,7 +8,7 @@ Style and gates: [conventions.md](../conventions.md), [constraints.md](../constr
 - Slice 1 (the engine) shipped in #147.
 - Slice 1b (research) is done and reviewed: see "Slice 1b addendum" for the owner's decisions.
 - Slice 2 (node lookup, chosen nodes) has its addendum, "Slice 2 addendum" at the end, approved by the owner on 2026-10-31, and shipped in #150.
-- Slice 2b (polygon boundary) has its addendum, "Slice 2b addendum" at the end, awaiting owner review.
+- Slice 2b (polygon boundary) has its addendum, "Slice 2b addendum" at the end, approved by the owner on 2026-10-31.
 
 ## Scope
 
@@ -579,8 +579,8 @@ used site, not only a table. This is a slice 4/5 requirement (see "Not in scope"
 
 ## Slice 2b addendum: polygon boundary (`feat/polygon-boundary`)
 
-Written 2026-10-31, when slice 2b started. **Status: awaiting owner review. No library code or tests until it is
-approved.** It builds on the slice 1b owner decisions (the table under "Slice 1b addendum") and the slice 2 work (#150),
+Written 2026-10-31, when slice 2b started. **Status: approved with the owner's five answers on 2026-10-31 (see "Decisions"). Implementation
+is a separate PR, started when the owner says.** It builds on the slice 1b owner decisions (the table under "Slice 1b addendum") and the slice 2 work (#150),
 settles the rows still open for 2b in the design table, and does not reopen RFC-005 section 8, the section 9 answers or
 the slice 1b and slice 2 decisions.
 
@@ -609,7 +609,7 @@ boundary, and any change to `nearest`, `average4`, `nodes` or box-`area` behavio
 | C | The mean | `node_mean = true`, the key slice 2 added, so one key means "also write the mean of the nodes used" for `nodes` and for a polygon. Weights are cell overlap area (times the cosine of the node latitude), normalised; hybrid method. |
 | D | Output | netCDF only, the `area` grid (`lat`, `lon` dimensions) with nodes that do not overlap the polygon set to missing, plus `cell_overlap` and `cell_weight` grids and, with `node_mean`, the `<var>_site_mean` series. |
 | E | Request | One box per variable-month, the polygon's bounding box widened by 1% of the spacing (box type and cache files as an area), so the cache is the same for any polygon with that bounding box. The mask is applied at merge. |
-| F | Several points for one site (turbines) | Each point stays its own site for now; a shared-download group is deferred to after the slice 5 import (backlog). |
+| F | Several points for one site (turbines) | Out of scope (owner): a site is a boundary or user-defined points. |
 
 ### `Polygon` and the readers (`mapping.py`)
 
@@ -744,7 +744,7 @@ format = "netcdf"
 | Size guard (**Q4**) | a. error above 2,500 nodes from the bounding box (**recommended**); b. no guard; c. a warning only | a: a continent-sized polygon would otherwise start tens of thousands of requests. The bound is a setting-free constant; raise it if wanted. |
 | Geometry home | a. `mapping.py` (**recommended**, as planned); b. a new `boundary.py` | a: about 300 lines more, still one concern (geometry on the grid); splitting later changes only imports. |
 | Weights | a. cell overlap area x cos(lat) (**owner decision**); b. equal; c. inverse distance | a |
-| Several points for one site (**Q5**) | a. each point its own site (**recommended**); b. a site group sharing one download | a: the nodes selection and a polygon cover most turbine-layout cases; a group needs a project-file shape and engine API that the slice 5 mast-list import will show. Backlog: "site group sharing one cached download". |
+| Several points for one site (**Q5**) | a. each point its own site; b. a site group sharing one download | Owner: skipped. A site is a boundary or user-defined points. |
 
 ### Tests (offline unless marked live)
 
@@ -786,7 +786,7 @@ format = "netcdf"
 
 - Slice 5: drawing a polygon on the map, importing a boundary file in the GUI, drawing the nodes used from the summary
   (`nodes` entries above), and whether a plain box `area` summary should list its nodes too.
-- Backlog: the site group sharing one download (turbines), csv for a boundary, `MultiPolygon` support, shapefile, a
+- Backlog: csv for a boundary, `MultiPolygon` support, shapefile, a
   node-inside-polygon filter (the owner's alternative inclusion rule), and antimeridian polygons.
 
 ### Acceptance
@@ -800,12 +800,18 @@ format = "netcdf"
 - `make check`, `make test`, `make docs-test`, the live tests and an end-to-end run of the example project in a scratch
   folder pass, with no suppression added; the example pairs are in step.
 
-### Questions for the owner
+### Decisions
 
-1. **Several parts:** refuse a `MultiPolygon` or several features and ask for one site per part (a, recommended), or accept
-   them as one boundary (b)?
-2. **"Smaller than one cell":** the bounding box under one spacing in both directions (a, recommended), polygon area under one
-   cell area (b), or no special case (c)?
-3. **Boundary output:** netCDF only (a, recommended), or also one csv per used node (b)?
-4. **Size guard:** error above 2,500 nodes (a, recommended), a warning (c), or none (b)?
-5. **Turbine points:** each point its own site for now, with the site group in the backlog (a, recommended)?
+Owner's answers of 2026-10-31; the option tables above are the reasoning.
+
+1. **Several parts:** a `MultiPolygon` or several features are refused, with a message asking for one site per part.
+2. **Sub-cell:** a polygon whose bounding box is under one grid spacing in both latitude and longitude uses the one node whose
+   cell holds its centroid.
+3. **Output:** netCDF only. A boundary cannot be written as csv.
+4. **Size guard:** error above 2,500 nodes. The owner asked for the size of a 1 GW farm to be estimated and the limit used if
+   it is under 2,500. At 2 MW/km² (a conservative onshore density; offshore is higher) 1 GW is about 500 km², a 22 km square
+   or a 50 km x 10 km strip. A cell is about 137 km² on AUS-11 and 18 km² on AUST-04 near -23°, so the bounding box holds about 9
+   to 12 nodes on AUS-11 and 35 to 45 on AUST-04. At 1 MW/km² on AUST-04 it is still under 150. 2,500 leaves more than an order
+   of magnitude of headroom, so it stands. The figures are a rough estimate, not measured.
+5. **Turbine points:** out of scope. A site is either a boundary or user-defined points (a point, the four around it, or chosen
+   `nodes`). No site group is planned and none goes in the backlog.
