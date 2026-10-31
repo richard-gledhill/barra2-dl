@@ -1,0 +1,3 @@
+panel
+ipyleaflet
+jupyter_bokeh

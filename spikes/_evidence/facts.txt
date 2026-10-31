@@ -1,0 +1,10 @@
+== streamlit env
+streamlit 1.66.1 | licence: 'Apache-2.0' [] | latest upload: 2026-10-21
+streamlit-folium 0.27.4 | licence: '' [] | latest upload: 2026-08-03
+folium 0.20.0 | licence: 'MIT' ['MIT License'] | latest upload: 2026-07-26
+branca 0.8.2 | licence: 'MIT' ['MIT License'] | latest upload: 2025-10-06
+== nicegui env
+nicegui 3.18.0 | licence: 'MIT' [] | latest upload: 2026-10-07
+fastapi 0.162.0 | licence: 'MIT' [] | latest upload: 2026-10-23
+uvicorn 0.54.0 | licence: 'BSD-3-Clause' [] | latest upload: 2026-09-25
+nicegui-highcharts  | licence: 'NOT INSTALLED' [] | latest upload: 2026-09-21

@@ -1,0 +1,12 @@
+[project]
+name = "spike-common"
+version = "0"
+requires-python = ">=3.12"
+dependencies = []
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["fake_ncss", "spike_common"]

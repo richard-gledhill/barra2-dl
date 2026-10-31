@@ -1,0 +1,4 @@
+ipywidgets
+ipyleaflet
+voila
+nbclient

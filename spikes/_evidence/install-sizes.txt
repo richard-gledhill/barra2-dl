@@ -1,0 +1,3 @@
+streamlit install 16s 276MB 6495 files
+nicegui install 9s 158MB 6181 files
+base (library only) 103MB 3750 files
