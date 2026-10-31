@@ -1,17 +1,17 @@
 # Todo: GUI for wind resource assessment (RFC-005)
 
-> **Parked 2026-10-31.** [RFC-007](../../../requirements/cache-validation-csv-metadata-prd.md) goes first. Before
-> resuming: move these files back to `plan/`, take the atomic write and empty-response failure out of slice 1 (RFC-007
-> does them), and fold in the RFC-005 5.7 additions and section 9 answers.
+Resumed 2026-10-31 after RFC-007 shipped. Owner answers to RFC section 9 (SPEC, "Decisions for approval") come before slice 1 code.
 
 ## Slice 1: `feat/project-engine`
-- [ ] `FileResult`; `_download_file` retries, empty-response failure, atomic write; tests
+- [ ] `FileResult`; `_download_file` retries (atomic write and empty response done by RFC-007); tests
 - [ ] `download_serial` / `download_multithread`: results, `workers`, `progress`, `cancel`; tests
-- [ ] `project.py`: data classes, `ProjectError`, `load_project` validation; tests
-- [ ] `run_site`: output, run summary, failed/partial/cancelled paths; tests
-- [ ] Export in `__init__.py`; `test_package.py`
+- [ ] `globals`: `BARRA2_OUTPUT_FORMATS`, `Literal` aliases; `__all__` for `globals` and `mapping`; tests
+- [ ] `project.py`: data classes, `Problem`, `ProjectError`, `project_from_dict`/`site_from_dict`, `load_project`, `validate`; tests
+- [ ] `plan_site`; tests
+- [ ] `run_site`: output (`write_csv`), run summary, `site_result_to_dict`, failed/partial/cancelled/cache-mismatch paths; tests
+- [ ] Export in `__init__.py`; `test_package.py` boundary tests
 - [ ] `scripts/example_project.toml`; example cell in the netCDF example (`.py` and `.ipynb`)
-- [ ] Docs: how-to-use, `CONTEXT.md`, README, modules page
+- [ ] Docs: how-to-use, `CONTEXT.md`, README, modules page; ADR-004
 - [ ] Live tests; `make check`, `make test`, `make docs-test`; end-to-end run in a scratch folder
 - [ ] PR
 

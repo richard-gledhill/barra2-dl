@@ -1,9 +1,5 @@
 # Plan: GUI for wind resource assessment (RFC-005)
 
-> **Parked 2026-10-31.** [RFC-007](../../../requirements/cache-validation-csv-metadata-prd.md) goes first. Before
-> resuming: move these files back to `plan/`, take the atomic write and empty-response failure out of slice 1 (RFC-007
-> does them), and fold in the RFC-005 5.7 additions and section 9 answers.
-
 Spec: [SPEC.md](SPEC.md). One PR per slice, each branched from an up-to-date `main`, each passing `make check`,
 `make test` and `make docs-test`. Check a PR's state before pushing to its branch.
 
@@ -11,14 +7,18 @@ Spec: [SPEC.md](SPEC.md). One PR per slice, each branched from an up-to-date `ma
 
 Order, each step test-first:
 
-1. `FileResult` and `_download_file` retries, empty-response failure, atomic write. Tests with `requests.get` and
-   `time.sleep` faked.
+1. `FileResult` and `_download_file` retries (atomic write and empty-response failure came with RFC-007). Tests with
+   `requests.get` and `time.sleep` faked.
 2. `download_serial` / `download_multithread`: results in input order, `workers`, `progress`, `cancel`. Replace the
    `cpu_count` test.
-3. `project.py` data classes, `ProjectError`, `load_project` and its validation (all problems in one error).
-4. `run_site`: URLs, download, versions, merge, output, run summary; failure, partial and cancel paths.
-5. `__init__.py` export, `test_package.py`, `scripts/example_project.toml`, example cell (`.py` and `.ipynb`).
-6. Docs: how-to-use, `CONTEXT.md`, README, modules page.
+3. `project.py` data classes, `Problem`, `ProjectError`, `project_from_dict`/`site_from_dict`, `load_project`, public
+   `validate` (all problems in one error); `BARRA2_OUTPUT_FORMATS`, `Literal` aliases, `__all__` for `globals` and
+   `mapping`.
+4. `plan_site`; `run_site`: URLs, download, versions, merge, output (`write_csv` with header), run summary,
+   `site_result_to_dict`; failure, partial, cache-mismatch and cancel paths.
+5. `__init__.py` export, `test_package.py` boundary tests, `scripts/example_project.toml`, example cell (`.py` and
+   `.ipynb`).
+6. Docs: how-to-use, `CONTEXT.md`, README, modules page, ADR-004.
 7. Live tests, then full verification: `make check`, `make test`, `make docs-test`, live tests, end-to-end run in a
    scratch folder.
 
