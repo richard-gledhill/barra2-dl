@@ -1,0 +1,8 @@
+{
+  "type": "Feature",
+  "properties": {"name": "two cells"},
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [[[133.38, -23.57], [133.45, -23.57], [133.45, -23.51], [133.38, -23.51], [133.38, -23.57]]]
+  }
+}
