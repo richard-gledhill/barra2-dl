@@ -1,13 +1,14 @@
 # SPEC: GUI for wind resource assessment (RFC-005), starting with the engine
 
-> **Parked 2026-10-31.** [RFC-007](../../../requirements/cache-validation-csv-metadata-prd.md) goes first. Before
-> resuming: move these files back to `plan/`, take the atomic write and empty-response failure out of slice 1 (RFC-007
-> does them), and fold in the RFC-005 5.7 additions and section 9 answers.
-
-Requirement: [RFC-005](../../../requirements/gui-prd.md); its decisions are in section 8 and are not reopened here.
-Style and gates: [conventions.md](../../../conventions.md), [constraints.md](../../../constraints.md).
+Requirement: [RFC-005](../requirements/gui-prd.md); its decisions are in section 8 and are not reopened here.
+Style and gates: [conventions.md](../conventions.md), [constraints.md](../constraints.md).
 
 ## Scope
+
+Resumed 2026-10-31 after [RFC-007](../requirements/cache-validation-csv-metadata-prd.md) shipped (#143). RFC-007 already
+did the cache check (`_check_cache`, `CacheMismatchError`), the atomic `.part` write and the empty-response failure in
+`download.py`, and the csv metadata header (`merge.write_csv`). Slice 1 builds on them and adds the RFC-005 5.7 engine
+additions, which the owner approved on 2026-10-31 with the answers to RFC section 9 (see "Decisions").
 
 RFC-005 in six slices, one PR each (section 7 of the RFC). **This SPEC details slice 1.** Slices 2-6 are outlined in
 [plan.md](plan.md) and get their own SPEC addendum before they start.
@@ -16,7 +17,7 @@ Slice 1 is the engine: `project.py` (`load_project`, `run_site`), retries, per-f
 the run summary, with tests, an example project file and an example-script cell.
 
 Out of scope for slice 1: node lookup (`nearest_nodes`), the toolkit spikes, any GUI code, the command-line tool, and
-changes to `mapping.py`.
+changes to `mapping.py` other than its `__all__`.
 
 ## Changes
 
@@ -25,17 +26,20 @@ changes to `mapping.py`.
 - New `FileResult` (frozen dataclass, in `Constants and types`, exported): `filename`, `status`
   (`downloaded` | `skipped` | `failed` | `cancelled`), `status_code` (`int | None`), `attempts` (`int`), `error`
   (`str | None`).
-- `_download_file` returns a `FileResult` and retries timeouts, connection errors and HTTP 5xx up to 3 times after the
+- `_download_file` returns a `FileResult` (`skipped` for a file already in the cache) and retries timeouts, connection errors and HTTP 5xx up to 3 times after the
   first attempt, sleeping 1, 2 and 4 s (`_RETRY_DELAYS`). Other 4xx (404 included) are not retried. Failures are
   logged and printed, never raised. A missing cache folder still raises `FileNotFoundError`.
-- A 200 with an empty body is a failure and is not written. Files are written to a temporary name and renamed, so a
-  killed run can't leave a half-written file that the next run skips as "existing" (RFC 3.3, atomic writes).
+- Already done by RFC-007 and kept: a 200 with an empty body is a failure and is not written, and files are written to
+  `<name>.part` and renamed. The retry loop wraps the request and the write; an empty body is retried like a 5xx.
+- `_check_cache` still runs first in `download_serial` and `download_multithread`, before any request or pool, and a
+  `CacheMismatchError` still propagates to the caller of these functions, with no results.
 - `download_serial(urlfilenames, folder_path, *, progress=None, cancel=None) -> list[FileResult]` and
   `download_multithread(urlfilenames, folder_path, *, workers=4, progress=None, cancel=None) -> list[FileResult]`. The
   fixed pool of 4 replaces `cpu_count() - 1` (RFC decision 11). Callers that ignore the return value are unaffected.
 - `progress(done, total, result)` is called once per file, from the calling thread. `cancel` is a `threading.Event`:
   once set, no new request starts, files not yet attempted come back as `cancelled`, and in-flight requests finish.
   Results come back in input order.
+- `_report` (RFC-007) stays the one place that logs and prints a progress message.
 
 ### `project.py` (new, exported from `__init__.py`)
 
@@ -43,7 +47,7 @@ changes to `mapping.py`.
 @dataclass(frozen=True)
 class Settings:   # defaults from the earlier RFCs
     domain: str = 'AUS-11'; freq: str = '1hr'; preset: str = 'wind+density'
-    node_selection: str = 'nearest'; format: str = 'csv'
+    node_selection: str = 'nearest'; format: str = 'csv'; download: str = 'netcdf4'   # or 'csv', point sites only
     start: date; end: date                      # required in a project file
     cache: Path = Path('cache'); out: Path = Path('output'); workers: int = 4
 
@@ -63,8 +67,24 @@ class SiteResult:
     outputs: list[Path]; summary_path: Path
     files: list[FileResult]; missing: list[str]; error: str | None
 
-class ProjectError(ValueError):                 # .problems: list[str], one per fault
+class ProjectError(ValueError):                 # .problems: list[Problem], one per fault
+
+@dataclass(frozen=True)
+class Problem:  site: str | None; key: str; message: str
 ```
+
+From RFC-005 5.7 (approved, section 9 item 2), so a form, flags and a file share one path:
+
+- `project_from_dict(data, base_dir) -> Project` and `site_from_dict(data, settings) -> Site` build the dataclasses
+  from plain data; `load_project(path)` is `tomllib` plus `project_from_dict`.
+- `validate(settings, site) -> list[Problem]`, public; `ProjectError.problems` holds the same `Problem`s.
+- `plan_site(site, settings) -> SitePlan` lists the files a run would download and which are already cached, using
+  RFC-007's `_cached_file_problem` so a mismatch shows in the plan before the run.
+- `site_result_to_dict(result) -> dict` is the one serialiser of `SiteResult` and the run summary, so the GUI, a later
+  CLI and any API read the same structure.
+- The choices come from the library: `BARRA2_FREQS`, `BARRA2_PRESETS`, `BARRA2_NODE_SELECTIONS`, a new
+  `BARRA2_OUTPUT_FORMATS = ('csv', 'netcdf')` in `globals`, and `Literal` aliases `NodeSelection`, `OutputFormat`,
+  `FileStatus` and `SiteStatus`. `globals.py` and `mapping.py` gain `__all__`.
 
 - `load_project(path) -> Project` reads TOML with `tomllib`. `[settings]` and `[[site]]` only; unknown tables and keys
   are errors. Relative `cache` and `out` resolve against the file's folder. `start` and `end` accept a quoted ISO date
@@ -75,15 +95,21 @@ class ProjectError(ValueError):                 # .problems: list[str], one per 
   prefix); lat/lon range; a box with `north > south` and `east > west`; both or neither of point and box;
   domain/freq (`BARRA2_FREQS`), the preset at that frequency (`preset_variables`), `node_selection` and `format`
   values; `start <= end`; `workers >= 1`. A box site is an `area` download unless it names another selection (an error);
-  a point site with `area` is an error; `area` with `csv` is an error. Every message says what to change.
+  a point site with `area` is an error; `area` with `csv` is an error; `download = "csv"` is an error unless the site
+  is a point with `nearest` and `format = "csv"` (RFC decision 13). Every message says what to change.
 - `run_site(site, settings, progress=None, cancel=None) -> SiteResult` validates the effective settings again (the GUI
   builds the dataclasses without a file), creates the cache and output folders, and then:
-  1. builds the URLs (`point_data_urlfilenames` or `area_data_urlfilenames`) as **netCDF4 for every route**;
+  1. builds the URLs (`point_data_urlfilenames` or `area_data_urlfilenames`) as **netCDF4 by default**; a point site
+     with `download = "csv"` builds csv URLs and takes the csv route in steps 3 and 4;
   2. downloads with `download_multithread`;
-  3. resolves variable versions, merges with `merge_netcdf_to_dataset`;
-  4. writes `<name>_<domain>_<freq>_<selection>_<start>_<end>.nc`, or for `csv` the frames of `dataset_to_frames`
-     as `<name>_<domain>_<freq>_<frame>_<start>_<end>.csv` (the names the netCDF example uses);
+  3. resolves variable versions, merges with `merge_netcdf_to_dataset` (csv route: `merge_csvs_to_df`, then
+     `convert_wind_components`; units are left as they are);
+  4. writes `<name>_<domain>_<freq>_<selection>_<start>_<end>.nc`, or for `csv` `merge.write_csv(ds, out, name)`: the
+     frames of `dataset_to_frames` as `<name>_<domain>_<freq>_<frame>_<start>_<end>.csv`, each with the metadata
+     header (RFC-007); csv route: `merge.write_df_csv`, which writes the same header and file name;
   5. writes `<name>_run_summary.json` beside them.
+- A `CacheMismatchError` from the download (a moved site that kept its name) is a site-level failure: `failed`, with
+  the error's message in `error` and the failing files in `missing`; nothing is downloaded or overwritten (RFC-007).
 - A site-level failure (no files, merge error, site outside the grid) returns `status='failed'` with `error`; it does
   not raise, so a caller's loop over sites carries on (RFC decision 12). Only invalid settings raise, before any
   request. Failed months still merge: the output is written with `status='partial'` and the gaps are in `missing`
@@ -101,9 +127,12 @@ count and the `orog` range). Written for every outcome, including failure and ca
 ### Tests
 
 `tests/test_download.py` gains regions for retries, `FileResult`, progress, cancel and workers (the existing
-`cpu_count` test is replaced, because the behaviour changes). `tests/test_project.py` mirrors `project.py`.
+`cpu_count` test is replaced, because the behaviour changes). `tests/test_project.py` mirrors `project.py`. `tests/test_package.py` gains the boundary tests of RFC 5.7 using only
+the standard library: interfaces import only names in a module's `__all__` (plus `globals` constants); no library or
+engine module imports `barra2_dl.gui`, `barra2_dl.cli` or a toolkit; and `import barra2_dl` works without the `gui`
+extra.
 `requests.get` is faked and `time.sleep` is patched; `run_site` tests reuse `tests/data/` (the fake serves fixture
-bytes by variable) and patch `project.preset_variables` to the fixture's variables. Live tests (`BARRA2_LIVE=1`): one
+bytes by variable, written to the paths RFC-007's cache check reads) and patch `project.preset_variables` to the fixture's variables. Live tests (`BARRA2_LIVE=1`): one
 month of `run_site` for AUS-11 1hr, AUST-04 1hr and AUST-04 20min (`wind` preset).
 
 ### Examples and docs
@@ -111,6 +140,7 @@ month of `run_site` for AUS-11 1hr, AUST-04 1hr and AUST-04 20min (`wind` preset
 - `scripts/example_project.toml`: the RFC 5.5 file with a one-month range, so it runs in a minute.
 - A cell in `scripts/example_barra2_dl_netcdf.py` and its notebook (kept in step with jupytext) that loads the file and
   loops over the sites with `run_site`. The step-by-step cells stay.
+- ADR-004 records the layering (top-level library, `gui/` and later `cli.py` beside it; rules 1-4 of RFC 5.7).
 - `docs/how-to-use.md`: a "Project file" section. `CONTEXT.md`: **Project file**, **Site**, **Run summary**. README
   one-liner. `modules.md` if it lists modules by hand. No new dependency; `tomllib` is standard library.
 
@@ -161,7 +191,7 @@ Decided by the owner on 2026-10-31, and checked against the live server the same
 - **Node lookup uses the server only.** `nearest_nodes` and the node layer take their nodes from a small
   bounding-box request to NCSS (the `orog` fixed field, cached), never from a stored file, in line with RFC-005 5.1.
 - **No node data files in `src/`.** The AUS-11 node list, `BOM_BARRA2_AUS11_latlon.csv`, was moved to
-  [`docs/development/references/`](../../../references/README.md) as reference material. It is not packaged in wheels or
+  [`docs/development/references/`](../references/README.md) as reference material. It is not packaged in wheels or
   tagged releases, and neither the package nor the tests read it.
 - **Both grids are rectilinear** (checked 2026-10-31 from the fixed `orog` file of each domain, over OPeNDAP):
 
@@ -203,14 +233,24 @@ above. The owner reviews the note; it doesn't change a requirements doc.
 
 Findings that contradict an RFC-005 decision are reported to the owner and don't change the RFC.
 
-## Decisions for approval
+## Decisions
 
-1. **One download route.** `run_site` always downloads netCDF4 and writes csv from `dataset_to_frames`, instead of a
-   second csv download/merge/convert path. One code path, and `average4` csv needs it anyway. Cost: csv runs don't
-   reuse a cache made by the csv example (`.csv` files).
-2. **`cancelled` as a fourth `FileResult` status.** RFC 5.6 names three; a cancelled run otherwise has no result for
-   files it never tried.
+Approved by the owner on 2026-10-31, as answers to RFC-005 section 9 and the questions below:
+
+A. **Layout (section 9, 1):** top-level library with `gui/` and later `cli.py` beside it; no `core/` folder.
+B. **Engine additions (2):** the 5.7 list above, all in slice 1.
+C. **Console output (3):** keep the current dual pattern (RFC-007's `_report`) for now and rely on the progress
+   callback in the GUI; revisit at slice 4. The convention is the owner's to change.
+D. **Boundary tests (4):** standard library, not `import-linter`.
+E. **ADR (5):** ADR-004, written in this slice.
+F. **Cache mismatch in the GUI (7):** `run_site` reports it as a failed site. The GUI shows the error and offers a
+   rename, and never deletes files for the user; detail at slice 4.
+
+1. **Download route is a setting.** The default is the netCDF4 download for every route. A point site can switch to the
+   csv download (`download = "csv"`), which runs the csv route end to end and writes csv only (RFC decision 13). The
+   csv route's cache is the csv example's `.csv` files, so it reuses them.
+2. **`cancelled` as a fourth `FileResult` status** (RFC decision 14).
 3. **Retry arithmetic.** "Up to 3 times with back-off 1, 2, 4 s" is read as 3 retries (4 attempts in all).
-4. **Atomic writes and empty-response failure** are added to `_download_file` (listed as an idea to adopt in RFC 3.3).
+4. **Atomic writes and empty-response failure** were done by RFC-007 (#143); slice 1 only adds retries around them.
 5. **Example cell goes in the netCDF example only**, since the csv example is the step-by-step route.
-6. **RFC-005 stays `Draft`** until you say otherwise; I'll ask again when slice 1 is ready.
+6. **RFC-005 is `Accepted`** (2026-10-31).
