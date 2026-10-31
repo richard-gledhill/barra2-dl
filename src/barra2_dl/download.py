@@ -5,10 +5,13 @@ import csv
 import logging
 import re
 import sys
+import threading
 import time
 import warnings
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 from datetime import datetime, timedelta
-from multiprocessing import cpu_count
+from functools import partial
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -33,6 +36,7 @@ from barra2_dl.globals import (
     BARRA2_URL_FX_BBOX,
     BARRA2_VAR_ALIASES,
     BARRA2_VARS,
+    FileStatus,
 )
 from barra2_dl.mapping import LatLonBBox, bracket_index
 
@@ -41,7 +45,10 @@ logger.addHandler(logging.NullHandler())
 
 __all__ = [
     'CacheMismatchError',
+    'FileResult',
+    'ProgressCallback',
     'area_data_urlfilenames',
+    'cache_problems',
     'download_multithread',
     'download_serial',
     'point_data_urlfilenames',
@@ -59,9 +66,26 @@ _DEPRECATED_URLS = {
     BARRA2_URL_AUST04_1HR: ('AUST-04', '1hr'),
 }
 
+# seconds to wait before each retry of a timeout, connection error, server error (5xx) or empty response
+_RETRY_DELAYS = (1, 2, 4)
+
 # how far a cached point's requested location may differ from the request, in degrees: NCSS writes 3 decimals
 _POINT_TOLERANCE = 0.0005
 _STATION_PATTERN = re.compile(r'GridPointRequestedAt\[(\d+(?:\.\d+)?)([NS])_(\d+(?:\.\d+)?)([EW])\]')
+
+
+@dataclass(frozen=True)
+class FileResult:
+    """What happened to one file of a download: its filename, status, last HTTP status code, attempts and error."""
+
+    filename: str
+    status: FileStatus
+    status_code: int | None = None
+    attempts: int = 0
+    error: str | None = None
+
+
+type ProgressCallback = Callable[[int, int, FileResult], None]
 # endregion
 
 
@@ -331,14 +355,24 @@ def resolve_variable_versions(
 def download_serial(
     urlfilenames: list[URLFilenamePair],
     folder_path: str | Path,
-) -> None:
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: threading.Event | None = None,
+) -> list[FileResult]:
     """Download all files from urls in list of URLFilenamePairs and save it as folder_path/filename, using a loop.
+
+    A file already in folder_path is skipped. A failed file is retried (see _download_file), then reported in its
+    result and logged, never raised, so one bad month doesn't stop the rest.
 
     Args:
         urlfilenames (list[URLFilenamePair]): A list of URLFilenamePair of the files to be downloaded.
         folder_path (str | Path): The path where the file should be saved.
+        progress (ProgressCallback | None): Called as progress(done, total, result) once per file, in order.
+        cancel (threading.Event | None): Once set, no new request starts and the files not yet attempted come back as
+            cancelled.
 
-    Returns: None
+    Returns:
+        list[FileResult]: One result per input, in input order.
 
     Raises:
         CacheMismatchError: If a file already in folder_path holds another location than the url requests, or can't be
@@ -351,24 +385,37 @@ def download_serial(
     _check_cache(urlfilenames, folder_path)
     # download multiple files in loop
     t0 = time.time()
-    for url, filename in urlfilenames:
-        _download_file(url, filename, folder_path)
+    results = _collect(
+        map(partial(_fetch, folder_path=folder_path, cancel=cancel), urlfilenames), len(urlfilenames), progress
+    )
     logger.info(f'Download time <{time.time() - t0}>')
     sys.stdout.write(f'Download time: <{time.time() - t0}>')
     sys.stdout.write('\n')
+    return results
 
 
 def download_multithread(
     urlfilenames: list[URLFilenamePair],
     folder_path: str | Path,
-) -> None:
+    *,
+    workers: int = 4,
+    progress: ProgressCallback | None = None,
+    cancel: threading.Event | None = None,
+) -> list[FileResult]:
     """Download all files from urls in list of URLFilenamePairs and save it as folder_path/filename, using multithread.
+
+    As download_serial, with a pool of workers threads. progress is called from the calling thread, not the workers.
 
     Args:
         urlfilenames (list[URLFilenamePair]): A list of URLFilenamePair of the files to be downloaded.
         folder_path (str | Path): The path where the file should be saved.
+        workers (int): Number of parallel downloads. Default 4.
+        progress (ProgressCallback | None): Called as progress(done, total, result) once per file, in order.
+        cancel (threading.Event | None): Once set, no new request starts, the files not yet attempted come back as
+            cancelled, and requests already under way finish.
 
-    Returns: None
+    Returns:
+        list[FileResult]: One result per input, in input order.
 
     Raises:
         CacheMismatchError: If a file already in folder_path holds another location than the url requests, or can't be
@@ -380,13 +427,35 @@ def download_multithread(
     """
     _check_cache(urlfilenames, folder_path)
     # download multiple files in parallel
-    workers = max(1, cpu_count() - 1)
     t0 = time.time()
-    with ThreadPool(workers) as pool:
-        pool.starmap(_download_file, [(url, filename, folder_path) for url, filename in urlfilenames])
+    with ThreadPool(max(1, workers)) as pool:
+        fetch = partial(_fetch, folder_path=folder_path, cancel=cancel)
+        results = _collect(pool.imap(fetch, urlfilenames), len(urlfilenames), progress)
     logger.info(f'Download time <{time.time() - t0}>')
     sys.stdout.write(f'Download time: <{time.time() - t0}>')
     sys.stdout.write('\n')
+    return results
+
+
+def cache_problems(urlfilenames: list[URLFilenamePair], folder_path: str | Path) -> list[tuple[str, str]]:
+    """Return the (filename, reason) of each cached file that doesn't match its url or can't be read.
+
+    Nothing is requested, changed or logged. A file that isn't in the folder isn't a problem. This is what the
+    downloads check before any request, and what a plan of a run shows beforehand.
+
+    Args:
+        urlfilenames (list[URLFilenamePair]): The files a run would download.
+        folder_path (str | Path): The cache folder.
+
+    Returns:
+        list[tuple[str, str]]: One pair per failing file, empty if the cache is fine.
+    """
+    folder = Path(folder_path)
+    return [
+        (filename, problem)
+        for url, filename in urlfilenames
+        if (folder / filename).is_file() and (problem := _cached_file_problem(folder / filename, url))
+    ]
 
 
 # endregion
@@ -602,22 +671,43 @@ def _list_timestamp_range(
     return [first_timestamp, last_timestamp]
 
 
+def _fetch(urlfilename: URLFilenamePair, *, folder_path: str | Path, cancel: threading.Event | None) -> FileResult:
+    """Download one file unless the run was cancelled, in which case say so without a request."""
+    url, filename = urlfilename
+    if cancel is not None and cancel.is_set():
+        return FileResult(filename, 'cancelled')
+    return _download_file(url, filename, folder_path)
+
+
+def _collect(results: Iterable[FileResult], total: int, progress: ProgressCallback | None) -> list[FileResult]:
+    """Gather the results as they arrive, in input order, calling progress(done, total, result) for each."""
+    collected: list[FileResult] = []
+    for result in results:
+        collected.append(result)
+        if progress is not None:
+            progress(len(collected), total, result)
+    return collected
+
+
 def _download_file(
     url: str,
     file_name: str,
     folder_path: str | Path,
-) -> None:
+) -> FileResult:
     """Download the file from the url and save it as folder_path/filename.
 
-    If the downloads folder does not exist, it will be created due to the
-    create_folder argument.
+    An existing file is skipped. A timeout, connection error, server error (5xx) or empty response is retried after
+    each of _RETRY_DELAYS seconds, so up to four attempts; any other status (404 included) is not retried. The final
+    failure is logged, printed and returned in the result, never raised. The response is written to <file_name>.part
+    and renamed, so the final name only ever holds a complete response.
 
     Args:
         url (str): The URL of the file to be downloaded.
         file_name (str): The name to save the downloaded file.
         folder_path (str | Path): The path where the file should be saved.
 
-    Returns: None
+    Returns:
+        FileResult: downloaded, skipped or failed, with the last status code, the attempts made and any error.
 
     Raises:
         FileNotFoundError: If folder does not exist.
@@ -633,19 +723,33 @@ def _download_file(
     # Check if the file already exists else download the url to the file
     if folder_file.exists():
         _report(f'<{file_name}> already exists in the folder <{folder_path}>. File not downloaded.')
-        return
-    response = requests.get(url, timeout=20)
-    # a failed status or an empty body is not a file: write nothing, so the next run asks for it again
-    if response.status_code != 200:
-        _report(f'<{file_name}> Failed to download. Status code: {response.status_code}')
-    elif not response.content:
-        _report(f'<{file_name}> Failed to download. The response was empty.')
-    else:
-        # the final name only ever holds a complete response: write beside it, then rename
-        part_file = folder / f'{file_name}.part'
-        part_file.write_bytes(response.content)
-        part_file.replace(folder_file)
-        _report(f'<{file_name}> downloaded to <{folder_path}>')
+        return FileResult(file_name, 'skipped')
+
+    status_code: int | None = None
+    error = ''
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            response = requests.get(url, timeout=20)
+        except requests.RequestException as exception:
+            status_code, error, retry = None, f'{type(exception).__name__}: {exception}', True
+        else:
+            status_code = response.status_code
+            if status_code == 200 and response.content:
+                # the final name only ever holds a complete response: write beside it, then rename
+                part_file = folder / f'{file_name}.part'
+                part_file.write_bytes(response.content)
+                part_file.replace(folder_file)
+                _report(f'<{file_name}> downloaded to <{folder_path}>')
+                return FileResult(file_name, 'downloaded', status_code, attempt)
+            error = 'The response was empty.' if status_code == 200 else f'Status code: {status_code}'
+            retry = status_code == 200 or status_code >= 500
+        if not retry or attempt > len(_RETRY_DELAYS):
+            break
+        time.sleep(_RETRY_DELAYS[attempt - 1])
+    _report(f'<{file_name}> Failed to download. {error}')
+    return FileResult(file_name, 'failed', status_code, attempt, error)
 
 
 def _report(message: str) -> None:
@@ -656,13 +760,10 @@ def _report(message: str) -> None:
 
 def _check_cache(urlfilenames: list[URLFilenamePair], folder_path: str | Path) -> None:
     """Raise CacheMismatchError, before any request, if a cached file doesn't match its url or can't be read."""
-    folder = Path(folder_path)
-    problems: list[tuple[str, str]] = []
-    for url, filename in urlfilenames:
-        if (folder / filename).is_file() and (problem := _cached_file_problem(folder / filename, url)):
-            problems.append((filename, problem))
-            logger.error(f'<{filename}> {problem}')
-            sys.stdout.write(f'<{filename}> {problem}\n')
+    problems = cache_problems(urlfilenames, folder_path)
+    for filename, problem in problems:
+        logger.error(f'<{filename}> {problem}')
+        sys.stdout.write(f'<{filename}> {problem}\n')
     if problems:
         raise CacheMismatchError(problems, folder_path)
 

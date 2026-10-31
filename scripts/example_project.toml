@@ -1,0 +1,35 @@
+# An example barra2-dl project: shared settings, then one [[site]] per mast, point or area.
+# Run it with project.load_project and project.run_site (see example_barra2_dl_netcdf.py).
+# Relative folders are relative to this file. Unknown keys are errors, so a typo like "domian" is caught.
+
+[settings]
+domain = "AUS-11"          # or "AUST-04"
+freq = "1hr"               # or "20min" on AUST-04
+preset = "wind+density"    # a key of BARRA2_PRESETS
+node_selection = "nearest" # or "average4"; a site with a box is an area automatically
+format = "csv"             # the output: "csv" (with a metadata header) or "netcdf"
+download = "netcdf4"       # or "csv" for a nearest-node point site with csv output (the csv route)
+start = "2023-01-01"
+end = "2023-01-31"
+cache = "cache"
+out = "output"
+workers = 4
+
+[[site]]
+name = "mast-north"        # becomes the filename prefix: letters, digits, dot, underscore, hyphen
+lat = -23.55
+lon = 133.40
+
+[[site]]
+name = "mast-south"
+lat = -23.75
+lon = 133.40
+node_selection = "average4"   # any site can override domain, freq, preset, node_selection, format, download, start, end
+
+[[site]]
+name = "farm-area"
+north = -23.40
+south = -23.70
+east = 133.50
+west = 133.20                  # a box instead of lat/lon is an area download (netCDF only)
+format = "netcdf"

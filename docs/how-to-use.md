@@ -302,6 +302,66 @@ frame = pd.read_csv(path, skiprows=int(header['Header lines']))  # the same fram
 on import. Whether it also reads the latitude, longitude and elevation from the header has not been confirmed; if it
 doesn't, set them in Windographer's Configure Dataset dialog after importing.
 
+## Project file
+
+A project file runs several sites with the same settings, and is the same path a form takes. It is TOML, with a
+`[settings]` table and one `[[site]]` table per mast, point or area (`scripts/example_project.toml`):
+
+```toml
+[settings]
+domain = "AUS-11"
+freq = "1hr"
+preset = "wind+density"
+node_selection = "nearest"   # or "average4"
+format = "csv"               # the output: csv (with a metadata header) or netcdf
+download = "netcdf4"         # or "csv", for a nearest-node point site with csv output
+start = "2023-01-01"
+end = "2023-01-31"
+cache = "cache"              # relative folders are relative to this file
+out = "output"
+workers = 4                  # parallel downloads
+
+[[site]]
+name = "mast-north"          # becomes the filename prefix
+lat = -23.55
+lon = 133.40
+
+[[site]]
+name = "farm-area"
+north = -23.40
+south = -23.70
+east = 133.50
+west = 133.20                # a box is an area download: netCDF only
+format = "netcdf"
+```
+
+Any site can override `domain`, `freq`, `preset`, `node_selection`, `format`, `download`, `start` and `end`; `cache`,
+`out` and `workers` belong to the whole project. Unknown keys are errors, so a typo isn't silently ignored.
+
+```python
+project = barra2_dl.project.load_project('example_project.toml')
+for site in project.sites:
+    result = barra2_dl.project.run_site(site, project.settings)
+    print(result.site, result.status, result.missing)
+```
+
+`load_project` checks everything at once and raises one `ProjectError` listing each problem with its site and key (an
+area as csv, `20min` on AUS-11, a preset the frequency doesn't have, a duplicate name ...) before any request. The same
+checks are available as `project.validate(settings, site)`, which returns the problems as data.
+
+`run_site` downloads (netCDF4 by default, with the csv download as an option for a nearest-node point site), merges, and
+writes the output and a run summary. A failing site doesn't raise: its `status` is `ok`, `partial` (output written, some
+files missing, listed in `missing`), `failed` or `cancelled`, so a loop over sites carries on. `project.plan_site` lists the
+files a run would download and which are already cached, without any request.
+
+**Run summary.** `<name>_run_summary.json` is written beside the output for every outcome. It holds the inputs, the
+package and dataset versions, the result of every file (downloaded, skipped, failed or cancelled, with the status code and
+attempts), the missing months, the outputs, and for each node the requested and actual position, distance and `orog`.
+
+**Retries, progress and cancel.** Each file is retried up to three times (after 1, 2 and 4 seconds) on a timeout,
+connection error, server error or empty response; a 404 is not retried. `download_serial` and `download_multithread`
+return a `FileResult` per file, and take `progress(done, total, result)` and a `threading.Event` to cancel.
+
 ## Timestamps: :00 and :30
 
 barra2-dl keeps every timestamp exactly as the server returned it, in the cache, the DataFrame, the csv and the

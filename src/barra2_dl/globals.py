@@ -3,6 +3,38 @@
 import csv
 from datetime import timedelta
 from importlib.resources import files
+from typing import Literal
+
+__all__ = [
+    'BARRA2_DOMAINS',
+    'BARRA2_DOWNLOAD_FORMATS',
+    'BARRA2_FIXED_FREQ',
+    'BARRA2_FIXED_VARS_AUTO',
+    'BARRA2_FREQS',
+    'BARRA2_GRID_SPACING',
+    'BARRA2_INDEX',
+    'BARRA2_NODE_SELECTIONS',
+    'BARRA2_OUTPUT_FORMATS',
+    'BARRA2_PRESETS',
+    'BARRA2_PRESET_DEFAULT',
+    'BARRA2_URL',
+    'BARRA2_URL_AUS11_1HR',
+    'BARRA2_URL_AUST04_1HR',
+    'BARRA2_URL_BBOX',
+    'BARRA2_URL_FX',
+    'BARRA2_URL_FX_BBOX',
+    'BARRA2_VARS',
+    'BARRA2_VAR_ALIASES',
+    'BARRA2_VAR_INFO',
+    'BARRA2_VAR_WIND_50',
+    'BARRA2_VAR_WIND_DEFAULT',
+    'BARRA2_WIND_VARS',
+    'DownloadFormat',
+    'FileStatus',
+    'NodeSelection',
+    'OutputFormat',
+    'SiteStatus',
+]
 
 # Todo from .mapping import LatLonBBox
 
@@ -86,6 +118,17 @@ BARRA2_GRID_SPACING = {'AUS-11': 0.11, 'AUST-04': 0.04}
 # How the nodes for a point are chosen: the nearest node (point request), the four nodes around the point averaged, or
 # every node in a user-given box (netCDF only)
 BARRA2_NODE_SELECTIONS = ('nearest', 'average4', 'area')
+
+# What run_site writes (csv files or a netCDF file), and the format its downloads are requested in
+BARRA2_OUTPUT_FORMATS = ('csv', 'netcdf')
+BARRA2_DOWNLOAD_FORMATS = ('netcdf4', 'csv')
+
+# The values above and the statuses of a download, as types for interfaces to share
+type NodeSelection = Literal['nearest', 'average4', 'area']
+type OutputFormat = Literal['csv', 'netcdf']
+type DownloadFormat = Literal['netcdf4', 'csv']
+type FileStatus = Literal['downloaded', 'skipped', 'failed', 'cancelled']
+type SiteStatus = Literal['ok', 'partial', 'failed', 'cancelled']
 
 # default list of BARRA2 variables for wind analysis
 BARRA2_VAR_WIND_DEFAULT = ['uas', 'vas', 'ua50m', 'va50m', 'ua100m', 'va100m', 'ua150m', 'va150m', 'ta50m']

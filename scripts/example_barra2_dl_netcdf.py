@@ -95,7 +95,7 @@ urlfilenames = barra2_dl.download.point_data_urlfilenames(
     freq = freq,
     node_selection = node_selection,
 )
-# Use download_multithread with n-1 threads or download_serial with 1 thread
+# Use download_multithread (4 parallel downloads by default, set with workers=) or download_serial
 barra2_dl.download.download_multithread(urlfilenames, cache_dir)
 #%% md
 # THREDDS serves only the latest data, so record which dataset version each variable came from. This makes one small
@@ -146,3 +146,14 @@ csv_paths = barra2_dl.merge.write_csv(ds, output_dir, fileout_prefix)
 #%% md
 # The netCDF file is now ready to open with xarray, e.g. xarray.open_dataset(path), or any netCDF tool.
 # For example ds.wind_speed.sel(height=[50, 100]) selects two heights.
+#%% md
+# ## Run a whole project from a file (optional)
+# Everything above is what project.run_site does for you. A project file lists shared settings and one site per mast,
+# point or area; load_project checks all of it at once, and run_site downloads, merges and writes each site's output
+# and a run summary (<name>_run_summary.json). A site that fails is reported, not raised, so the loop carries on.
+# See example_project.toml. This downloads data, so run it only when you want those sites.
+#%%
+project = barra2_dl.project.load_project("example_project.toml")
+for site in project.sites:
+    result = barra2_dl.project.run_site(site, project.settings)
+    print(result.site, result.status, [path.name for path in result.outputs], result.missing)
