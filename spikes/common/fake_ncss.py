@@ -1,14 +1,19 @@
 """A fake NCSS server for the toolkit spikes: serves the tests/data fixtures so a run needs no network.
 
-The one thing a spike uses beyond the public API, because it stands in for the network. It serves AUS-11 only and only
-for the fixture point near -23.55, 133.40. Set SPIKE_LIVE=1 to leave the real server alone, SPIKE_DELAY to change the
-seconds per file and SPIKE_FAIL to a variable name (for example va50m) to make its requests return 404.
+The one thing a spike uses beyond the public API, because it stands in for the network. It serves AUS-11 anywhere in
+Australia on the real grid: node lookups (nearest_nodes) and the grid files of a nodes or area download are built for
+whatever box is asked for, from the tests/data fixtures, with made-up altitudes and the fixture's weather repeated
+across the nodes. A point site's data is still the one fixture point's. Set SPIKE_LIVE=1 to leave the real server
+alone, SPIKE_DELAY to change the seconds per file and SPIKE_FAIL to a variable name (for example va50m) to make its
+requests return 404.
 """
 
+import math
 import os
 import sys
 import time
 from collections.abc import Iterator
+from functools import lru_cache
 from pathlib import Path
 from types import CodeType
 from urllib.parse import parse_qs, urlsplit
@@ -31,6 +36,8 @@ LOOKUP = {
 }
 EDGE = 1e-9
 FIXTURE_POINT = (-23.55, 133.40)
+LAT_RANGE = (-45.0, -10.0)
+LON_RANGE = (110.0, 156.0)
 
 
 class _Response:
@@ -43,12 +50,41 @@ def _overlapping(axis: np.ndarray, spacing: float, low: float, high: float) -> n
     return (axis - spacing / 2 <= high + EDGE) & (axis + spacing / 2 > low + EDGE)
 
 
+@lru_cache(maxsize=8)
+def _extended(domain: str, var: str) -> xr.Dataset:
+    """The node-lookup fixture grown to the whole of Australia on the same grid, so any site or polygon has nodes.
+
+    The fixture's own 5 x 5 nodes keep their real values; every other node gets a smooth made-up altitude and is land.
+    """
+    spacing = BARRA2_GRID_SPACING[domain]
+    with xr.open_dataset(DATA / LOOKUP[(domain, var)]) as source:
+        fixture = source.load()
+    lat0, lon0 = round(float(fixture['lat'][0]), 6), round(float(fixture['lon'][0]), 6)
+    below, above = math.ceil((lat0 - LAT_RANGE[0]) / spacing), math.ceil((LAT_RANGE[1] - lat0) / spacing)
+    west, east = math.ceil((lon0 - LON_RANGE[0]) / spacing), math.ceil((LON_RANGE[1] - lon0) / spacing)
+    lats = np.round(lat0 + spacing * np.arange(-below, above + 1), 6)
+    lons = np.round(lon0 + spacing * np.arange(-west, east + 1), 6)
+    made_up = (
+        400 + 250 * np.sin(lats[:, None] * 7) * np.cos(lons[None, :] * 5)
+        if var == 'orog'
+        else np.full((len(lats), len(lons)), 100.0)
+    )
+    grown = xr.DataArray(made_up.astype('float32'), coords={'lat': lats, 'lon': lons}, dims=('lat', 'lon'))
+    fixture = fixture.assign_coords(
+        lat=np.round(fixture['lat'].to_numpy(), 6), lon=np.round(fixture['lon'].to_numpy(), 6)
+    )
+    out = xr.Dataset({var: fixture[var].combine_first(grown)})
+    out[var].attrs = fixture[var].attrs
+    out['crs'] = fixture['crs']
+    out.attrs = fixture.attrs
+    return out
+
+
 def _lookup(url: str, query: dict[str, str]) -> _Response:
-    """Cut the requested box out of the node-lookup fixture, as tests/test_mapping.py does."""
+    """Cut the requested box out of the grown node-lookup grid, as tests/test_mapping.py does with the fixture."""
     domain = 'AUST-04' if '/AUST-04/' in url else 'AUS-11'
     spacing = BARRA2_GRID_SPACING[domain]
-    with xr.open_dataset(DATA / LOOKUP[(domain, query['var'])]) as source:
-        full = source.load()
+    full = _extended(domain, query['var'])
     lat_ok = _overlapping(full['lat'].to_numpy(), spacing, float(query['south']), float(query['north']))
     lon_ok = _overlapping(full['lon'].to_numpy(), spacing, float(query['west']), float(query['east']))
     if not (lat_ok.any() and lon_ok.any()):
@@ -61,6 +97,21 @@ def _lookup(url: str, query: dict[str, str]) -> _Response:
         'geospatial_lon_max': float(cut['lon'].max()) + spacing / 2,
     }
     return _Response(200, cut.to_netcdf(engine='h5netcdf'))
+
+
+def _box_data(query: dict[str, str], template: Path) -> _Response:
+    """A grid file for the requested box: the fixture's 3 x 3 grid repeated onto the real nodes the box overlaps."""
+    grown = _extended('AUS-11', 'orog')
+    spacing = BARRA2_GRID_SPACING['AUS-11']
+    lat_ok = _overlapping(grown['lat'].to_numpy(), spacing, float(query['south']), float(query['north']))
+    lon_ok = _overlapping(grown['lon'].to_numpy(), spacing, float(query['west']), float(query['east']))
+    if not (lat_ok.any() and lon_ok.any()):
+        return _Response(400, b'outside the grid')
+    lats, lons = grown['lat'].to_numpy()[lat_ok], grown['lon'].to_numpy()[lon_ok]
+    with xr.open_dataset(template) as source:
+        base = source.load()
+    tiled = base.isel(lat=np.arange(len(lats)) % base.sizes['lat'], lon=np.arange(len(lons)) % base.sizes['lon'])
+    return _Response(200, tiled.assign_coords(lat=lats, lon=lons).to_netcdf(engine='h5netcdf'))
 
 
 def _callers() -> Iterator[CodeType]:
@@ -88,6 +139,8 @@ def _make_get(delay: float, fail: str):
             if fixed
             else f'{prefix}_AUS-11_1hr_{tag}{query["var"]}_20230101_20230103.{extension}'
         )
+        if grid:
+            return _box_data(query, DATA / name)
         return _Response(200, (DATA / name).read_bytes())
 
     return get

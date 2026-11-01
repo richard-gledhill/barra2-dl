@@ -26,7 +26,7 @@ The notebook spike (`spikes/notebook/app.py`, ipywidgets + ipyleaflet, no Voila)
 ```
 
 - The fake NCSS server (`spikes/common/fake_ncss.py`) serves the `tests/data` fixtures, so no network is needed except
-  map tiles. It serves AUS-11 only and only the fixture point (-23.55, 133.40); the form starts there.
+  map tiles. It serves AUS-11 only, anywhere in Australia, with made-up altitudes; the form starts at the fixture point (-23.55, 133.40).
 - `SPIKE_DELAY=6` makes each file take 6 s (so Cancel is easy to try); `SPIKE_FAIL=va50m` makes that variable return
   404 (a failed or partial run); `SPIKE_LIVE=1` turns the fake off for a real month from the NCI server.
 - Outputs and the cache go in `spikes/_scratch/` (git-ignored). Delete `spikes/_scratch/cache` to run again from empty.
