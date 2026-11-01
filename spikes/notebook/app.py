@@ -13,13 +13,30 @@
 
 # %%
 import json
+import sys
 import threading
 from datetime import date
+from pathlib import Path
 from typing import Any
 
 import ipywidgets as w
 import pandas as pd
 from ipyleaflet import AwesomeIcon, CircleMarker, GeoJSON, GeomanDrawControl, Map, Marker
+
+# Find spikes/common (spike_common and the fake server) from this file or the notebook's folder, up the tree, so the
+# notebook runs from any kernel that has barra2_dl and the packages above, without installing spike-common.
+sys.path.insert(
+    0,
+    next(
+        (
+            str(common)
+            for folder in (*Path(globals().get('__file__', 'x')).resolve().parents, Path.cwd(), *Path.cwd().parents)
+            for common in (folder / 'spikes' / 'common', folder / 'common')
+            if (common / 'spike_common.py').is_file()
+        ),
+        '.',
+    ),
+)
 from spike_common import (
     COLOURS,
     DEFAULTS,
