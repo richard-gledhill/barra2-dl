@@ -31,6 +31,23 @@ The notebook spike (`spikes/notebook/app.py`, ipywidgets + ipyleaflet, no Voila)
   404 (a failed or partial run); `SPIKE_LIVE=1` turns the fake off for a real month from the NCI server.
 - Outputs and the cache go in `spikes/_scratch/` (git-ignored). Delete `spikes/_scratch/cache` to run again from empty.
 
+## Local runtime
+
+- Setup a virtual environment for the notebook spike outside the repo
+- Install the spike requirements
+- Run the fake server
+- Launch the notebook
+
+```bash
+uv venv --python 3.12 C:\Users\rich_\spike-envs\notebook
+
+uv pip install --python C:\Users\rich_\spike-envs\notebook\Scripts\python.exe -e . -r spikes/notebook/requirements.txt
+
+C:\Users\rich_\spike-envs\notebook\Scripts\jupytext.exe --to ipynb -o spikes/_scratch/spike6.ipynb spikes/notebook/app.py
+
+C:\Users\rich_\spike-envs\notebook\Scripts\jupyter.exe lab spikes/_scratch/spike6.ipynb
+```
+
 ## Evidence
 
 `spikes/_evidence/`: pin dry runs (`compile-<toolkit>-<python>.txt`), `uv pip freeze` per spike, install sizes, licences
