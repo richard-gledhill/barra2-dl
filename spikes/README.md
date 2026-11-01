@@ -17,18 +17,13 @@ uv pip install --python <scratch>/streamlit/Scripts/python.exe -e . -e spikes/co
 
 NiceGUI is the same with `nicegui` (`python spikes/nicegui/app.py`, port 8602).
 
-The notebook spike (`spikes/notebook/app.py`, ipywidgets + ipyleaflet, no Voila) is a jupytext script. Make its
-environment (barra2-dl itself, then the notebook packages), turn the script into a notebook and open it:
+The notebook spike (`spikes/notebook/app.py`, ipywidgets + ipyleaflet, no Voila) is a jupytext script. In its environment
+(`-r spikes/notebook/requirements.txt`), make a notebook and open it, then Run, Run All Cells:
 
 ```bash
-uv venv --python 3.12 <scratch>/notebook
-uv pip install --python <scratch>/notebook/Scripts/python.exe -e . -r spikes/notebook/requirements.txt
 <scratch>/notebook/Scripts/jupytext.exe --to ipynb -o spikes/_scratch/spike6.ipynb spikes/notebook/app.py
 <scratch>/notebook/Scripts/jupyter.exe lab spikes/_scratch/spike6.ipynb
 ```
-
-In JupyterLab pick the kernel of that environment (the notebook asks), then Run, Run All Cells. The notebook finds
-`spikes/common` itself (it looks up the folder tree from the notebook), so keep the `.ipynb` inside the repo.
 
 - The fake NCSS server (`spikes/common/fake_ncss.py`) serves the `tests/data` fixtures, so no network is needed except
   map tiles. It serves AUS-11 only, anywhere in Australia, with made-up altitudes; the form starts at the fixture point (-23.55, 133.40).

@@ -1,15 +1,46 @@
 """Display-free smoke test of the notebook spike: run the script's cells in a plain interpreter, drive the widgets."""
 
+import json
 import runpy
 import shutil
 import time
 from pathlib import Path
+from typing import Any
 
 import spike_common
 
 APP = Path(__file__).with_name('app.py')
+DATA = Path(__file__).resolve().parents[2] / 'tests' / 'data'
 RING = [[133.35, -23.60], [133.50, -23.60], [133.50, -23.50], [133.35, -23.50], [133.35, -23.60]]
-POLYGON = {'type': 'Feature', 'properties': {}, 'geometry': {'type': 'Polygon', 'coordinates': [RING]}}
+PROJECT = """
+[settings]
+start = 2023-01-01
+end = 2023-01-31
+domain = "AUS-11"
+freq = "1hr"
+preset = "wind+density"
+format = "netcdf"
+cache = "cache-from-project"
+out = "out-from-project"
+
+[[site]]
+name = "masta"
+lat = -23.55
+lon = 133.40
+nodes = [[-23.54, 133.36]]
+
+[[site]]
+name = "farm"
+polygon = "boundary_two_cells.geojson"
+
+[[site]]
+name = "second-farm"
+polygon = "boundary_two_cells.geojson"
+"""
+
+
+def _feature(ring: list[list[float]]) -> dict[str, Any]:
+    return {'type': 'Feature', 'properties': {}, 'geometry': {'type': 'Polygon', 'coordinates': [ring]}}
 
 
 def _check(condition: bool, message: str) -> None:
@@ -17,10 +48,21 @@ def _check(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
-def test_notebook_form_nodes_polygon_sites_and_run() -> None:
-    """One site: nodes, validation, a moved marker, a polygon with its node preview. Two sites: a run of both."""
+def _fresh() -> dict[str, Any]:
     shutil.rmtree(spike_common.SCRATCH / 'cache', ignore_errors=True)  # an earlier run may cache other requests
-    ns = runpy.run_path(str(APP))
+    return runpy.run_path(str(APP))
+
+
+def _wait(ns: dict[str, Any]) -> None:
+    for _ in range(300):
+        if ns['state']['cancel'] is None:
+            return
+        time.sleep(0.2)
+
+
+def test_notebook_form_nodes_and_masts() -> None:
+    """Nodes, validation, a moved mast and a second mast; both masts run."""
+    ns = _fresh()
     sites, state = ns['sites'], ns['state']
     ns['find'](None)
     _check(len(sites[0]['offered']) == 9, 'nine nodes offered')
@@ -36,60 +78,113 @@ def test_notebook_form_nodes_polygon_sites_and_run() -> None:
     _check((sites[0]['lat'], sites[0]['lon']) == (-23.5, 133.45) and not sites[0]['chosen'], 'marker move taken')
     _check(ns['site_fields']['lat'].value == -23.5, 'form follows the marker')
 
-    ns['draw'].data = [POLYGON]
-    _check(len(sites) == 2 and state['active'] == 1, 'a drawn polygon is a new site, and the active one')
-    _check(sites[0]['polygon'] is None and sites[1]['name'] == 'area-1', 'the mast is untouched')
-    _check('(4 vertices)' in ns['node_info'].value, 'polygon taken')
-    ns['find'](None)
-    _check(len(sites[1]['offered']) == 4 and 'overlap' in sites[1]['offered'][0], 'area nodes previewed')
-    _check(ns['site_fields']['lat'].layout.display == 'none', 'an area has no place boxes')
-    ns['select'](0)
-    _check(ns['site_fields']['lat'].layout.display == '' and sites[0]['lat'] == -23.5, 'the mast is still a point')
-    ns['select'](1)
-    ns['remove_site'](None)
-    _check(len(sites) == 1 and state['active'] == 0, 'area removed')
-
     ns['add_site'](None)
     _check(len(sites) == 2 and state['active'] == 1 and sites[1]['name'] == 'mast-2', 'second mast added and active')
     ns['select'](0)
     _check(ns['site_fields']['name'].value == 'mast-1' and sites[0]['lat'] == -23.5, 'switching keeps each site')
     ns['select'](1)
-    ns['site_fields']['name'].value = 'mast-2b'
-    _check(sites[1]['name'] == 'mast-2b', 'name edit taken')
     ns['site_fields']['name'].value = 'mast-1'
-    _check(
-        'names must be different' in ns['problems_box'].value and ns['run_button'].disabled, 'duplicate name blocked'
-    )
+    _check('names must be different' in ns['problems_box'].value, 'duplicate name reported')
+    _check(ns['run_button'].disabled and ns['run_selected_button'].disabled, 'duplicate name blocks both runs')
     ns['site_fields']['name'].value = 'mast-2'
 
-    ns['start'](None)
-    for _ in range(150):
-        if state['cancel'] is None:
-            break
-        time.sleep(0.2)
+    ns['start'](list(range(len(sites))))
+    _wait(ns)
     html = ns['result_box'].value
-    _check('mast-1: ok' in html and 'mast-2: ok' in html, 'both sites ran ok')
+    _check('mast-1: ok' in html and 'mast-2: ok' in html, 'both masts ran ok')
+
+
+def test_notebook_one_area_that_can_be_reshaped_and_deleted() -> None:
+    """A drawn polygon is one area, independent of the masts; a second is refused; reshape and delete are followed."""
+    ns = _fresh()
+    sites, state = ns['sites'], ns['state']
+    ns['draw'].data = [_feature(RING)]
+    _check(len(sites) == 2 and state['active'] == 1 and sites[1]['name'] == 'area-1', 'the area is a new, active site')
+    _check(sites[0]['polygon'] is None, 'the mast is untouched')
+    ns['find'](None)
+    _check(len(sites[1]['offered']) == 4 and 'overlap' in sites[1]['offered'][0], 'area nodes previewed')
+    _check(ns['site_fields']['lat'].layout.display == 'none', 'an area has no place boxes')
+
+    other = [[133.0, -23.9], [133.2, -23.9], [133.2, -23.8], [133.0, -23.8], [133.0, -23.9]]
+    ns['draw'].data = [_feature(RING), _feature(other)]
+    _check(len(sites) == 2 and 'Only one area' in ns['node_info'].value, 'a second polygon is refused')
+    _check(len(ns['draw'].data) == 1, 'and taken off the map')
+
+    bigger = [[133.30, -23.65], [133.55, -23.65], [133.55, -23.45], [133.30, -23.45], [133.30, -23.65]]
+    ns['draw'].data = [_feature(bigger)]
+    _check(len(sites) == 2 and not sites[1]['offered'], 'reshaping keeps the one area and forgets its nodes')
+    _check(
+        'reshaped' in ns['node_info'].value
+        and json.loads(sites[1]['polygon'])['geometry']['coordinates'][0][1][0] == 133.55,
+        'new shape taken',
+    )
+
+    ns['draw'].data = []
+    _check(len(sites) == 1 and sites[0]['polygon'] is None, 'deleting the polygon on the map deletes the area')
+
+    ns['draw'].data = [_feature(RING)]
+    ns['remove_site'](None)
+    _check(len(sites) == 1 and len(ns['draw'].data) == 0, 'Remove site on the area clears it from the map')
+
+
+def test_notebook_run_selected_site_only() -> None:
+    """Run selected site runs the active site alone, and leaves the other site's result as it was."""
+    ns = _fresh()
+    sites, state = ns['sites'], ns['state']
+    ns['add_site'](None)
+    ns['start']([0])
+    _wait(ns)
+    _check('mast-1: ok' in ns['result_box'].value and 'mast-2' not in ns['result_box'].value, 'only mast-1 ran')
+    ns['select'](1)
+    ns['start']([state['active']])
+    _wait(ns)
+    html = ns['result_box'].value
+    _check(html.index('mast-1: ok') < html.index('mast-2: ok'), 'both results shown in site order')
+    _check(len(sites[0]['used']) >= 1 and len(sites[1]['used']) >= 1, 'each site kept its own used nodes')
+
+
+def test_notebook_imports_a_project_and_a_polygon(tmp_path: Path) -> None:
+    """A project.toml replaces settings and sites; a polygon file becomes the area, by path or by upload."""
+    shutil.copy(DATA / 'boundary_two_cells.geojson', tmp_path / 'boundary_two_cells.geojson')
+    (tmp_path / 'project.toml').write_text(PROJECT, encoding='utf-8')
+    ns = _fresh()
+    sites = ns['sites']
+    ns['import_path'].value = str(tmp_path / 'project.toml')
+    ns['import_from_path'](None)
+    _check([s['name'] for s in sites] == ['masta', 'farm'], 'sites imported, the second area skipped')
+    _check('only one area is allowed' in ns['import_info'].value, 'the skipped area is reported')
+    _check(len(sites[0]['chosen']) == 1 and sites[1]['polygon'] is not None, 'nodes and polygon came with the sites')
+    _check(ns['shared_fields']['end'].value.day == 31, 'settings imported')
+    _check(Path(ns['shared_fields']['cache'].value).name == 'cache-from-project', 'folders imported')
+    _check(len(ns['draw'].data) == 1, 'the polygon is on the map')
+
+    ns['import_path'].value = str(tmp_path / 'missing.toml')
+    ns['import_from_path'](None)
+    _check('missing.toml' in ns['import_info'].value and len(sites) == 2, 'a missing file is reported, nothing changes')
+
+    text = (DATA / 'boundary_sub_cell.geojson').read_text(encoding='utf-8')
+    ns['import_from_upload']({'new': ({'name': 'sub.geojson', 'content': text.encode()},)})
+    _check(len(sites) == 2 and 'sub.geojson' in ns['import_info'].value, 'an uploaded polygon replaces the area')
+
+    ns['import_from_upload']({'new': ({'name': 'broken.geojson', 'content': b'{"type": "Point"}'},)})
+    _check('broken.geojson' in ns['import_info'].value and len(sites) == 2, 'a bad polygon is reported')
 
 
 def test_notebook_far_sites_find_and_run() -> None:
-    """A point and a polygon site far from the fixture point: nodes are found and the run uses the previewed ones."""
-    shutil.rmtree(spike_common.SCRATCH / 'cache', ignore_errors=True)
-    ns = runpy.run_path(str(APP))
-    sites, state = ns['sites'], ns['state']
+    """A mast and an area far from the fixture point: nodes are found and the run uses the previewed ones."""
+    ns = _fresh()
+    sites = ns['sites']
     ns['moved'](0, (-33.87, 151.21))
     ns['find'](None)
     _check(len(sites[0]['offered']) == 9, 'nodes found for a site far from the fixture')
     ns['toggle'](sites[0]['offered'][0])
     ring = [[150.95, -33.75], [151.1, -33.75], [151.1, -33.65], [150.95, -33.65], [150.95, -33.75]]
-    ns['draw'].data = [{'type': 'Feature', 'properties': {}, 'geometry': {'type': 'Polygon', 'coordinates': [ring]}}]
+    ns['draw'].data = [_feature(ring)]
     ns['find'](None)
     previewed = sorted((round(n['lat'], 3), round(n['lon'], 3)) for n in sites[1]['offered'])
-    _check(len(previewed) > 1, 'polygon nodes previewed')
-    ns['start'](None)
-    for _ in range(300):
-        if state['cancel'] is None:
-            break
-        time.sleep(0.2)
+    _check(len(previewed) > 1, 'area nodes previewed')
+    ns['start']([0, 1])
+    _wait(ns)
     _check('mast-1: ok' in ns['result_box'].value and 'area-1: ok' in ns['result_box'].value, 'both far sites ran')
     used = sorted((round(n['lat'], 3), round(n['lon'], 3)) for n in sites[1]['used'])
     _check(used == previewed, 'the run used the nodes the preview showed')

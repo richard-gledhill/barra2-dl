@@ -4,45 +4,34 @@
 # A jupytext "percent" script: open it in JupyterLab as a notebook (right-click, Open With, Notebook) or convert it with
 # `jupytext --to ipynb spikes/notebook/app.py`. Run all cells; the last cell shows the form, map and run controls.
 #
-# The project has one set of settings (dates, domain, preset, output) and any number of sites: masts (a point) and
-# areas (a drawn polygon). They are independent: pick any of them in the Site list, or click it on the map. Drag a
-# mast to move it; draw a polygon to add an area.
+# The project has one set of settings (dates, domain, preset, output) and any number of sites: masts (a point) and at
+# most one area (a drawn polygon). Pick a site in the Site list or click it on the map. Drag a mast to move it. Draw a
+# polygon to add the area; the map's edit tool reshapes it and its remove tool deletes it. Import a project.toml or a
+# polygon file from the Import section.
 #
 # Throwaway code, never merged. The fake NCSS server (spikes/common) supplies the data, so no network is needed
 # except for the map tiles.
 
 # %%
 import json
-import sys
+import math
+import re
 import threading
+import tomllib
 from datetime import date
 from pathlib import Path
 from typing import Any
 
 import ipywidgets as w
 import pandas as pd
-from ipyleaflet import AwesomeIcon, CircleMarker, GeoJSON, GeomanDrawControl, Map, Marker
-
-# Find spikes/common (spike_common and the fake server) from this file or the notebook's folder, up the tree, so the
-# notebook runs from any kernel that has barra2_dl and the packages above, without installing spike-common.
-sys.path.insert(
-    0,
-    next(
-        (
-            str(common)
-            for folder in (*Path(globals().get('__file__', 'x')).resolve().parents, Path.cwd(), *Path.cwd().parents)
-            for common in (folder / 'spikes' / 'common', folder / 'common')
-            if (common / 'spike_common.py').is_file()
-        ),
-        '.',
-    ),
-)
+from ipyleaflet import AwesomeIcon, CircleMarker, GeomanDrawControl, Map, Marker
 from spike_common import (
     COLOURS,
     DEFAULTS,
     DOMAINS,
     FORMATS,
     PRESETS,
+    SCRATCH,
     SELECTIONS,
     build,
     find_nodes,
@@ -52,19 +41,22 @@ from spike_common import (
     summary,
 )
 
-from barra2_dl.project import run_site
+from barra2_dl.mapping import Polygon, polygon_from_geojson, polygon_from_kml
+from barra2_dl.project import Project, load_project, project_from_dict, run_site
 
 # %% [markdown]
 # ## State and widgets
 
 # %%
-# one dict per site; `used` comes from the last run
+# one dict per site; `used` comes from the last run; an area is the site with a polygon (at most one)
 sites: list[dict[str, Any]] = []
-state: dict[str, Any] = {'active': 0, 'cancel': None, 'node_layers': [], 'markers': [], 'polygon_layers': []}
+state: dict[str, Any] = {'active': 0, 'cancel': None, 'node_layers': [], 'markers': [], 'results': {}}
+DRAW_POLYGON = {'pathOptions': {'color': '#a855f7'}}  # an empty dict would switch the tool off
+NO_NODE = {'distance_km': math.nan, 'orog': math.nan, 'sftlf': math.nan}
 
 
 def new_site(name: str, lat: float, lon: float, polygon: str | None = None) -> dict[str, Any]:
-    """A mast (a point), or an area when it has a polygon; nothing is offered or chosen yet."""
+    """A mast (a point), or the area when it has a polygon; nothing is offered or chosen yet."""
     return {'name': name, 'lat': lat, 'lon': lon, 'offered': [], 'chosen': [], 'polygon': polygon, 'used': []}
 
 
@@ -74,10 +66,29 @@ def unique_name(prefix: str) -> str:
     return next(f'{prefix}-{n}' for n in range(1, len(taken) + 2) if f'{prefix}-{n}' not in taken)
 
 
-def centre(polygon_geojson: str) -> tuple[float, float]:
-    """The middle of a drawn polygon's vertices as (lat, lon), which stands in for an area's place."""
-    ring = json.loads(polygon_geojson)['geometry']['coordinates'][0][:-1]
+def centre(feature: dict[str, Any]) -> tuple[float, float]:
+    """The middle of a polygon feature's vertices as (lat, lon), which stands in for the area's place."""
+    ring = feature['geometry']['coordinates'][0][:-1]
     return round(sum(p[1] for p in ring) / len(ring), 4), round(sum(p[0] for p in ring) / len(ring), 4)
+
+
+def feature_of(polygon: Polygon) -> dict[str, Any]:
+    """A mapping.Polygon as a GeoJSON feature: the engine keeps (lat, lon), GeoJSON wants [lon, lat] closed rings."""
+    rings = [[[lon, lat] for lat, lon in ring] for ring in (polygon.exterior, *polygon.holes)]
+    return {
+        'type': 'Feature',
+        'properties': {},
+        'geometry': {'type': 'Polygon', 'coordinates': [[*ring, ring[0]] for ring in rings]},
+    }
+
+
+def same_shape(first: dict[str, Any], second: dict[str, Any]) -> bool:
+    """Whether two polygon features have the same outline, to 5 decimals (Leaflet rounds what it sends back)."""
+
+    def rounded(feature: dict[str, Any]) -> list[Any]:
+        return [[[round(c, 5) for c in point] for point in ring] for ring in feature['geometry']['coordinates']]
+
+    return rounded(first) == rounded(second)
 
 
 sites.append(new_site('mast-1', DEFAULTS['lat'], DEFAULTS['lon']))
@@ -98,29 +109,55 @@ shared_fields: dict[str, w.Widget] = {
     'preset': w.Dropdown(options=PRESETS, value=DEFAULTS['preset'], description='Preset'),
     'node_selection': w.Dropdown(options=SELECTIONS, value=DEFAULTS['node_selection'], description='Nodes'),
     'format': w.Dropdown(options=FORMATS, value=DEFAULTS['format'], description='Output'),
+    'cache': w.Text(value=str(SCRATCH / 'cache'), description='Cache folder'),
+    'out': w.Text(value=str(SCRATCH / 'out'), description='Output folder'),
 }
 fields = site_fields | shared_fields
 find_button = w.Button(description='Find nodes', icon='search')
 run_button = w.Button(description='Run all sites', button_style='primary', icon='play')
+run_selected_button = w.Button(description='Run selected site', icon='play')
 cancel_button = w.Button(description='Cancel', button_style='warning', icon='stop', layout=w.Layout(display='none'))
 plan_label = w.Label()
 problems_box = w.HTML()
-node_info = w.HTML('Drag a mast to move it. Click a blue node to choose it. Draw a polygon to add an area.')
+node_info = w.HTML('Drag a mast to move it. Click a blue node to choose it. Draw a polygon to add the area.')
 progress = w.IntProgress(min=0, max=1, layout=w.Layout(width='100%', display='none'))
 progress_label = w.Label()
 result_box = w.HTML()
 
+import_path = w.Text(placeholder='path to a project.toml, .geojson, .json or .kml', layout=w.Layout(width='300px'))
+import_button = w.Button(description='Import path', icon='folder-open')
+import_upload = w.FileUpload(accept='.toml,.geojson,.json,.kml', multiple=False, description='Upload file')
+import_info = w.HTML()
+import_box = w.Accordion(
+    children=[
+        w.VBox(
+            [
+                w.HTML(
+                    'A <b>project.toml</b> replaces the settings and all sites. A <b>.geojson</b>, <b>.json</b> or '
+                    '<b>.kml</b> polygon becomes the area. A path resolves a polygon file named in a project '
+                    'relative to the project; an upload resolves it relative to the notebook folder.'
+                ),
+                w.HBox([import_path, import_button]),
+                import_upload,
+                import_info,
+            ]
+        )
+    ],
+    titles=('Import a project or polygon file',),
+    selected_index=None,
+)
+
 fmap = Map(center=(DEFAULTS['lat'], DEFAULTS['lon']), zoom=11, scroll_wheel_zoom=True, layout=w.Layout(height='480px'))
 draw = GeomanDrawControl(
-    polygon={'pathOptions': {'color': '#a855f7'}},  # an empty dict would switch the tool off
+    polygon=DRAW_POLYGON,
     polyline={},
     rectangle={},
     circle={},
     marker={},
     circlemarker={},
-    edit=False,
-    remove=False,
-    drag=False,
+    edit=True,
+    remove=True,
+    drag=True,
     cut=False,
     rotate=False,
 )
@@ -138,6 +175,11 @@ def active() -> dict[str, Any]:
     return sites[state['active']]
 
 
+def area_index() -> int | None:
+    """Where the area is in the site list, or None."""
+    return next((i for i, site in enumerate(sites) if site['polygon']), None)
+
+
 def values_for(site: dict[str, Any]) -> dict[str, Any]:
     """The shared settings plus one site's name and place; a cleared date reads as year 1900 to be reported."""
     out = {key: widget.value for key, widget in shared_fields.items()}
@@ -152,17 +194,12 @@ def site_icon(is_active: bool) -> AwesomeIcon:
 
 
 def draw_sites() -> None:
-    """A draggable marker for each mast and a polygon layer for each area."""
-    for layer in [*state['markers'], *state['polygon_layers']]:
+    """A draggable marker for each mast; the area is the draw control's own layer."""
+    for layer in state['markers']:
         fmap.remove(layer)
-    state['markers'], state['polygon_layers'] = [], []
+    state['markers'] = []
     for index, site in enumerate(sites):
         if site['polygon']:
-            style = {'color': '#a855f7' if index == state['active'] else '#9ca3af', 'fillOpacity': 0.2}
-            layer = GeoJSON(data=json.loads(site['polygon']), style=style)
-            layer.on_click(lambda *_a, index=index, **_k: select(index))
-            state['polygon_layers'].append(layer)
-            fmap.add(layer)
             continue
         marker = Marker(
             location=(site['lat'], site['lon']),
@@ -177,13 +214,13 @@ def draw_sites() -> None:
 
 
 def draw_nodes() -> None:
-    """The active site's offered, chosen and used nodes (the markers and polygons are drawn by draw_sites)."""
+    """The active site's offered, chosen and used nodes (the markers are drawn by draw_sites)."""
     for layer in state['node_layers']:
         fmap.remove(layer)
     state['node_layers'] = []
     site = active()
     picked = {(n['lat'], n['lon']) for n in site['chosen']}
-    for node in site['offered']:
+    for node in [*site['offered'], *(n for n in site['chosen'] if n not in site['offered'])]:
         colour = COLOURS['chosen'] if (node['lat'], node['lon']) in picked or site['polygon'] else COLOURS['offered']
         marker = CircleMarker(
             location=(node['lat'], node['lon']), radius=9, color=colour, fill_color=colour, fill_opacity=0.7
@@ -207,8 +244,34 @@ def load_site() -> None:
         site_fields[key].layout.display = 'none' if site['polygon'] else ''
     site_select.options = [(f'{s["name"]}{" (area)" if s["polygon"] else ""}', i) for i, s in enumerate(sites)]
     site_select.value = state['active']
-    remove_button.disabled = len(sites) == 1
+    remove_button.disabled = len(sites) == 1 and not site['polygon']
     loading['on'] = False
+
+
+def show_results() -> None:
+    """The latest result of each site that has one, in site order."""
+    result_box.value = ''.join(state['results'][s['name']] for s in sites if s['name'] in state['results'])
+
+
+def check_sites() -> tuple[list[str], list[str], set[int]]:
+    """Validate every site: the problem lines to show, each valid site's plan, and which sites have problems."""
+    lines, plans, bad = [], [], set()
+    for index, each in enumerate(sites):
+        try:
+            settings, site_obj, problems = build(values_for(each), each['chosen'], each['polygon'])
+        except ValueError as error:  # a latitude or longitude the library rejects
+            settings = site_obj = None
+            problems = [('lat', str(error))]
+        lines += [f'<div style="color:#dc2626">{each["name"]}: {key}: {message}</div>' for key, message in problems]
+        if problems:
+            bad.add(index)
+        if index == state['active']:
+            for key, _message in problems:
+                if key in fields:
+                    fields[key].layout.border = '2px solid #dc2626'
+        if not problems:
+            plans.append(f'{each["name"]}: {plan_text(site_obj, settings)}')
+    return lines, plans, bad
 
 
 def refresh(*_args: Any) -> None:
@@ -217,26 +280,20 @@ def refresh(*_args: Any) -> None:
         return
     for widget in fields.values():
         widget.layout.border = ''
-    lines, plans = [], []
-    for index, each in enumerate(sites):
-        try:
-            settings, site_obj, problems = build(values_for(each), each['chosen'], each['polygon'])
-        except ValueError as error:  # a latitude or longitude the library rejects
-            settings = site_obj = None
-            problems = [('lat', str(error))]
-        lines += [f'<div style="color:#dc2626">{each["name"]}: {key}: {message}</div>' for key, message in problems]
-        if index == state['active']:
-            for key, _message in problems:
-                if key in fields:
-                    fields[key].layout.border = '2px solid #dc2626'
-        if not problems:
-            plans.append(f'{each["name"]}: {plan_text(site_obj, settings)}')
+    lines, plans, bad = check_sites()
     names = [each['name'] for each in sites]
-    if len(set(names)) != len(names):
+    duplicate = len(set(names)) != len(names)
+    if duplicate:
         lines.append('<div style="color:#dc2626">site names must be different</div>')
     problems_box.value = ''.join(lines)
-    plan_label.value = '' if lines else '; '.join(plans)
-    run_button.disabled = bool(lines) or state['cancel'] is not None
+    plan_label.value = '; '.join(plans)
+    busy = state['cancel'] is not None
+    run_button.disabled = bool(bad) or duplicate or busy
+    run_selected_button.disabled = state['active'] in bad or duplicate or busy
+    # one area only: the draw tool goes while there is one (if the control ignores this, on_draw keeps the first)
+    wanted = {} if area_index() is not None else DRAW_POLYGON
+    if draw.polygon != wanted:
+        draw.polygon = wanted
     load_site()
     draw_sites()
     draw_nodes()
@@ -278,12 +335,15 @@ def on_site_edit(_change: dict[str, Any]) -> None:
     place = (site_fields['lat'].value, site_fields['lon'].value)
     if place != (site['lat'], site['lon']):
         site.update(offered=[], chosen=[], used=[])
-    site.update(name=site_fields['name'].value, lat=place[0], lon=place[1])
+    new_name = site_fields['name'].value
+    if new_name != site['name'] and site['name'] in state['results']:
+        state['results'][new_name] = state['results'].pop(site['name'])
+    site.update(name=new_name, lat=place[0], lon=place[1])
     refresh()
 
 
 def find(_button: Any) -> None:
-    """Look up the nodes the active site would use: the nearest nine for a mast, the nodes an area overlaps."""
+    """Look up the nodes the active site would use: the nearest nine for a mast, the nodes the area overlaps."""
     site = active()
     domain = shared_fields['domain'].value
     try:
@@ -317,17 +377,48 @@ def toggle(node: dict[str, Any]) -> None:
 
 
 def on_draw(change: dict[str, Any]) -> None:
-    """A polygon was drawn: it becomes a new area of its own, and the drawn shape is replaced by the area's layer."""
+    """The map's polygons changed (drawn, reshaped, moved or deleted): keep the one area in step with them."""
     polygons = [f for f in change['new'] if f.get('geometry', {}).get('type') == 'Polygon']
+    index = area_index()
     if not polygons:
+        if index is None:
+            return
+        gone = sites.pop(index)
+        state['results'].pop(gone['name'], None)
+        if not sites:
+            sites.append(new_site('mast-1', DEFAULTS['lat'], DEFAULTS['lon']))
+        state['active'] = min(state['active'], len(sites) - 1)
+        node_info.value = f'{gone["name"]} was deleted.'
+        refresh()
         return
-    lat, lon = centre(json.dumps(polygons[-1]))
-    sites.append(new_site(unique_name('area'), lat, lon, json.dumps(polygons[-1])))
-    state['active'] = len(sites) - 1
-    vertices = len(polygons[-1]['geometry']['coordinates'][0]) - 1
-    node_info.value = f'Added {sites[-1]["name"]} ({vertices} vertices). Find nodes to preview its nodes.'
-    draw.clear()
+    if index is None:
+        lat, lon = centre(polygons[-1])
+        sites.append(new_site(unique_name('area'), lat, lon, json.dumps(polygons[-1])))
+        state['active'] = len(sites) - 1
+        vertices = len(polygons[-1]['geometry']['coordinates'][0]) - 1
+        node_info.value = f'Added {sites[-1]["name"]} ({vertices} vertices). Find nodes to preview its nodes.'
+        refresh()
+        return
+    site = sites[index]
+    current = json.loads(site['polygon'])
+    if len(polygons) > 1:  # a second polygon was drawn: keep the first
+        node_info.value = f'Only one area is allowed. Delete {site["name"]} to draw another.'
+        draw.data = [current]
+        return
+    if same_shape(polygons[0], current):
+        return
+    lat, lon = centre(polygons[0])
+    site.update(polygon=json.dumps(polygons[0]), lat=lat, lon=lon, offered=[], chosen=[], used=[])
+    state['active'] = index
+    node_info.value = f'{site["name"]} was reshaped. Find nodes to preview its nodes.'
     refresh()
+
+
+def on_area_click(**_event: Any) -> None:
+    """The area was clicked on the map: make it the site being worked on."""
+    index = area_index()
+    if index is not None and index != state['active']:
+        select(index)
 
 
 def add_site(_button: Any) -> None:
@@ -341,40 +432,46 @@ def add_site(_button: Any) -> None:
 
 
 def remove_site(_button: Any) -> None:
-    """Remove the active site."""
-    sites.pop(state['active'])
+    """Remove the active site; removing the area clears it from the map too."""
+    gone = sites.pop(state['active'])
+    state['results'].pop(gone['name'], None)
+    if gone['polygon']:
+        draw.data = []
+    if not sites:
+        sites.append(new_site('mast-1', DEFAULTS['lat'], DEFAULTS['lon']))
     state['active'] = max(0, state['active'] - 1)
+    show_results()
     refresh()
 
 
-def start(_button: Any) -> None:
-    """Run the sites one after another on a worker thread; the thread updates the widgets itself."""
-    jobs = [build(values_for(each), each['chosen'], each['polygon']) for each in sites]
+def start(indices: list[int]) -> None:
+    """Run these sites one after another on a worker thread; the thread updates the widgets itself."""
+    jobs = [(sites[i]['name'], *build(values_for(sites[i]), sites[i]['chosen'], sites[i]['polygon'])) for i in indices]
     cancel = state['cancel'] = threading.Event()
-    for each in sites:
-        each['used'] = []
-    result_box.value = ''
+    for i in indices:
+        sites[i]['used'] = []
+        state['results'].pop(sites[i]['name'], None)
+    show_results()
     progress.value, progress.max = 0, 1
     progress.layout.display = cancel_button.layout.display = ''
-    run_button.disabled = True
+    run_button.disabled = run_selected_button.disabled = True
 
     def work() -> None:
-        parts = []
-        for index, (settings, site_obj, _problems) in enumerate(jobs):
+        for number, (name, settings, site_obj, _problems) in enumerate(jobs, start=1):
             if cancel.is_set():
                 break
 
-            def on_progress(done: int, total: int, result: Any, index: int = index) -> None:
+            def on_progress(done: int, total: int, result: Any, name: str = name, number: int = number) -> None:
                 progress.max, progress.value = max(total, 1), done
-                progress_label.value = (
-                    f'{sites[index]["name"]} (site {index + 1} of {len(jobs)}): file {done} of {total}: '
-                    f'{result.filename}: {result.status}'
-                )
+                where = f'{name} (site {number} of {len(jobs)})' if len(jobs) > 1 else name
+                progress_label.value = f'{where}: file {done} of {total}: {result.filename}: {result.status}'
 
             data = summary(run_site(site_obj, settings, on_progress, cancel))
-            sites[index]['used'] = data['nodes']
-            parts.append(render(sites[index]['name'], data))
-            result_box.value = ''.join(parts)
+            site = next((s for s in sites if s['name'] == name), None)
+            if site is not None:
+                site['used'] = data['nodes']
+            state['results'][name] = render(name, data)
+            show_results()
         state['cancel'] = None
         progress.layout.display = cancel_button.layout.display = 'none'
         refresh()
@@ -398,6 +495,129 @@ def render(name: str, data: dict[str, Any]) -> str:
     return ''.join(parts)
 
 
+# %% [markdown]
+# ## Behaviour: importing a project or a polygon file
+
+
+# %%
+def say(text: str, ok: bool = True) -> None:
+    """Report an import's outcome under the Import section, red when it failed."""
+    colour = '#16a34a' if ok else '#dc2626'
+    import_info.value = f'<div style="color:{colour}; white-space:pre-wrap">{text}</div>'
+
+
+def show_area(feature: dict[str, Any]) -> None:
+    """Put a polygon on the map and zoom to it."""
+    draw.data = [feature]
+    ring = feature['geometry']['coordinates'][0]
+    lons, lats = [p[0] for p in ring], [p[1] for p in ring]
+    fmap.fit_bounds([[min(lats), min(lons)], [max(lats), max(lons)]])
+
+
+def apply_polygon(polygon: Polygon, name: str) -> None:
+    """Make an imported polygon the area, replacing the area there is."""
+    feature = feature_of(polygon)
+    lat, lon = centre(feature)
+    stem = re.sub(r'[^A-Za-z0-9._-]', '-', Path(name).stem)
+    index = area_index()
+    if index is None:
+        taken = {site['name'] for site in sites}
+        label = stem if stem and stem not in taken else unique_name('area')
+        sites.append(new_site(label, lat, lon, json.dumps(feature)))
+        index = len(sites) - 1
+    else:
+        sites[index].update(polygon=json.dumps(feature), lat=lat, lon=lon, offered=[], chosen=[], used=[])
+    state['active'] = index
+    node_info.value = 'Find nodes to preview the nodes this area uses.'
+    show_area(feature)
+    refresh()
+    rings = len(feature['geometry']['coordinates'])
+    say(f'Imported the polygon from {name} as {sites[index]["name"]} ({rings} ring(s)).')
+
+
+def apply_project(project: Project, name: str) -> None:
+    """Replace the settings and the sites with a project's. What the notebook cannot show is skipped, and said so."""
+    notes, imported, area = [], [], None
+    for site in project.sites:
+        if site.bbox is not None:
+            notes.append(f'{site.name}: a box site is not supported here, skipped.')
+            continue
+        if site.overrides:
+            notes.append(
+                f'{site.name}: its own {", ".join(site.overrides)} setting(s) are ignored; settings are shared.'
+            )
+        if site.polygon is not None:
+            if area is not None:
+                notes.append(f'{site.name}: only one area is allowed, skipped.')
+                continue
+            area = feature_of(site.polygon)
+            lat, lon = centre(area)
+            imported.append(new_site(site.name, lat, lon, json.dumps(area)))
+            continue
+        mast = new_site(site.name, float(site.point.lat), float(site.point.lon))
+        mast['chosen'] = [{'lat': float(n.lat), 'lon': float(n.lon)} | NO_NODE for n in site.nodes or []]
+        imported.append(mast)
+    if not imported:
+        raise ValueError('The project has no site this notebook can show.')
+    settings = project.settings
+    loading['on'] = True
+    shared_fields['domain'].value = settings.domain
+    shared_fields['freq'].options = freqs(settings.domain)
+    for key in ('start', 'end', 'freq', 'preset', 'node_selection', 'format'):
+        shared_fields[key].value = getattr(settings, key)
+    shared_fields['cache'].value, shared_fields['out'].value = str(settings.cache), str(settings.out)
+    loading['on'] = False
+    sites[:] = imported
+    state.update(active=0, results={})
+    show_results()
+    node_info.value = 'Pick a site and Find nodes to see its nodes.'
+    if area is not None:
+        show_area(area)
+    else:
+        draw.data = []
+        fmap.center = (imported[0]['lat'], imported[0]['lon'])
+    refresh()
+    say('\n'.join([f'Imported {name}: {len(imported)} site(s).', *notes]), ok=not notes)
+
+
+def import_text(name: str, text: str, base_dir: Path) -> None:
+    """Import a file's text by what its name ends with; a problem is shown, not raised."""
+    lower = name.lower()
+    if not lower.endswith(('.toml', '.kml', '.geojson', '.json')):
+        say(f'{name}: use a .toml project or a .geojson, .json or .kml polygon.', ok=False)
+        return
+    try:
+        if lower.endswith('.toml'):
+            apply_project(project_from_dict(tomllib.loads(text), base_dir), name)
+        elif lower.endswith('.kml'):
+            apply_polygon(polygon_from_kml(text, name), name)
+        else:
+            apply_polygon(polygon_from_geojson(text, name), name)
+    except ValueError as error:  # a bad project (ProjectError), polygon (BoundaryFileError) or TOML
+        say(str(error), ok=False)
+
+
+def import_from_path(_button: Any) -> None:
+    """Import the file named in the path box."""
+    path = Path(import_path.value.strip().strip('"'))
+    try:
+        if path.suffix.lower() == '.toml':
+            apply_project(load_project(path), path.name)
+        else:
+            import_text(path.name, path.read_text(encoding='utf-8'), path.parent)
+    except (OSError, ValueError) as error:
+        say(str(error), ok=False)
+
+
+def import_from_upload(change: dict[str, Any]) -> None:
+    """Import the file chosen in the Upload box."""
+    if not change['new']:
+        return
+    item = change['new'][0]
+    import_text(item['name'], bytes(item['content']).decode('utf-8'), Path.cwd())
+    import_upload.value = ()
+
+
 for widget in shared_fields.values():
     widget.observe(refresh, names='value')
 shared_fields['domain'].observe(on_domain, names='value')
@@ -405,11 +625,15 @@ for widget in site_fields.values():
     widget.observe(on_site_edit, names='value')
 site_select.observe(lambda change: None if loading['on'] else select(change['new']), names='value')
 find_button.on_click(find)
-run_button.on_click(start)
+run_button.on_click(lambda _b: start(list(range(len(sites)))))
+run_selected_button.on_click(lambda _b: start([state['active']]))
 cancel_button.on_click(lambda _b: state['cancel'] and state['cancel'].set())
 add_button.on_click(add_site)
 remove_button.on_click(remove_site)
+import_button.on_click(import_from_path)
+import_upload.observe(import_from_upload, names='value')
 draw.observe(on_draw, names='data')
+draw.on_click(on_area_click)
 
 # %% [markdown]
 # ## The app
@@ -421,6 +645,7 @@ form = w.VBox(
         *site_fields.values(),
         w.HBox([find_button, remove_button]),
         *shared_fields.values(),
+        import_box,
     ],
     layout=w.Layout(width='440px'),
 )
@@ -430,7 +655,7 @@ right = w.VBox(
         node_info,
         plan_label,
         problems_box,
-        w.HBox([run_button, cancel_button]),
+        w.HBox([run_button, run_selected_button, cancel_button]),
         progress,
         progress_label,
         result_box,

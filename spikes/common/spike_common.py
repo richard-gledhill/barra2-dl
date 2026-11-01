@@ -99,8 +99,8 @@ def build(
         preset=values['preset'],
         node_selection=values['node_selection'],
         format=values['format'],
-        cache=SCRATCH / 'cache',
-        out=SCRATCH / 'out',
+        cache=Path(values.get('cache') or SCRATCH / 'cache'),
+        out=Path(values.get('out') or SCRATCH / 'out'),
     )
     messages: list[tuple[str, str]] = []
     polygon = None
