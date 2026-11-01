@@ -21,7 +21,7 @@ The notebook spike (`spikes/notebook/app.py`, ipywidgets + ipyleaflet, no Voila)
 (`-r spikes/notebook/requirements.txt`), make a notebook and open it, then Run, Run All Cells:
 
 ```bash
-<scratch>/notebook/Scripts/jupytext.exe --set-kernel - --to ipynb -o spikes/_scratch/spike6.ipynb spikes/notebook/app.py
+<scratch>/notebook/Scripts/jupytext.exe --to ipynb -o spikes/_scratch/spike6.ipynb spikes/notebook/app.py
 <scratch>/notebook/Scripts/jupyter.exe lab spikes/_scratch/spike6.ipynb
 ```
 
