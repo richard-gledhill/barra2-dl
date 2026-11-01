@@ -4,8 +4,9 @@
 # A jupytext "percent" script: open it in JupyterLab as a notebook (right-click, Open With, Notebook) or convert it with
 # `jupytext --to ipynb spikes/notebook/app.py`. Run all cells; the last cell shows the form, map and run controls.
 #
-# The project has one set of settings (dates, domain, preset, output) and any number of sites, for example two masts.
-# Drag a marker to move its site, click a marker to work on it, draw a polygon to make the active site an area.
+# The project has one set of settings (dates, domain, preset, output) and any number of sites: masts (a point) and
+# areas (a drawn polygon). They are independent: pick any of them in the Site list, or click it on the map. Drag a
+# mast to move it; draw a polygon to add an area.
 #
 # Throwaway code, never merged. The fake NCSS server (spikes/common) supplies the data, so no network is needed
 # except for the map tiles.
@@ -45,17 +46,28 @@ sites: list[dict[str, Any]] = []
 state: dict[str, Any] = {'active': 0, 'cancel': None, 'node_layers': [], 'markers': [], 'polygon_layers': []}
 
 
-def new_site(name: str, lat: float, lon: float) -> dict[str, Any]:
-    """A site with nothing chosen yet."""
-    return {'name': name, 'lat': lat, 'lon': lon, 'offered': [], 'chosen': [], 'polygon': None, 'used': []}
+def new_site(name: str, lat: float, lon: float, polygon: str | None = None) -> dict[str, Any]:
+    """A mast (a point), or an area when it has a polygon; nothing is offered or chosen yet."""
+    return {'name': name, 'lat': lat, 'lon': lon, 'offered': [], 'chosen': [], 'polygon': polygon, 'used': []}
+
+
+def unique_name(prefix: str) -> str:
+    """mast-1, mast-2, ... the first one no site has."""
+    taken = {site['name'] for site in sites}
+    return next(f'{prefix}-{n}' for n in range(1, len(taken) + 2) if f'{prefix}-{n}' not in taken)
+
+
+def centre(polygon_geojson: str) -> tuple[float, float]:
+    """The middle of a drawn polygon's vertices as (lat, lon), which stands in for an area's place."""
+    ring = json.loads(polygon_geojson)['geometry']['coordinates'][0][:-1]
+    return round(sum(p[1] for p in ring) / len(ring), 4), round(sum(p[0] for p in ring) / len(ring), 4)
 
 
 sites.append(new_site('mast-1', DEFAULTS['lat'], DEFAULTS['lon']))
 
 site_select = w.Dropdown(options=[(sites[0]['name'], 0)], value=0, description='Site')
-add_button = w.Button(description='Add site', icon='plus')
+add_button = w.Button(description='Add mast', icon='plus')
 remove_button = w.Button(description='Remove site', icon='trash')
-clear_polygon_button = w.Button(description='Clear polygon', icon='eraser')
 site_fields: dict[str, w.Widget] = {
     'name': w.Text(value='mast-1', description='Name'),
     'lat': w.BoundedFloatText(value=DEFAULTS['lat'], min=-90, max=90, step=0.01, description='Latitude'),
@@ -76,7 +88,7 @@ run_button = w.Button(description='Run all sites', button_style='primary', icon=
 cancel_button = w.Button(description='Cancel', button_style='warning', icon='stop', layout=w.Layout(display='none'))
 plan_label = w.Label()
 problems_box = w.HTML()
-node_info = w.HTML('Drag a marker to move a site. Click a blue node to choose it; draw a polygon for an area.')
+node_info = w.HTML('Drag a mast to move it. Click a blue node to choose it. Draw a polygon to add an area.')
 progress = w.IntProgress(min=0, max=1, layout=w.Layout(width='100%', display='none'))
 progress_label = w.Label()
 result_box = w.HTML()
@@ -123,11 +135,18 @@ def site_icon(is_active: bool) -> AwesomeIcon:
 
 
 def draw_sites() -> None:
-    """One draggable marker and, if it has one, one polygon layer per site."""
+    """A draggable marker for each mast and a polygon layer for each area."""
     for layer in [*state['markers'], *state['polygon_layers']]:
         fmap.remove(layer)
     state['markers'], state['polygon_layers'] = [], []
     for index, site in enumerate(sites):
+        if site['polygon']:
+            style = {'color': '#a855f7' if index == state['active'] else '#9ca3af', 'fillOpacity': 0.2}
+            layer = GeoJSON(data=json.loads(site['polygon']), style=style)
+            layer.on_click(lambda *_a, index=index, **_k: select(index))
+            state['polygon_layers'].append(layer)
+            fmap.add(layer)
+            continue
         marker = Marker(
             location=(site['lat'], site['lon']),
             draggable=True,
@@ -138,11 +157,6 @@ def draw_sites() -> None:
         marker.observe(lambda change, index=index: moved(index, change['new']), names='location')
         state['markers'].append(marker)
         fmap.add(marker)
-        if site['polygon']:
-            style = {'color': '#a855f7' if index == state['active'] else '#9ca3af', 'fillOpacity': 0.2}
-            layer = GeoJSON(data=json.loads(site['polygon']), style=style)
-            state['polygon_layers'].append(layer)
-            fmap.add(layer)
 
 
 def draw_nodes() -> None:
@@ -167,15 +181,16 @@ def draw_nodes() -> None:
 
 
 def load_site() -> None:
-    """Show the active site in the name, latitude and longitude boxes and in the site list."""
+    """Show the active site in the name, latitude and longitude boxes (an area has no place boxes) and the list."""
     loading['on'] = True
     site = active()
     for key in ('name', 'lat', 'lon'):
         site_fields[key].value = site[key]
-    site_select.options = [(f'{s["name"]}{" (polygon)" if s["polygon"] else ""}', i) for i, s in enumerate(sites)]
+    for key in ('lat', 'lon'):
+        site_fields[key].layout.display = 'none' if site['polygon'] else ''
+    site_select.options = [(f'{s["name"]}{" (area)" if s["polygon"] else ""}', i) for i, s in enumerate(sites)]
     site_select.value = state['active']
     remove_button.disabled = len(sites) == 1
-    clear_polygon_button.disabled = not site['polygon']
     loading['on'] = False
 
 
@@ -217,7 +232,7 @@ def select(index: int) -> None:
 
 
 def moved(index: int, location: tuple[float, float]) -> None:
-    """A marker was dragged: move its site, and forget its nodes because they were for the old place."""
+    """A mast was dragged: move it, and forget its nodes because they were for the old place."""
     site = sites[index]
     lat, lon = round(location[0], 4), round(location[1], 4)
     if (site['lat'], site['lon']) == (lat, lon):
@@ -251,13 +266,13 @@ def on_site_edit(_change: dict[str, Any]) -> None:
 
 
 def find(_button: Any) -> None:
-    """Look up the nodes the active site would use: the nearest nine for a point, the nodes a polygon overlaps."""
+    """Look up the nodes the active site would use: the nearest nine for a mast, the nodes an area overlaps."""
     site = active()
     domain = shared_fields['domain'].value
     try:
         if site['polygon']:
             site['offered'] = find_polygon_nodes(site['polygon'], domain)
-            node_info.value = f'{len(site["offered"])} nodes overlap the polygon (click one for its share).'
+            node_info.value = f'{len(site["offered"])} nodes overlap {site["name"]} (click one for its share).'
         else:
             site['offered'] = find_nodes(site['lat'], site['lon'], domain)
             node_info.value = f'{len(site["offered"])} nodes offered. Click one to choose it.'
@@ -268,12 +283,12 @@ def find(_button: Any) -> None:
 
 
 def toggle(node: dict[str, Any]) -> None:
-    """Show a node's details; for a point site also choose or drop it."""
+    """Show a node's details; for a mast also choose or drop it."""
     site = active()
     text = f'{node["lat"]:.3f}, {node["lon"]:.3f}: {node["distance_km"]:.1f} km, orog {node["orog"]:.0f} m, '
     text += f'land {node["sftlf"]:.0f}%'
     if site['polygon']:
-        node_info.value = text + f', {node["overlap"]:.0%} of its cell inside the polygon. A polygon uses all of these.'
+        node_info.value = text + f', {node["overlap"]:.0%} of its cell inside the area. An area uses all of these.'
         return
     key = (node['lat'], node['lon'])
     if any((c['lat'], c['lon']) == key for c in site['chosen']):
@@ -285,34 +300,26 @@ def toggle(node: dict[str, Any]) -> None:
 
 
 def on_draw(change: dict[str, Any]) -> None:
-    """A polygon was drawn: it becomes the active site's area, and the drawn shape is replaced by the site's layer."""
+    """A polygon was drawn: it becomes a new area of its own, and the drawn shape is replaced by the area's layer."""
     polygons = [f for f in change['new'] if f.get('geometry', {}).get('type') == 'Polygon']
     if not polygons:
         return
-    site = active()
-    site.update(polygon=json.dumps(polygons[-1]), offered=[], chosen=[], used=[])
+    lat, lon = centre(json.dumps(polygons[-1]))
+    sites.append(new_site(unique_name('area'), lat, lon, json.dumps(polygons[-1])))
+    state['active'] = len(sites) - 1
     vertices = len(polygons[-1]['geometry']['coordinates'][0]) - 1
-    node_info.value = (
-        f'{site["name"]}: polygon set ({vertices} vertices); it replaces the point. Find nodes to preview.'
-    )
+    node_info.value = f'Added {sites[-1]["name"]} ({vertices} vertices). Find nodes to preview its nodes.'
     draw.clear()
     refresh()
 
 
-def clear_polygon(_button: Any) -> None:
-    """Make the active site a point again."""
-    active().update(polygon=None, offered=[], chosen=[], used=[])
-    node_info.value = f'{active()["name"]} is a point again.'
-    refresh()
-
-
 def add_site(_button: Any) -> None:
-    """Add a site just north of the active one, and work on it."""
+    """Add a mast just north of the active site, and work on it."""
     site = active()
-    number = len(sites) + 1
-    sites.append(new_site(f'mast-{number}', round(site['lat'] + 0.06, 4), site['lon']))
+    name = unique_name('mast')
+    sites.append(new_site(name, round(site['lat'] + 0.06, 4), site['lon']))
     state['active'] = len(sites) - 1
-    node_info.value = f'Added mast-{number}. Drag its marker to where it belongs.'
+    node_info.value = f'Added {name}. Drag its marker to where it belongs.'
     refresh()
 
 
@@ -385,7 +392,6 @@ run_button.on_click(start)
 cancel_button.on_click(lambda _b: state['cancel'] and state['cancel'].set())
 add_button.on_click(add_site)
 remove_button.on_click(remove_site)
-clear_polygon_button.on_click(clear_polygon)
 draw.observe(on_draw, names='data')
 
 # %% [markdown]
@@ -396,7 +402,7 @@ form = w.VBox(
     [
         w.HBox([site_select, add_button], layout=w.Layout(width='440px')),
         *site_fields.values(),
-        w.HBox([find_button, clear_polygon_button, remove_button]),
+        w.HBox([find_button, remove_button]),
         *shared_fields.values(),
     ],
     layout=w.Layout(width='440px'),

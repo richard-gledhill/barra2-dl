@@ -37,14 +37,20 @@ def test_notebook_form_nodes_polygon_sites_and_run() -> None:
     _check(ns['site_fields']['lat'].value == -23.5, 'form follows the marker')
 
     ns['draw'].data = [POLYGON]
-    _check(bool(sites[0]['polygon']) and 'polygon set (4 vertices)' in ns['node_info'].value, 'polygon taken')
+    _check(len(sites) == 2 and state['active'] == 1, 'a drawn polygon is a new site, and the active one')
+    _check(sites[0]['polygon'] is None and sites[1]['name'] == 'area-1', 'the mast is untouched')
+    _check('(4 vertices)' in ns['node_info'].value, 'polygon taken')
     ns['find'](None)
-    _check(len(sites[0]['offered']) == 4 and 'overlap' in sites[0]['offered'][0], 'polygon nodes previewed')
-    ns['clear_polygon'](None)
-    _check(sites[0]['polygon'] is None, 'polygon cleared')
+    _check(len(sites[1]['offered']) == 4 and 'overlap' in sites[1]['offered'][0], 'area nodes previewed')
+    _check(ns['site_fields']['lat'].layout.display == 'none', 'an area has no place boxes')
+    ns['select'](0)
+    _check(ns['site_fields']['lat'].layout.display == '' and sites[0]['lat'] == -23.5, 'the mast is still a point')
+    ns['select'](1)
+    ns['remove_site'](None)
+    _check(len(sites) == 1 and state['active'] == 0, 'area removed')
 
     ns['add_site'](None)
-    _check(len(sites) == 2 and state['active'] == 1, 'second site added and active')
+    _check(len(sites) == 2 and state['active'] == 1 and sites[1]['name'] == 'mast-2', 'second mast added and active')
     ns['select'](0)
     _check(ns['site_fields']['name'].value == 'mast-1' and sites[0]['lat'] == -23.5, 'switching keeps each site')
     ns['select'](1)
@@ -74,8 +80,6 @@ def test_notebook_far_sites_find_and_run() -> None:
     ns['find'](None)
     _check(len(sites[0]['offered']) == 9, 'nodes found for a site far from the fixture')
     ns['toggle'](sites[0]['offered'][0])
-    ns['add_site'](None)
-    ns['moved'](1, (-33.7, 151.0))
     ring = [[150.95, -33.75], [151.1, -33.75], [151.1, -33.65], [150.95, -33.65], [150.95, -33.75]]
     ns['draw'].data = [{'type': 'Feature', 'properties': {}, 'geometry': {'type': 'Polygon', 'coordinates': [ring]}}]
     ns['find'](None)
@@ -86,6 +90,6 @@ def test_notebook_far_sites_find_and_run() -> None:
         if state['cancel'] is None:
             break
         time.sleep(0.2)
-    _check('mast-1: ok' in ns['result_box'].value and 'mast-2: ok' in ns['result_box'].value, 'both far sites ran')
+    _check('mast-1: ok' in ns['result_box'].value and 'area-1: ok' in ns['result_box'].value, 'both far sites ran')
     used = sorted((round(n['lat'], 3), round(n['lon'], 3)) for n in sites[1]['used'])
     _check(used == previewed, 'the run used the nodes the preview showed')
