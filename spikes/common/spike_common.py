@@ -10,15 +10,17 @@ from pathlib import Path
 from typing import Any
 
 import fake_ncss
+import numpy as np
 
 from barra2_dl.globals import (
     BARRA2_DOMAINS,
     BARRA2_FREQS,
+    BARRA2_GRID_SPACING,
     BARRA2_NODE_SELECTIONS,
     BARRA2_OUTPUT_FORMATS,
     BARRA2_PRESETS,
 )
-from barra2_dl.mapping import BoundaryFileError, LatLonPoint, nearest_nodes, polygon_from_geojson
+from barra2_dl.mapping import BoundaryFileError, LatLonPoint, NodeLookupError, nearest_nodes, polygon_from_geojson
 from barra2_dl.project import Settings, Site, plan_site, site_result_to_dict, validate
 
 FAKE = fake_ncss.install()
@@ -50,6 +52,38 @@ def freqs(domain: str) -> list[str]:
 def find_nodes(lat: float, lon: float, domain: str) -> list[dict[str, Any]]:
     """The nodes around a point as plain dicts for a map: lat, lon, distance_km, orog, sftlf."""
     return [asdict(node) for node in nearest_nodes(LatLonPoint(lat, lon), domain, n=9)]
+
+
+def find_polygon_nodes(polygon_geojson: str, domain: str) -> list[dict[str, Any]]:
+    """The nodes whose cell the polygon overlaps, as dicts with the share (overlap) of each cell inside it.
+
+    The engine has no such preview (a polygon run finds its nodes while it downloads), so this samples nearest_nodes on
+    a lattice over the polygon's box, a lookup covering a 3 x 3 block, and keeps the nodes Polygon.cell_overlap says are
+    touched. A lookup outside the data (the fake server only serves the fixture area) is skipped.
+    """
+    polygon = polygon_from_geojson(polygon_geojson, 'drawn')
+    spacing = BARRA2_GRID_SPACING[domain]
+    box = polygon.bbox()
+    step = 2.5 * spacing
+    found: dict[tuple[float, float], dict[str, Any]] = {}
+    for lat in np.arange(box.south, box.north + step, step):
+        for lon in np.arange(box.west, box.east + step, step):
+            try:
+                nodes = nearest_nodes(LatLonPoint(min(lat, box.north), min(lon, box.east)), domain, n=9)
+            except NodeLookupError:
+                continue
+            found |= {(round(node.lat, 5), round(node.lon, 5)): asdict(node) for node in nodes}
+    if not found:
+        return []
+    lats = sorted({key[0] for key in found})
+    lons = sorted({key[1] for key in found})
+    overlap = polygon.cell_overlap(lats, lons, spacing)
+    kept = []
+    for (lat, lon), node in found.items():
+        share = float(overlap[lats.index(lat), lons.index(lon)])
+        if share > 0:
+            kept.append(node | {'overlap': share})
+    return sorted(kept, key=lambda node: (node['lat'], node['lon']))
 
 
 def build(
