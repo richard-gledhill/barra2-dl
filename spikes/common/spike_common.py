@@ -20,7 +20,14 @@ from barra2_dl.globals import (
     BARRA2_OUTPUT_FORMATS,
     BARRA2_PRESETS,
 )
-from barra2_dl.mapping import BoundaryFileError, LatLonPoint, NodeLookupError, nearest_nodes, polygon_from_geojson
+from barra2_dl.mapping import (
+    BoundaryFileError,
+    LatLonPoint,
+    NodeLookupError,
+    bracket_index,
+    nearest_nodes,
+    polygon_from_geojson,
+)
 from barra2_dl.project import Settings, Site, plan_site, site_result_to_dict, validate
 
 FAKE = fake_ncss.install()
@@ -111,9 +118,35 @@ def build(
             messages.append(('polygon', str(error)))
     point = None if polygon else LatLonPoint(values['lat'], values['lon'])
     nodes = None if polygon else ([LatLonPoint(n['lat'], n['lon']) for n in chosen] or None)
-    site = Site(name=values['name'], point=point, polygon=polygon, nodes=nodes)
+    node_mean = bool(values.get('node_mean')) and (polygon is not None or nodes is not None)
+    site = Site(name=values['name'], point=point, polygon=polygon, nodes=nodes, node_mean=node_mean)
     messages += [(problem.key, problem.message) for problem in validate(settings, site)]
     return settings, site, messages
+
+
+def planned_nodes(
+    lat: float, lon: float, offered: list[dict[str, Any]], chosen: list[dict[str, Any]], selection: str, area: bool
+) -> list[dict[str, Any]]:
+    """The offered nodes a run would download: all of an area's, the chosen ones, else the nearest or the four around.
+
+    The four are the pair of neighbouring nodes on each axis that surround the point (mapping.bracket_index, as the
+    engine's average4 merge finds them); where the offered block is too small to hold them, the four nearest stand in.
+    """
+    if area:
+        return offered
+    if chosen:
+        return chosen
+    if not offered or selection == 'nearest':
+        return offered[:1]
+    lats = np.array(sorted({node['lat'] for node in offered}))
+    lons = np.array(sorted({node['lon'] for node in offered}))
+    try:
+        south, west = bracket_index(lats, lat), bracket_index(lons, lon)
+    except ValueError:
+        return offered[:4]
+    rows, columns = {lats[south], lats[south + 1]}, {lons[west], lons[west + 1]}
+    around = [node for node in offered if node['lat'] in rows and node['lon'] in columns]
+    return around if len(around) == 4 else offered[:4]
 
 
 def plan_text(site: Site, settings: Settings) -> str:

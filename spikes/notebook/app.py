@@ -16,15 +16,17 @@
 import json
 import math
 import re
+import tempfile
 import threading
 import tomllib
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 from typing import Any
 
 import ipywidgets as w
 import pandas as pd
-from ipyleaflet import AwesomeIcon, CircleMarker, GeomanDrawControl, Map, Marker
+from ipyleaflet import AwesomeIcon, CircleMarker, DivIcon, GeomanDrawControl, Map, Marker
 from spike_common import (
     COLOURS,
     DEFAULTS,
@@ -38,6 +40,7 @@ from spike_common import (
     find_polygon_nodes,
     freqs,
     plan_text,
+    planned_nodes,
     summary,
 )
 
@@ -52,12 +55,23 @@ from barra2_dl.project import Project, load_project, project_from_dict, run_site
 sites: list[dict[str, Any]] = []
 state: dict[str, Any] = {'active': 0, 'cancel': None, 'node_layers': [], 'markers': [], 'results': {}}
 DRAW_POLYGON = {'pathOptions': {'color': '#a855f7'}}  # an empty dict would switch the tool off
+AREA_COLOURS = {True: '#a855f7', False: '#9ca3af'}  # the active area is purple, an idle one grey, as the masts are
+PLANNED = '#7c3aed'  # the ring round a node a run would download
 NO_NODE = {'distance_km': math.nan, 'orog': math.nan, 'sftlf': math.nan}
 
 
 def new_site(name: str, lat: float, lon: float, polygon: str | None = None) -> dict[str, Any]:
     """A mast (a point), or the area when it has a polygon; nothing is offered or chosen yet."""
-    return {'name': name, 'lat': lat, 'lon': lon, 'offered': [], 'chosen': [], 'polygon': polygon, 'used': []}
+    return {
+        'name': name,
+        'lat': lat,
+        'lon': lon,
+        'offered': [],
+        'chosen': [],
+        'polygon': polygon,
+        'used': [],
+        'mean': False,
+    }
 
 
 def unique_name(prefix: str) -> str:
@@ -107,12 +121,14 @@ shared_fields: dict[str, w.Widget] = {
     'domain': w.Dropdown(options=DOMAINS, value=DEFAULTS['domain'], description='Domain'),
     'freq': w.Dropdown(options=freqs(DEFAULTS['domain']), value=DEFAULTS['freq'], description='Frequency'),
     'preset': w.Dropdown(options=PRESETS, value=DEFAULTS['preset'], description='Preset'),
-    'node_selection': w.Dropdown(options=SELECTIONS, value=DEFAULTS['node_selection'], description='Nodes'),
+    'node_selection': w.Dropdown(options=SELECTIONS, value=DEFAULTS['node_selection'], description='Mast nodes'),
     'format': w.Dropdown(options=FORMATS, value=DEFAULTS['format'], description='Output'),
     'cache': w.Text(value=str(SCRATCH / 'cache'), description='Cache folder'),
     'out': w.Text(value=str(SCRATCH / 'out'), description='Output folder'),
 }
 fields = site_fields | shared_fields
+mean_box = w.Checkbox(description='Also write the weighted mean of the nodes', indent=False)
+selection_note = w.HTML(layout=w.Layout(margin='0 0 6px 6px'))
 find_button = w.Button(description='Find nodes', icon='search')
 run_button = w.Button(description='Run all sites', button_style='primary', icon='play')
 run_selected_button = w.Button(description='Run selected site', icon='play')
@@ -126,7 +142,7 @@ result_box = w.HTML()
 
 import_path = w.Text(placeholder='path to a project.toml, .geojson, .json or .kml', layout=w.Layout(width='300px'))
 import_button = w.Button(description='Import path', icon='folder-open')
-import_upload = w.FileUpload(accept='.toml,.geojson,.json,.kml', multiple=False, description='Upload file')
+import_upload = w.FileUpload(accept='.toml,.geojson,.json,.kml', multiple=True, description='Upload file(s)')
 import_info = w.HTML()
 import_box = w.Accordion(
     children=[
@@ -135,7 +151,8 @@ import_box = w.Accordion(
                 w.HTML(
                     'A <b>project.toml</b> replaces the settings and all sites. A <b>.geojson</b>, <b>.json</b> or '
                     '<b>.kml</b> polygon becomes the area. A path resolves a polygon file named in a project '
-                    'relative to the project; an upload resolves it relative to the notebook folder.'
+                    'relative to the project. An upload takes the polygon file too: select it with the '
+                    'project.toml (Ctrl-click).'
                 ),
                 w.HBox([import_path, import_button]),
                 import_upload,
@@ -185,7 +202,7 @@ def values_for(site: dict[str, Any]) -> dict[str, Any]:
     out = {key: widget.value for key, widget in shared_fields.items()}
     for key in ('start', 'end'):
         out[key] = out[key] or date(1900, 1, 1)
-    return out | {'name': site['name'], 'lat': site['lat'], 'lon': site['lon']}
+    return out | {'name': site['name'], 'lat': site['lat'], 'lon': site['lon'], 'node_mean': site['mean']}
 
 
 def site_icon(is_active: bool) -> AwesomeIcon:
@@ -193,13 +210,41 @@ def site_icon(is_active: bool) -> AwesomeIcon:
     return AwesomeIcon(name='crosshairs', marker_color='black' if is_active else 'lightgray', icon_color='white')
 
 
+def style_area() -> None:
+    """Purple for the active area, grey otherwise: the draw control takes a feature's colour from its properties."""
+    index = area_index()
+    if index is None:
+        return
+    feature = json.loads(sites[index]['polygon'])
+    colour = AREA_COLOURS[index == state['active']]
+    style = feature.setdefault('properties', {}).get('style') or {}
+    if style.get('color') == colour:
+        return
+    feature['properties']['style'] = {**style, 'color': colour, 'fillColor': colour}
+    sites[index]['polygon'] = json.dumps(feature)
+    draw.data = [feature]
+
+
+def area_label(site: dict[str, Any], is_active: bool) -> Marker:
+    """The area's name at its middle: shown on the map, and as a tooltip like a mast's."""
+    colour = '#7c3aed' if is_active else '#6b7280'
+    style = f'color:{colour}; font-weight:600; text-shadow:0 0 3px #fff; text-align:center'
+    html = f'<div style="{style}">{site["name"]}</div>'
+    icon = DivIcon(html=html, icon_size=(90, 20), icon_anchor=(45, 10))
+    return Marker(location=(site['lat'], site['lon']), draggable=False, title=site['name'], icon=icon)
+
+
 def draw_sites() -> None:
-    """A draggable marker for each mast; the area is the draw control's own layer."""
+    """A draggable marker for each mast and a name label for the area; the area is the draw control's own layer."""
     for layer in state['markers']:
         fmap.remove(layer)
     state['markers'] = []
     for index, site in enumerate(sites):
         if site['polygon']:
+            label = area_label(site, index == state['active'])
+            label.on_click(lambda *_a, index=index, **_k: select(index))
+            state['markers'].append(label)
+            fmap.add(label)
             continue
         marker = Marker(
             location=(site['lat'], site['lon']),
@@ -227,11 +272,35 @@ def draw_nodes() -> None:
         )
         marker.on_click(lambda *_a, node=node, **_k: toggle(node))
         state['node_layers'].append(marker)
+    selection = shared_fields['node_selection'].value
+    for node in planned_nodes(
+        site['lat'], site['lon'], site['offered'], site['chosen'], selection, bool(site['polygon'])
+    ):
+        ring = CircleMarker(location=(node['lat'], node['lon']), radius=14, color=PLANNED, fill=False, weight=3)
+        state['node_layers'].append(ring)
     for node in site['used']:
-        ring = CircleMarker(location=(node['lat'], node['lon']), radius=15, color=COLOURS['used'], fill=False, weight=4)
+        ring = CircleMarker(location=(node['lat'], node['lon']), radius=19, color=COLOURS['used'], fill=False, weight=4)
         state['node_layers'].append(ring)
     for layer in state['node_layers']:
         fmap.add(layer)
+
+
+def describe_selection(site: dict[str, Any]) -> str:
+    """What a run of the active site downloads, in words, since the node choice only applies to a mast."""
+    if site['polygon']:
+        found = f' ({len(site["offered"])} shown)' if site['offered'] else ''
+        return (
+            f'<i>Area: every node whose cell the polygon overlaps is downloaded{found}, not just the centre. '
+            'The node choice does not apply. Violet rings mark them.</i>'
+        )
+    if site['chosen']:
+        return f'<i>The {len(site["chosen"])} chosen node(s) are downloaded; the node choice does not apply.</i>'
+    if shared_fields['node_selection'].value == 'nearest':
+        return '<i>nearest: the one node nearest the mast is downloaded (violet ring after Find nodes).</i>'
+    return (
+        '<i>average4: the four nodes around the mast are downloaded and averaged with inverse-distance weights '
+        '(violet rings after Find nodes).</i>'
+    )
 
 
 def load_site() -> None:
@@ -245,6 +314,11 @@ def load_site() -> None:
     site_select.options = [(f'{s["name"]}{" (area)" if s["polygon"] else ""}', i) for i, s in enumerate(sites)]
     site_select.value = state['active']
     remove_button.disabled = len(sites) == 1 and not site['polygon']
+    uses_nodes = bool(site['polygon'] or site['chosen'])
+    mean_box.layout.display = '' if uses_nodes else 'none'
+    mean_box.value = site['mean'] and uses_nodes
+    shared_fields['node_selection'].disabled = uses_nodes
+    selection_note.value = describe_selection(site)
     loading['on'] = False
 
 
@@ -294,6 +368,7 @@ def refresh(*_args: Any) -> None:
     wanted = {} if area_index() is not None else DRAW_POLYGON
     if draw.polygon != wanted:
         draw.polygon = wanted
+    style_area()
     load_site()
     draw_sites()
     draw_nodes()
@@ -340,6 +415,13 @@ def on_site_edit(_change: dict[str, Any]) -> None:
         state['results'][new_name] = state['results'].pop(site['name'])
     site.update(name=new_name, lat=place[0], lon=place[1])
     refresh()
+
+
+def on_mean(change: dict[str, Any]) -> None:
+    """The mean box was ticked: the active site writes the weighted mean of its nodes too."""
+    if not loading['on']:
+        active()['mean'] = bool(change['new'])
+        refresh()
 
 
 def find(_button: Any) -> None:
@@ -552,10 +634,11 @@ def apply_project(project: Project, name: str) -> None:
                 continue
             area = feature_of(site.polygon)
             lat, lon = centre(area)
-            imported.append(new_site(site.name, lat, lon, json.dumps(area)))
+            imported.append(new_site(site.name, lat, lon, json.dumps(area)) | {'mean': site.node_mean})
             continue
         mast = new_site(site.name, float(site.point.lat), float(site.point.lon))
         mast['chosen'] = [{'lat': float(n.lat), 'lon': float(n.lon)} | NO_NODE for n in site.nodes or []]
+        mast['mean'] = site.node_mean
         imported.append(mast)
     if not imported:
         raise ValueError('The project has no site this notebook can show.')
@@ -609,12 +692,42 @@ def import_from_path(_button: Any) -> None:
         say(str(error), ok=False)
 
 
+def import_uploaded_project(items: list[dict[str, Any]]) -> None:
+    """Import an uploaded project.toml with the files uploaded beside it, which its polygon file may be."""
+    with tempfile.TemporaryDirectory() as folder:
+        for item in items:
+            (Path(folder) / Path(item['name']).name).write_bytes(bytes(item['content']))
+        toml = next(item for item in items if item['name'].lower().endswith('.toml'))
+        try:
+            project = load_project(Path(folder) / Path(toml['name']).name)
+            # a relative cache or out folder means next to the notebook, not inside the temporary copy
+            settings = replace(
+                project.settings, **{k: rebase(getattr(project.settings, k), folder) for k in ('cache', 'out')}
+            )
+            apply_project(replace(project, settings=settings, path=None), toml['name'])
+        except ValueError as error:
+            hint = '\nSelect the polygon file together with the project.toml, or use the path box.'
+            say(str(error) + (hint if 'Cannot read' in str(error) else ''), ok=False)
+
+
+def rebase(path: Path, folder: str) -> Path:
+    """A path inside the temporary upload folder, moved to the same place under the notebook folder."""
+    try:
+        return Path.cwd() / path.relative_to(folder)
+    except ValueError:
+        return path
+
+
 def import_from_upload(change: dict[str, Any]) -> None:
-    """Import the file chosen in the Upload box."""
-    if not change['new']:
+    """Import what was chosen in the Upload box: a project with its files, or a polygon file."""
+    items = list(change['new'])
+    if not items:
         return
-    item = change['new'][0]
-    import_text(item['name'], bytes(item['content']).decode('utf-8'), Path.cwd())
+    if any(item['name'].lower().endswith('.toml') for item in items):
+        import_uploaded_project(items)
+    else:
+        item = items[0]
+        import_text(item['name'], bytes(item['content']).decode('utf-8'), Path.cwd())
     import_upload.value = ()
 
 
@@ -631,6 +744,7 @@ cancel_button.on_click(lambda _b: state['cancel'] and state['cancel'].set())
 add_button.on_click(add_site)
 remove_button.on_click(remove_site)
 import_button.on_click(import_from_path)
+mean_box.observe(on_mean, names='value')
 import_upload.observe(import_from_upload, names='value')
 draw.observe(on_draw, names='data')
 draw.on_click(on_area_click)
@@ -644,7 +758,12 @@ form = w.VBox(
         w.HBox([site_select, add_button], layout=w.Layout(width='440px')),
         *site_fields.values(),
         w.HBox([find_button, remove_button]),
-        *shared_fields.values(),
+        mean_box,
+        *(
+            item
+            for key, widget in shared_fields.items()
+            for item in ((widget, selection_note) if key == 'node_selection' else (widget,))
+        ),
         import_box,
     ],
     layout=w.Layout(width='440px'),

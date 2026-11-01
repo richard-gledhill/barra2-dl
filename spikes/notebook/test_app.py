@@ -188,3 +188,82 @@ def test_notebook_far_sites_find_and_run() -> None:
     _check('mast-1: ok' in ns['result_box'].value and 'area-1: ok' in ns['result_box'].value, 'both far sites ran')
     used = sorted((round(n['lat'], 3), round(n['lon'], 3)) for n in sites[1]['used'])
     _check(used == previewed, 'the run used the nodes the preview showed')
+
+
+def test_notebook_highlights_the_nodes_a_run_would_download() -> None:
+    """Nearest rings the one nearest node, average4 the four around the mast, an area all its nodes."""
+    ns = _fresh()
+    sites = ns['sites']
+    planned, nodes_field = ns['planned_nodes'], ns['shared_fields']['node_selection']
+    ns['find'](None)
+    site = sites[0]
+    _check(planned(site['lat'], site['lon'], site['offered'], [], 'nearest', False) == site['offered'][:1], 'nearest')
+    four = planned(site['lat'], site['lon'], site['offered'], [], 'average4', False)
+    lats, lons = sorted({n['lat'] for n in four}), sorted({n['lon'] for n in four})
+    _check(len(four) == 4 and len(lats) == 2 and len(lons) == 2, 'average4 is a 2 x 2 block')
+    _check(lats[0] <= site['lat'] <= lats[1] and lons[0] <= site['lon'] <= lons[1], 'that surrounds the mast')
+    ns['toggle'](site['offered'][3])
+    _check(
+        planned(site['lat'], site['lon'], site['offered'], site['chosen'], 'nearest', False) == site['chosen'], 'chosen'
+    )
+    rings = [layer for layer in ns['state']['node_layers'] if layer.color == ns['PLANNED']]
+    _check(len(rings) == 1, 'a chosen node alone is ringed')
+    ns['find'](None)
+    nodes_field.value = 'average4'
+    rings = [layer for layer in ns['state']['node_layers'] if layer.color == ns['PLANNED']]
+    _check(len(rings) == 4, 'average4 rings four nodes on the map')
+    _check('average4' in ns['selection_note'].value, 'and the note says so')
+    ns['draw'].data = [_feature(RING)]
+    ns['find'](None)
+    rings = [layer for layer in ns['state']['node_layers'] if layer.color == ns['PLANNED']]
+    _check(len(rings) == len(sites[1]['offered']) == 4, 'an area rings every node it overlaps')
+    _check(nodes_field.disabled and 'not just the centre' in ns['selection_note'].value, 'the node choice is off')
+
+
+def test_notebook_area_is_grey_when_idle_and_labelled() -> None:
+    """The area is purple while active and grey otherwise, and carries its name as a label with a tooltip."""
+    ns = _fresh()
+    sites, state = ns['sites'], ns['state']
+    ns['draw'].data = [_feature(RING)]
+    colour = json.loads(sites[1]['polygon'])['properties']['style']['color']
+    _check(colour == ns['AREA_COLOURS'][True], 'active area is purple')
+    ns['select'](0)
+    _check(json.loads(sites[1]['polygon'])['properties']['style']['color'] == ns['AREA_COLOURS'][False], 'idle is grey')
+    _check(ns['draw'].data[0]['properties']['style']['color'] == ns['AREA_COLOURS'][False], 'and on the map')
+    _check(any(marker.title == 'area-1' for marker in state['markers']), 'the area has a labelled marker')
+    ns['select'](1)
+    _check(json.loads(sites[1]['polygon'])['properties']['style']['color'] == ns['AREA_COLOURS'][True], 'purple again')
+
+
+def test_notebook_weighted_mean_option_and_run() -> None:
+    """The mean box shows for an area, and a run with it still finishes ok."""
+    ns = _fresh()
+    ns['draw'].data = [_feature(RING)]
+    _check(ns['mean_box'].layout.display == '', 'an area offers the weighted mean')
+    ns['mean_box'].value = True
+    _check(ns['sites'][1]['mean'] is True and not ns['run_selected_button'].disabled, 'ticked and runnable')
+    ns['start']([1])
+    _wait(ns)
+    _check('area-1: ok' in ns['result_box'].value, 'the area ran ok with the mean on')
+    ns['select'](0)
+    _check(ns['mean_box'].layout.display == 'none', 'a mast with no chosen nodes has no mean box')
+
+
+def test_notebook_uploads_a_project_with_its_polygon_file(tmp_path: Path) -> None:
+    """Selecting the project.toml and its polygon file together imports both; the folders land by the notebook."""
+    ns = _fresh()
+    toml = PROJECT.replace('second-farm', 'unused').split('[[site]]\nname = "unused"')[0]
+    content = [
+        {'name': 'project.toml', 'content': toml.encode()},
+        {'name': 'boundary_two_cells.geojson', 'content': (DATA / 'boundary_two_cells.geojson').read_bytes()},
+    ]
+    ns['import_from_upload']({'new': tuple(content)})
+    _check([s['name'] for s in ns['sites']] == ['masta', 'farm'], 'both sites imported from the upload')
+    _check(
+        Path(ns['shared_fields']['cache'].value) == Path.cwd() / 'cache-from-project', 'cache folder by the notebook'
+    )
+    ns['import_from_upload']({'new': tuple(content[:1])})
+    _check(
+        'Cannot read' in ns['import_info'].value and 'together' in ns['import_info'].value,
+        'a missing polygon is explained',
+    )
