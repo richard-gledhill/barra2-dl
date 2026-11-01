@@ -4,3 +4,4 @@ jupyterlab
 jupytext
 nbclient
 ipykernel
+-e spikes/common

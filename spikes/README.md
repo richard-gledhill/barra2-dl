@@ -41,7 +41,7 @@ The notebook spike (`spikes/notebook/app.py`, ipywidgets + ipyleaflet, no Voila)
 ```bash
 uv venv --python 3.12 C:\Users\rich_\spike-envs\notebook
 
-uv pip install --python C:\Users\rich_\spike-envs\notebook\Scripts\python.exe -e . -r spikes/notebook/requirements.txt
+uv pip install --python C:\Users\rich_\spike-envs\notebook\Scripts\python.exe -e . -e spikes/common -r spikes/notebook/requirements.txt
 
 C:\Users\rich_\spike-envs\notebook\Scripts\jupytext.exe --to ipynb -o spikes/_scratch/spike6.ipynb spikes/notebook/app.py
 
