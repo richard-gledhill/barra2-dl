@@ -79,5 +79,6 @@ def _launch(notebook: Path) -> None:
     """Start JupyterLab on the notebook, in its folder so the cache and output land beside it."""
     from jupyterlab.labapp import LabApp
 
-    os.chdir(notebook.parent)
-    LabApp.launch_instance(argv=[str(notebook.resolve())])
+    path = notebook.resolve()  # before the chdir: a relative folder would otherwise be applied twice
+    os.chdir(path.parent)
+    LabApp.launch_instance(argv=[str(path)])
