@@ -53,10 +53,10 @@ by pattern); the jupytext sync of the notebook must not reformat unrelated cells
    entry point, `build_app()`, form to `Settings`/`Site`, map with nodes, polygon drawing, project and polygon import,
    background `run_site` with progress and cancel, run summary, last session; the library gains `polygon_nodes`,
    `planned_nodes` and `project_to_dict`. Detailed in the SPEC "Slice 4 addendum" (approved 2026-11-02).
-5. **Remaining map and import work** (`feat/gui-map-import`), reduced because slice 4 ports the spike's map, imports and
-   summary: mast-list CSV import, an optional node layer limited to the site or area plus a margin (nodes from the
-   server, never a stored file), and a node table for a plain box `area`. The owner requirement that the nodes selected
-   or used for a site are drawn on the map is met in slice 4.
+5. **Remaining map and import work** (`feat/gui-map-import`): retired by the owner on 2026-11-02. Slice 4 ports the spike's map,
+   imports and summary, and meets the requirement that the nodes selected or used for a site are drawn on the map. Mast-list CSV
+   import and the optional node layer (limited to the site or area plus a margin, nodes from the server) are deferred to the
+   backlog; the node table for a plain box `area` is dropped, because the GUI has no plain box.
 6. **User docs and credit** (`docs/gui-user-guide`): GUI guide, project-file reference, why AUS-11 is the default (confirm
    the CSIRO URL first), "raised by atl3b" in README, docs and release notes.
 

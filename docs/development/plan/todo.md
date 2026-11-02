@@ -57,8 +57,8 @@ Resumed 2026-10-31 after RFC-007 shipped. The owner answered RFC section 9 on 20
 - [x] Reduced fake server in `tests/`; `test_gui.py`, `test_gui_notebook.py`, `test_package.py` updates
 - [x] CI installs the extra; `make check`, `make test`, `make docs-test`; install size into the research note; PR
 
-## Slice 5: `feat/gui-map-import`
-- [ ] SPEC addendum; map preview, nodes selected or used drawn on the map (owner requirement), optional node layer (site or area plus margin), mast-list, project and boundary-file import, polygon drawing, summary view; PR
+## Slice 5: `feat/gui-map-import` (retired 2026-11-02)
+- [x] Retired by the owner: slice 4 covers the map, the nodes drawn, imports and the summary. Mast-list CSV import and the optional node layer are in the backlog; the plain box `area` node table is dropped (the GUI has no plain box)
 
 ## Slice 6: `docs/gui-user-guide`
 - [ ] User docs (including `docs/how-to-use.md` for the notebook GUI), CSIRO link check, atl3b credit; PR

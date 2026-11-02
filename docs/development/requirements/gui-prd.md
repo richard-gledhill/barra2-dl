@@ -354,7 +354,8 @@ on FastAPI and Streamlit can't share a server.
 3. Toolkit spikes (5.2); ADR recording the choice.
 4. GUI under `src/barra2_dl/gui/` calling only public API; a smoke test that needs no display; the boundary tests
    (5.7).
-5. Map preview, mast-list and project-file import, run summary view.
+5. Map preview, mast-list and project-file import, run summary view. Built in slice 4; the mast-list CSV import and an optional
+   node layer were deferred to the backlog on 2026-11-02.
 6. User docs: the GUI, the project file reference, and the note on why AUS-11 is the default (decision 8).
    "Raised by atl3b" credit in the README, the docs and the release notes.
 
