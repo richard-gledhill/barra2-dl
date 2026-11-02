@@ -382,9 +382,34 @@ frame = pd.read_csv(path, skiprows=int(header['Header lines']))  # the same fram
 on import. Whether it also reads the latitude, longitude and elevation from the header has not been confirmed; if it
 doesn't, set them in Windographer's Configure Dataset dialog after importing.
 
+## Notebook GUI
+
+To choose sites on a map instead of writing code, install the `gui` extra and start the notebook:
+
+```bash
+pip install "barra2-dl[gui] @ git+https://github.com/richard-gledhill/barra2-dl.git"
+barra2-dl-gui
+```
+
+`barra2-dl-gui [folder]` copies the notebook into `./barra2-dl-gui` (or the folder you name), never overwriting your
+copy, and opens JupyterLab on it. Run all the cells, then:
+
+1. Drag the mast to your site, or type its latitude and longitude. Draw a polygon to add an area.
+2. Set the dates, domain, preset and output.
+3. **Find nodes** shows the grid nodes; click one to choose it. The violet rings mark what a run will download.
+4. **Run all sites** downloads, merges and writes the output, with a summary under the buttons.
+
+Each run saves your settings to `last_session.json`; **Load last session** brings them back. The form, the map, the
+nodes, the summary and importing a project or polygon are described in the [GUI guide](gui.md), and the keys the GUI
+shares with a project file in the [project-file reference](project-file.md). The GUI was raised by
+[atl3b](https://github.com/atl3b) in [issue #59](https://github.com/richard-gledhill/barra2-dl/issues/59).
+
 ## Project file
 
-A project file runs several sites with the same settings, and is the same path a form takes. It is TOML, with a
+A project file runs several sites with the same settings, and can be a more convenient way to downloaded
+data for a set of masts, a project or projects. It can also be imported into the barra2-dl-gui.
+
+It is TOML, with a
 `[settings]` table and one `[[site]]` table per mast, point or area (`scripts/example_project.toml`):
 
 ```toml
@@ -407,6 +432,12 @@ lat = -23.55
 lon = 133.40
 
 [[site]]
+name = "wind-farm-site"
+polygon = "example_boundary.geojson"   # a GeoJSON or KML outline, WGS 84; relative to this file
+node_mean = true               # optional: also write the area-weighted mean of the nodes it overlaps
+format = "netcdf"              # a boundary is a grid: netCDF only
+
+[[site]]
 name = "farm-area"
 north = -23.40
 south = -23.70
@@ -416,7 +447,7 @@ format = "netcdf"
 ```
 
 A point site can also give `nodes` and `node_mean` (see Choosing nodes), and a site can give `polygon` and `node_mean` instead of a point (see Site boundary). Any site can override `domain`, `freq`, `preset`, `node_selection`, `format`, `download`, `start` and `end`; `cache`,
-`out` and `workers` belong to the whole project. Unknown keys are errors, so a typo isn't silently ignored.
+`out` and `workers` belong to the whole project. Unknown keys are errors, so a typo isn't silently ignored. Every key is listed in the [project-file reference](project-file.md).
 
 ```python
 project = barra2_dl.project.load_project('example_project.toml')

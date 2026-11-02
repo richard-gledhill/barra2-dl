@@ -61,7 +61,9 @@ Resumed 2026-10-31 after RFC-007 shipped. The owner answered RFC section 9 on 20
 - [x] Retired by the owner: slice 4 covers the map, the nodes drawn, imports and the summary. Mast-list CSV import and the optional node layer are in the backlog; the plain box `area` node table is dropped (the GUI has no plain box)
 
 ## Slice 6: `docs/gui-user-guide`
-- [ ] User docs (including `docs/how-to-use.md` for the notebook GUI), CSIRO link check, atl3b credit; PR
+- [x] SPEC addendum (#162, approved)
+- [x] User docs: GUI guide, project-file reference with `tests/test_docs.py`, `how-to-use.md`, AUS-11 note (CSIRO cited without a link, owner decision), atl3b credit in README, docs and release notes text
+- [ ] PR
 
 ## Finish
 - [ ] Archive plan; RFC-005 Done; roadmap; README

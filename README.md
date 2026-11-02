@@ -91,9 +91,31 @@ https://opus.nci.org.au/pages/viewpage.action?pageId=264241166
 
 ## Installation
 
-barra2-dl is not published on PyPI yet (a release is planned after the GUI, see the roadmap). Install it from GitHub (Python 3.12 or later):
+barra2-dl is not published on PyPI yet (a release is proposed after the GUI, see the roadmap). Clone or install it from
+GitHub
+(Python 3.12 or later):
+
+### pip
 
 ```bash
+pip install git+https://github.com/richard-gledhill/barra2-dl.git
+```
+If you run this command outside of a virtual environment (.venv), it will install the package globally into your
+system's default Python environment. We recommend installing into a virtual environment and not your global python install.
+
+```bash
+# 1. Create the virtual environment (named .venv)
+python -m venv .venv
+
+# 2. Activate it
+# On Windows (Command Prompt):
+.venv\Scripts\activate
+# On Windows (PowerShell):
+.venv\Scripts\Activate.ps1
+# On macOS / Linux:
+source .venv/bin/activate
+
+# 3. Now run your install inside the virtual environment
 pip install git+https://github.com/richard-gledhill/barra2-dl.git
 ```
 
@@ -101,17 +123,22 @@ pip install git+https://github.com/richard-gledhill/barra2-dl.git
 
 To choose sites on a map instead of writing code, install the `gui` extra and start the notebook (it adds JupyterLab, about 140 MB):
 
+Again we recommend installing into a virtual environment. See above for instructions.
+
 ```bash
 pip install "barra2-dl[gui] @ git+https://github.com/richard-gledhill/barra2-dl.git"
 barra2-dl-gui
 ```
 
 `barra2-dl-gui [folder]` copies the notebook into `./barra2-dl-gui` (or the folder you name), never overwriting your copy
-(`--reset` replaces it), and opens JupyterLab on it. The cache, the output and `last_session.json` go in that folder.
+(`--reset` replaces it), and opens JupyterLab on it. The cache, the output and `last_session.json` go in that folder. The [GUI guide](https://richard-gledhill.github.io/barra2-dl/gui/) describes the form, the map and the run summary.
+
+The proposal for a GUI was raised by [atl3b](https://github.com/atl3b)
+in [issue #59](https://github.com/richard-gledhill/barra2-dl/issues/59).
 
 ### Development
 
-Or clone the repository for development (uses [uv](https://docs.astral.sh/uv/)):
+Or clone the repository for direct access to the code and/or development (uses [uv](https://docs.astral.sh/uv/)):
 
 ```bash
 git clone https://github.com/richard-gledhill/barra2-dl.git
@@ -120,6 +147,8 @@ uv sync --all-extras
 ```
 
 ## Example
+
+The following example shows how to download data for a single point:
 
 ```python
 from datetime import datetime
@@ -203,8 +232,9 @@ The work is planned as a series of requirements documents (RFCs), set out in the
 | 2 | [Parameter review](https://github.com/richard-gledhill/barra2-dl/blob/main/docs/development/requirements/parameter-review-prd.md): presets, variable inventory, node altitude, unit conversion | Done |
 | 3 | [netCDF output, node averaging and area download](https://github.com/richard-gledhill/barra2-dl/blob/main/docs/development/requirements/netcdf-output-prd.md): a CF-style xarray Dataset from netCDF4 downloads or csv, with the nearest node, a four-node average and a `(time, lat, lon)` area download | Done |
 | 4 | [GUI](https://github.com/richard-gledhill/barra2-dl/blob/main/docs/development/requirements/gui-prd.md): a download engine with retries, a run summary and a multi-site project file, then a graphical app on top | Draft |
-| 5 | First PyPI release, and relicensing the code to MIT | After the GUI |
-| 6 | Export to wind-engineering software (Windographer, WAsP `.tab`, openWind, WindPRO) | To be drafted |
+| 5 | Relicensing the code to MIT prior to any PyPI release | After the GUI |
+| 6 | First PyPI release | TBC after the GUI |
+| 7 | Export to wind-engineering software (Windographer, WAsP `.tab`, openWind, WindPRO) | TBC |
 
 Also under consideration, not yet scheduled (see the roadmap above and the [backlog](https://github.com/richard-gledhill/barra2-dl/blob/main/docs/development/backlog.md)): a command-line tool, derived variables
 (air density, shear, veer, hub-height speed), a data-quality summary report, and downloading only new data.
@@ -219,6 +249,9 @@ Or if you are so inclined or use this for commercial work you can
 ## Authors and acknowledgment
 
 [richard-gledhill](https://github.com/richard-gledhill)
+
+The notebook GUI proposal was raised by [atl3b](https://github.com/atl3b)
+in [issue #59](https://github.com/richard-gledhill/barra2-dl/issues/59).
 
 This project was originally generated with [`wemake-python-package`](https://github.com/wemake-services/wemake-python-package).
 Refactored after 0.3.0 to uv based on  [`osprey-oss/cookiecutter-uv`](https://github.com/osprey-oss/cookiecutter-uv).
