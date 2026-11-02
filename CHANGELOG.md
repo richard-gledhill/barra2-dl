@@ -7,6 +7,95 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## Unreleased changes
 
 ### Feature
+- GUI notebook and its tests [`8be16a0`](https://github.com/richard-gledhill/barra2-dl/commit/8be16a0)
+- GUI notebook and its tests [`cf8b516`](https://github.com/richard-gledhill/barra2-dl/commit/cf8b516)
+- notebook GUI package (build_app, handlers, barra2-dl-gui) [`d194354`](https://github.com/richard-gledhill/barra2-dl/commit/d194354)
+- polygon_nodes, planned_nodes and project_to_dict [`011d2b7`](https://github.com/richard-gledhill/barra2-dl/commit/011d2b7)
+- boundary example, docs and live tests [`a506b37`](https://github.com/richard-gledhill/barra2-dl/commit/a506b37)
+- add the polygon site to the project engine [`475d059`](https://github.com/richard-gledhill/barra2-dl/commit/475d059)
+- select the nodes of an area by a boundary in the merge [`0a81228`](https://github.com/richard-gledhill/barra2-dl/commit/0a81228)
+- add Polygon, boundary readers and cell overlap to mapping [`36143a7`](https://github.com/richard-gledhill/barra2-dl/commit/36143a7)
+- examples, docs and live test for chosen nodes [`1578200`](https://github.com/richard-gledhill/barra2-dl/commit/1578200)
+- add the nodes site to the project engine [`8bb02d4`](https://github.com/richard-gledhill/barra2-dl/commit/8bb02d4)
+- add the nodes selection to download and merge [`982dfb9`](https://github.com/richard-gledhill/barra2-dl/commit/982dfb9)
+- add mapping.nearest_nodes and GridNode, delete the draft grid helpers [`160d8c2`](https://github.com/richard-gledhill/barra2-dl/commit/160d8c2)
+- add the project engine (RFC-005 slice 1) [`67af096`](https://github.com/richard-gledhill/barra2-dl/commit/67af096)
+
+### Bug Fixes
+- resolve the notebook path before barra2-dl-gui changes directory [`19e04f3`](https://github.com/richard-gledhill/barra2-dl/commit/19e04f3)
+- GUI map falls back to centring when fit_bounds has no event loop [`8c90c4f`](https://github.com/richard-gledhill/barra2-dl/commit/8c90c4f)
+
+### Continuous Integration
+- install the gui extra with uv sync --all-extras [`e2b3d90`](https://github.com/richard-gledhill/barra2-dl/commit/e2b3d90)
+
+### Documentation
+- add a GUI screenshot to the README [`01784af`](https://github.com/richard-gledhill/barra2-dl/commit/01784af)
+- add a screenshot of the GUI to the top of the GUI page [`d4d10a0`](https://github.com/richard-gledhill/barra2-dl/commit/d4d10a0)
+- mark RFC-005 Done in the RFC and the roadmap [`3abd417`](https://github.com/richard-gledhill/barra2-dl/commit/3abd417)
+- archive the GUI plan (RFC-005 slices 1 to 6) [`d3fcbd5`](https://github.com/richard-gledhill/barra2-dl/commit/d3fcbd5)
+- GUI user guide, project-file reference and atl3b credit [`b323221`](https://github.com/richard-gledhill/barra2-dl/commit/b323221)
+- slice 6 SPEC addendum (GUI user guide) [`f950f47`](https://github.com/richard-gledhill/barra2-dl/commit/f950f47)
+- retire RFC-005 slice 5 (covered by slice 4) [`d0d6fa4`](https://github.com/richard-gledhill/barra2-dl/commit/d0d6fa4)
+- gui entry in README, modules and CONTEXT; install size measured [`9133c6b`](https://github.com/richard-gledhill/barra2-dl/commit/9133c6b)
+- record slice 4 owner decisions, rewrite slice 4 and 5 plan lines [`0e455e2`](https://github.com/richard-gledhill/barra2-dl/commit/0e455e2)
+- slice 4 SPEC addendum (notebook GUI) [`cca1acf`](https://github.com/richard-gledhill/barra2-dl/commit/cca1acf)
+- ADR-005 GUI toolkit (slice 3) [`72a7306`](https://github.com/richard-gledhill/barra2-dl/commit/72a7306)
+- replace weighted scoring with an owner-assessed yes/no checklist; record owner answers [`f691433`](https://github.com/richard-gledhill/barra2-dl/commit/f691433)
+- add a notebook (ipywidgets, Voila) as a sixth spike [`082fcdb`](https://github.com/richard-gledhill/barra2-dl/commit/082fcdb)
+- slice 3 SPEC addendum (toolkit spikes) [`a758d7d`](https://github.com/richard-gledhill/barra2-dl/commit/a758d7d)
+- remove outdated notes on unwired draft helpers [`d51ed54`](https://github.com/richard-gledhill/barra2-dl/commit/d51ed54)
+- record the owner's slice 2b decisions [`7d7a25a`](https://github.com/richard-gledhill/barra2-dl/commit/7d7a25a)
+- slice 2b SPEC addendum (polygon boundary) [`8aec8d5`](https://github.com/richard-gledhill/barra2-dl/commit/8aec8d5)
+- fix the slice 2 addendum status line [`27c4f81`](https://github.com/richard-gledhill/barra2-dl/commit/27c4f81)
+- record the owner's slice 2 decisions [`4a0c240`](https://github.com/richard-gledhill/barra2-dl/commit/4a0c240)
+- slice 2 SPEC addendum (nearest_nodes) [`ba660c7`](https://github.com/richard-gledhill/barra2-dl/commit/ba660c7)
+- record the owner's decisions on the research note [`a0035b3`](https://github.com/richard-gledhill/barra2-dl/commit/a0035b3)
+- add the reanalysis site-data research note (RFC-005 slice 1b) [`35fb529`](https://github.com/richard-gledhill/barra2-dl/commit/35fb529)
+- record the project cell check [`288f774`](https://github.com/richard-gledhill/barra2-dl/commit/288f774)
+- accept RFC-005 and record the section 9 answers [`502f3c9`](https://github.com/richard-gledhill/barra2-dl/commit/502f3c9)
+- resume RFC-005 plan after RFC-007 [`737ca74`](https://github.com/richard-gledhill/barra2-dl/commit/737ca74)
+
+### Test
+- fit_bounds fallback [`e54aa01`](https://github.com/richard-gledhill/barra2-dl/commit/e54aa01)
+- package boundary tests cover gui and the notebook toolkit [`34395d8`](https://github.com/richard-gledhill/barra2-dl/commit/34395d8)
+- reduced fake NCSS server for the GUI tests [`2e03f6a`](https://github.com/richard-gledhill/barra2-dl/commit/2e03f6a)
+- cover the polygon site in the project engine [`48c3e2a`](https://github.com/richard-gledhill/barra2-dl/commit/48c3e2a)
+
+### Build
+- gui extra, barra2-dl-gui entry point, CI installs the extra [`898bd9b`](https://github.com/richard-gledhill/barra2-dl/commit/898bd9b)
+
+### Chore
+- relicense the code to MIT [`6d038c1`](https://github.com/richard-gledhill/barra2-dl/commit/6d038c1)
+
+### Other
+- Merge pull request #168 from richard-gledhill/docs/readme-screenshot [`267dcfb`](https://github.com/richard-gledhill/barra2-dl/commit/267dcfb)
+- Merge pull request #167 from richard-gledhill/docs/gui-screenshot [`0ffebf9`](https://github.com/richard-gledhill/barra2-dl/commit/0ffebf9)
+- Merge pull request #166 from richard-gledhill/fix/gui-launch-path [`58c95e5`](https://github.com/richard-gledhill/barra2-dl/commit/58c95e5)
+- Merge pull request #165 from richard-gledhill/chore/relicense-mit [`9f75240`](https://github.com/richard-gledhill/barra2-dl/commit/9f75240)
+- Merge pull request #164 from richard-gledhill/docs/archive-gui-plan [`bda4690`](https://github.com/richard-gledhill/barra2-dl/commit/bda4690)
+- Merge pull request #163 from richard-gledhill/docs/gui-user-guide [`f1c5db5`](https://github.com/richard-gledhill/barra2-dl/commit/f1c5db5)
+- Merge pull request #162 from richard-gledhill/docs/slice-6-spec-addendum [`e34bfb7`](https://github.com/richard-gledhill/barra2-dl/commit/e34bfb7)
+- Merge branch 'main' into docs/slice-6-spec-addendum [`b04dbbf`](https://github.com/richard-gledhill/barra2-dl/commit/b04dbbf)
+- Merge pull request #161 from richard-gledhill/docs/retire-gui-slice-5 [`da46ced`](https://github.com/richard-gledhill/barra2-dl/commit/da46ced)
+- Merge pull request #160 from richard-gledhill/feat/gui-skeleton [`d17b808`](https://github.com/richard-gledhill/barra2-dl/commit/d17b808)
+- Merge remote-tracking branch 'origin/main' into claude/gui-skeleton-b9c5b7 [`c0d0dfb`](https://github.com/richard-gledhill/barra2-dl/commit/c0d0dfb)
+- Merge pull request #159 from richard-gledhill/docs/slice-4-decisions [`42c0db4`](https://github.com/richard-gledhill/barra2-dl/commit/42c0db4)
+- Merge pull request #158 from richard-gledhill/docs/slice-4-gui-spec [`ea53faf`](https://github.com/richard-gledhill/barra2-dl/commit/ea53faf)
+- Merge pull request #157 from richard-gledhill/docs/gui-toolkit-adr [`f9782cd`](https://github.com/richard-gledhill/barra2-dl/commit/f9782cd)
+- Merge pull request #155 from richard-gledhill/docs/slice-3-spikes-spec [`7ee9689`](https://github.com/richard-gledhill/barra2-dl/commit/7ee9689)
+- Merge pull request #154 from richard-gledhill/docs/slice-2-conventions-update [`5f777ac`](https://github.com/richard-gledhill/barra2-dl/commit/5f777ac)
+- Merge pull request #153 from richard-gledhill/docs/slice-2b-decisions [`382a442`](https://github.com/richard-gledhill/barra2-dl/commit/382a442)
+- Merge pull request #152 from richard-gledhill/feat/polygon-boundary-impl [`7dcc638`](https://github.com/richard-gledhill/barra2-dl/commit/7dcc638)
+- Merge pull request #151 from richard-gledhill/feat/polygon-boundary [`4f351f6`](https://github.com/richard-gledhill/barra2-dl/commit/4f351f6)
+- Merge pull request #150 from richard-gledhill/feat/nearest-nodes-impl [`f965103`](https://github.com/richard-gledhill/barra2-dl/commit/f965103)
+- Merge pull request #149 from richard-gledhill/feat/nearest-nodes [`2ad2d24`](https://github.com/richard-gledhill/barra2-dl/commit/2ad2d24)
+- Merge pull request #148 from richard-gledhill/docs/reanalysis-site-data-research [`b09e373`](https://github.com/richard-gledhill/barra2-dl/commit/b09e373)
+- Merge pull request #147 from richard-gledhill/feat/project-engine [`a7d8aac`](https://github.com/richard-gledhill/barra2-dl/commit/a7d8aac)
+- Merge pull request #146 from richard-gledhill/docs/resume-rfc-005 [`baa08e0`](https://github.com/richard-gledhill/barra2-dl/commit/baa08e0)
+
+## v0.4.0 (2026-10-31)
+
+### Feature
 - add four-node average and area node selections [`c4e82e0`](https://github.com/richard-gledhill/barra2-dl/commit/c4e82e0)
 - add netCDF output via a native netCDF4 download route [`b954896`](https://github.com/richard-gledhill/barra2-dl/commit/b954896)
 - add parameter presets, a variable inventory and automatic node altitude [`ce9b83b`](https://github.com/richard-gledhill/barra2-dl/commit/ce9b83b)
@@ -55,6 +144,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - raise coverage to 100% with offline tests [`810f963`](https://github.com/richard-gledhill/barra2-dl/commit/810f963)
 
 ### Chore
+- release 0.4.0 [`a435a1c`](https://github.com/richard-gledhill/barra2-dl/commit/a435a1c)
 - require pandas-stubs 3.1 to match pandas 3.1 [`ad1499d`](https://github.com/richard-gledhill/barra2-dl/commit/ad1499d)
 - bump pytest-randomly from 3.16.0 to 5.0.0 [`310a94c`](https://github.com/richard-gledhill/barra2-dl/commit/310a94c)
 - bump pre-commit from 4.6.2 to 4.7.0 [`18331a9`](https://github.com/richard-gledhill/barra2-dl/commit/18331a9)
@@ -74,6 +164,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - apply module layout convention to source and tests [`3f54f09`](https://github.com/richard-gledhill/barra2-dl/commit/3f54f09)
 
 ### Other
+- Merge pull request #145 from richard-gledhill/chore/release-0.4.0 [`76530dd`](https://github.com/richard-gledhill/barra2-dl/commit/76530dd)
 - Merge pull request #144 from richard-gledhill/chore/archive-rfc-007 [`0576fd6`](https://github.com/richard-gledhill/barra2-dl/commit/0576fd6)
 - Merge pull request #143 from richard-gledhill/fix/cache-validation-csv-header [`88e1dae`](https://github.com/richard-gledhill/barra2-dl/commit/88e1dae)
 - Merge pull request #142 from richard-gledhill/chore/pandas-stubs-3-1 [`7f046cc`](https://github.com/richard-gledhill/barra2-dl/commit/7f046cc)
