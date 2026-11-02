@@ -12,6 +12,8 @@ Style and gates: [conventions.md](../conventions.md), [constraints.md](../constr
 - Slice 3 (toolkit spikes and ADR-005) has its addendum, "Slice 3 addendum" at the end, approved on 2026-10-31. Three spikes were built and the owner chose the notebook (ipywidgets and ipyleaflet, no Voila) on 2026-11-02: see [ADR-005](../adr/ADR-005-gui-toolkit.md) and the [research note](../research/gui-toolkit-spikes.md). Panel, Dash, Flet and tkinter were not built.
 - Slice 4 (the notebook GUI) has its addendum, "Slice 4 addendum" at the end, approved by the owner on 2026-11-02.
 - Slice 6 (GUI user docs and credit) has its addendum, "Slice 6 addendum" at the end, proposed 2026-11-02 and awaiting the owner. Slice 5 was retired (PR #161).
+- Slice 4 (the notebook GUI) has its addendum, "Slice 4 addendum" at the end, approved by the owner on 2026-11-02, and shipped in #160.
+- Slice 5 (map and import work) is retired (owner, 2026-11-02): slice 4 covers it. Mast-list CSV import and the optional node layer are deferred in the backlog; the plain box `area` node table is dropped. Mentions of slice 5 below are history.
 
 ## Scope
 
@@ -1170,7 +1172,9 @@ Owner's answers of 2026-11-02 to proposals A to N. All are accepted as written, 
    ship no type information. This is the one approved change to a checked setting; it names modules, and nothing else is loosened.
 6. **K:** accepted. A reduced fake NCSS server goes into `tests/`.
 7. **L:** accepted. Slice 5 shrinks to mast-list CSV import, the optional node layer and a node table for a plain box `area`; the plan's
-   slice 5 line is rewritten with this decision.
+   slice 5 line is rewritten with this decision. Later on 2026-11-02 the owner retired slice 5 after the manual run of the notebook:
+   the project import covers the mast list, Find nodes and the polygon preview cover the node display, and the plain box has no
+   GUI. The first two are in the backlog; the third is dropped.
 8. **M:** I draft the notebook's markdown cells, and the owner reviews and edits them before the commit that adds the notebook, not
    after the PR is open.
 9. **N:** accepted. The `gui` extra's install size is measured on Python 3.12 and recorded in the research note (item 22).

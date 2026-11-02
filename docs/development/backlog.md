@@ -32,7 +32,15 @@ fail loudly once the bug is fixed, so remove the `xfail` in the same change.
 - Boundaries of several parts (`MultiPolygon`, several features): today refused, one site per part.
 - Shapefile and KMZ boundaries, and polygons across the antimeridian.
 - A node-inside-polygon filter, the alternative to the cell-overlap inclusion rule.
-- Listing the nodes of a plain box `area` in the run summary (the GUI map needs them).
+- Listing the nodes of a plain box `area` in the run summary. The GUI has no plain box, so nothing needs it (dropped with slice 5).
+
+## Deferred features (from the GUI, slice 5 retired)
+
+- Mast-list CSV import in the notebook GUI, for analysts who keep masts in a spreadsheet. A `project.toml` with one `[[site]]` per
+  mast does the same today. Needs a decision on columns, header and whether a row makes a site or chosen nodes.
+- An optional node layer in the GUI map: the BARRA2 grid nodes around a site or area plus a margin, from the server, never a stored
+  file. Find nodes and the polygon preview already show the nodes a site plans to use. The internal fixed-field fetch takes a box,
+  so the lookup can reuse it.
 
 ## Deferred features (from the RFC roadmap)
 
