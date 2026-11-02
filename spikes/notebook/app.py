@@ -60,6 +60,7 @@ state: dict[str, Any] = {'active': 0, 'cancel': None, 'node_layers': [], 'marker
 DRAW_POLYGON = {'pathOptions': {'color': '#a855f7'}}  # an empty dict would switch the tool off
 AREA_COLOURS = {True: '#a855f7', False: '#9ca3af'}  # the active area is purple, an idle one grey, as the masts are
 PLANNED = '#7c3aed'  # the ring round a node a run would download
+SESSION_FILE = SCRATCH / 'last_session.json'  # written at every run, read by Load last session
 # how often the 'N files, M cached' line looks at the cache folder again, for files deleted or added by hand
 PLAN_REFRESH_SECONDS = float(os.environ.get('SPIKE_PLAN_REFRESH', '3'))
 NO_NODE = {'distance_km': math.nan, 'orog': math.nan, 'sftlf': math.nan}
@@ -149,6 +150,7 @@ result_box = w.HTML()
 import_path = w.Text(placeholder='path to a project.toml, .geojson, .json or .kml', layout=w.Layout(width='300px'))
 import_button = w.Button(description='Import path', icon='folder-open')
 import_upload = w.FileUpload(accept='.toml,.geojson,.json,.kml', multiple=True, description='Upload file(s)')
+session_button = w.Button(description='Load last session', icon='history')
 import_info = w.HTML()
 import_box = w.Accordion(
     children=[
@@ -162,11 +164,17 @@ import_box = w.Accordion(
                 ),
                 w.HBox([import_path, import_button]),
                 import_upload,
+                w.HTML(
+                    'Each run saves its settings and sites to <code>last_session.json</code>. <b>Load last '
+                    'session</b> restores them, so a Run carries on: cached files are skipped and the output '
+                    'files are rewritten.'
+                ),
+                session_button,
                 import_info,
             ]
         )
     ],
-    titles=('Import a project or polygon file',),
+    titles=('Import a project, polygon file or the last session',),
     selected_index=None,
 )
 
@@ -584,6 +592,7 @@ def remove_site(_button: Any) -> None:
 def start(indices: list[int]) -> None:
     """Run these sites one after another on a worker thread; the thread updates the widgets itself."""
     jobs = [(sites[i]['name'], *build(values_for(sites[i]), sites[i]['chosen'], sites[i]['polygon'])) for i in indices]
+    save_session()
     cancel = state['cancel'] = threading.Event()
     for i in indices:
         sites[i]['used'] = []
@@ -705,17 +714,57 @@ def apply_project(project: Project, name: str) -> None:
         shared_fields[key].value = getattr(settings, key)
     shared_fields['cache'].value, shared_fields['out'].value = str(settings.cache), str(settings.out)
     loading['on'] = False
-    sites[:] = imported
-    state.update(active=0, results={})
+    show_sites(imported, area, 0)
+    say('\n'.join([f'Imported {name}: {len(imported)} site(s).', *notes]), ok=not notes)
+
+
+def show_sites(new_sites: list[dict[str, Any]], area: dict[str, Any] | None, active_index: int) -> None:
+    """Replace the sites and show them: the area on the map, or the active mast when there is none."""
+    sites[:] = new_sites
+    state.update(active=active_index, results={})
     show_results()
     node_info.value = 'Pick a site and Find nodes to see its nodes.'
     if area is not None:
         show_area(area)
     else:
         draw.data = []
-        fmap.center = (imported[0]['lat'], imported[0]['lon'])
+        fmap.center = (new_sites[active_index]['lat'], new_sites[active_index]['lon'])
     refresh()
-    say('\n'.join([f'Imported {name}: {len(imported)} site(s).', *notes]), ok=not notes)
+
+
+def save_session() -> None:
+    """Write the settings and sites to SESSION_FILE, so a later session can carry on from here. Done at every run."""
+    shared = {key: widget.value for key, widget in shared_fields.items()}
+    shared = {key: value.isoformat() if isinstance(value, date) else value for key, value in shared.items()}
+    kept = ('name', 'lat', 'lon', 'chosen', 'polygon', 'mean')
+    data = {'shared': shared, 'sites': [{key: site[key] for key in kept} for site in sites], 'active': state['active']}
+    SESSION_FILE.parent.mkdir(parents=True, exist_ok=True)
+    SESSION_FILE.write_text(json.dumps(data, indent=2), encoding='utf-8')
+
+
+def load_session(_button: Any = None) -> None:
+    """Restore the settings and sites saved by the last run, ready to Run again: cached files are skipped."""
+    try:
+        data = json.loads(SESSION_FILE.read_text(encoding='utf-8'))
+        shared, saved = data['shared'], data['sites']
+        restored = [
+            new_site(s['name'], s['lat'], s['lon'], s['polygon']) | {k: s[k] for k in ('chosen', 'mean')} for s in saved
+        ]
+        loading['on'] = True
+        try:
+            shared_fields['domain'].value = shared['domain']
+            shared_fields['freq'].options = freqs(shared['domain'])
+            for key, value in shared.items():
+                is_date = key in ('start', 'end') and value
+                shared_fields[key].value = date.fromisoformat(value) if is_date else value
+        finally:
+            loading['on'] = False
+        area = next((json.loads(s['polygon']) for s in restored if s['polygon']), None)
+        show_sites(restored, area, min(data['active'], len(restored) - 1))
+    except (OSError, ValueError, KeyError, IndexError) as error:
+        say(f'No last session to load ({SESSION_FILE.name}: {error}). One is saved each time you run.', ok=False)
+        return
+    say(f'Loaded the last session: {len(restored)} site(s). Run to update the cache and the output files.')
 
 
 def import_text(name: str, text: str, base_dir: Path) -> None:
@@ -799,6 +848,7 @@ cancel_button.on_click(lambda _b: state['cancel'] and state['cancel'].set())
 add_button.on_click(add_site)
 remove_button.on_click(remove_site)
 import_button.on_click(import_from_path)
+session_button.on_click(load_session)
 mean_box.observe(on_mean, names='value')
 import_upload.observe(import_from_upload, names='value')
 draw.observe(on_draw, names='data')

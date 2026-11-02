@@ -270,6 +270,37 @@ def test_notebook_weighted_mean_option_and_run() -> None:
     _check(ns['mean_box'].layout.display == 'none', 'a mast with no chosen nodes has no mean box')
 
 
+def test_notebook_loads_the_last_session_and_carries_on() -> None:
+    """A run saves the settings and sites; a new app loads them and a Run only fetches what is not cached."""
+    session = spike_common.SCRATCH / 'last_session.json'
+    session.unlink(missing_ok=True)
+    first = _fresh()
+    first['load_session']()
+    _check('No last session' in first['import_info'].value, 'nothing to load before a run')
+    first['shared_fields']['preset'].value = 'wind+density'
+    first['shared_fields']['format'].value = 'csv'
+    first['draw'].data = [_feature(RING)]
+    first['sites'][0]['name'] = 'mast-kept'
+    first['start']([0])  # an area cannot be written as csv
+    _wait(first)
+    _check(session.exists(), 'a run writes last_session.json')
+
+    second = _fresh()
+    second['load_session']()
+    sites = second['sites']
+    _check([s['name'] for s in sites] == ['mast-kept', 'area-1'], f'sites restored: {[s["name"] for s in sites]}')
+    _check(second['shared_fields']['format'].value == 'csv', 'settings restored')
+    _check(sites[1]['polygon'] is not None and second['draw'].data, 'the area is on the map again')
+    _check('Loaded the last session' in second['import_info'].value, second['import_info'].value)
+    for each in sites:
+        for out in (spike_common.SCRATCH / 'out').glob(f'{each["name"]}_*'):
+            out.unlink()
+    second['start']([0])
+    _wait(second)
+    _check('mast-kept: ok' in second['result_box'].value, 'the loaded session runs')
+    _check(any((spike_common.SCRATCH / 'out').glob('mast-kept_*.csv')), 'the output files are written again')
+
+
 def test_notebook_uploads_a_project_with_its_polygon_file(tmp_path: Path) -> None:
     """Selecting the project.toml and its polygon file together imports both; the folders land by the notebook."""
     ns = _fresh()
