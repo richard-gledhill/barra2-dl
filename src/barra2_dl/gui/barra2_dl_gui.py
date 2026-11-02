@@ -29,8 +29,6 @@
 # `barra2-dl-gui --reset`.
 
 # %%
-import ipywidgets as w
-
 from barra2_dl.gui.app import build_app
 
 # %% [markdown]
@@ -43,4 +41,4 @@ app = build_app()
 # The form and the map:
 
 # %%
-w.display(app.layout)
+app.show()

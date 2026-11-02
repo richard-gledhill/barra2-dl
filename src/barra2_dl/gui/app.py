@@ -173,6 +173,10 @@ class GuiApp:
     worker: threading.Thread | None = None
     stop_timer: threading.Event = field(default_factory=threading.Event)
 
+    def show(self) -> Any:
+        """Return the form and the map; as the last line of a cell, the notebook displays them."""
+        return self.layout
+
     def close(self) -> None:
         """Stop the timer that watches the cache folder."""
         self.stop_timer.set()
