@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+import pytest
 import spike_common
 import xarray as xr
 
@@ -53,9 +54,24 @@ def _check(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
+_started: list[dict[str, Any]] = []
+
+
 def _fresh() -> dict[str, Any]:
     shutil.rmtree(spike_common.SCRATCH / 'cache', ignore_errors=True)  # an earlier run may cache other requests
-    return runpy.run_path(str(APP))
+    while _started:  # one app at a time, so only one timer watches the shared cache
+        _started.pop()['plan_ticker'].set()
+    ns = runpy.run_path(str(APP))
+    _started.append(ns)
+    return ns
+
+
+@pytest.fixture(autouse=True)
+def _stop_timers():
+    """Stop the cache-watching timer of every app a test started."""
+    yield
+    while _started:
+        _started.pop()['plan_ticker'].set()
 
 
 def _wait(ns: dict[str, Any]) -> None:
@@ -346,3 +362,29 @@ def _preset_works(preset: str, domain: str, freq: str) -> bool:
     except ValueError:
         return False
     return True
+
+
+def test_notebook_plan_line_follows_cache_files_deleted_by_hand() -> None:
+    """After a run the plan line counts cached files; deleting them by hand shows without touching the form."""
+    ns = _fresh()
+    ns['shared_fields']['end'].value = ns['shared_fields']['start'].value.replace(month=1, day=31)
+    ns['start']([0])
+    _wait(ns)
+    for _ in range(100):  # the run clears its busy flag a moment before it refreshes the line
+        if ' 0 cached' not in ns['plan_label'].value:
+            break
+        time.sleep(0.1)
+    _check(' 0 cached' not in ns['plan_label'].value, 'the run left files in the cache')
+    cache = spike_common.SCRATCH / 'cache'
+    for path in cache.glob('*'):
+        for _ in range(50):  # the timer may be looking at a file just now, and Windows will not delete it then
+            try:
+                path.unlink()
+                break
+            except PermissionError:
+                time.sleep(0.1)
+    for _ in range(50):
+        if ' 0 cached' in ns['plan_label'].value:
+            break
+        time.sleep(0.1)
+    _check(' 0 cached' in ns['plan_label'].value, 'the plan line noticed the cache was emptied')

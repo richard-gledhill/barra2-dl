@@ -15,6 +15,7 @@
 # %%
 import json
 import math
+import os
 import re
 import tempfile
 import threading
@@ -59,6 +60,8 @@ state: dict[str, Any] = {'active': 0, 'cancel': None, 'node_layers': [], 'marker
 DRAW_POLYGON = {'pathOptions': {'color': '#a855f7'}}  # an empty dict would switch the tool off
 AREA_COLOURS = {True: '#a855f7', False: '#9ca3af'}  # the active area is purple, an idle one grey, as the masts are
 PLANNED = '#7c3aed'  # the ring round a node a run would download
+# how often the 'N files, M cached' line looks at the cache folder again, for files deleted or added by hand
+PLAN_REFRESH_SECONDS = float(os.environ.get('SPIKE_PLAN_REFRESH', '3'))
 NO_NODE = {'distance_km': math.nan, 'orog': math.nan, 'sftlf': math.nan}
 
 
@@ -344,15 +347,50 @@ def show_results() -> None:
     result_box.value = ''.join(state['results'][s['name']] for s in sites if s['name'] in state['results'])
 
 
+def build_site(each: dict[str, Any]) -> tuple[Any, Any, list[tuple[str, str]]]:
+    """Settings, Site and (key, message) problems for one site; a latitude or longitude the library rejects is one."""
+    try:
+        return build(values_for(each), each['chosen'], each['polygon'])
+    except ValueError as error:
+        return None, None, [('lat', str(error))]
+
+
+def plan_summary() -> str:
+    """'name: N files, M cached' for each valid site, looking at the cache folder as it is now."""
+    plans = []
+    for each in list(sites):
+        settings, site_obj, problems = build_site(each)
+        if not problems:
+            plans.append(f'{each["name"]}: {plan_text(site_obj, settings)}')
+    return '; '.join(plans)
+
+
+def keep_plan_current(stop: threading.Event) -> None:
+    """Every few seconds, look at the cache folder's file names; when they change, update the plan line.
+
+    Listing names is cheap. Checking the files themselves (what plan_summary does) opens each one, so it waits for a
+    change, and for a run to finish, which refreshes the line itself.
+    """
+    seen: frozenset[str] | None = None
+    while not stop.wait(PLAN_REFRESH_SECONDS):
+        folder = Path(shared_fields['cache'].value)
+        try:
+            names = frozenset(path.name for path in folder.iterdir()) if folder.is_dir() else frozenset()
+            if names == seen or state['cancel'] is not None or loading['on']:
+                continue
+            seen = names
+            text = plan_summary()
+        except (OSError, ValueError, KeyError, IndexError):  # the form was mid-change; try again next time
+            continue
+        if text != plan_label.value:
+            plan_label.value = text
+
+
 def check_sites() -> tuple[list[str], list[str], set[int]]:
     """Validate every site: the problem lines to show, each valid site's plan, and which sites have problems."""
     lines, plans, bad = [], [], set()
     for index, each in enumerate(sites):
-        try:
-            settings, site_obj, problems = build(values_for(each), each['chosen'], each['polygon'])
-        except ValueError as error:  # a latitude or longitude the library rejects
-            settings = site_obj = None
-            problems = [('lat', str(error))]
+        settings, site_obj, problems = build_site(each)
         lines += [f'<div style="color:#dc2626">{each["name"]}: {key}: {message}</div>' for key, message in problems]
         if problems:
             bad.add(index)
@@ -765,6 +803,12 @@ mean_box.observe(on_mean, names='value')
 import_upload.observe(import_from_upload, names='value')
 draw.observe(on_draw, names='data')
 draw.on_click(on_area_click)
+# running this cell again replaces the timer rather than adding a second one
+previous_ticker = globals().get('plan_ticker')
+if previous_ticker is not None:
+    previous_ticker.set()
+plan_ticker = threading.Event()
+threading.Thread(target=keep_plan_current, args=(plan_ticker,), daemon=True).start()
 
 # %% [markdown]
 # ## The app

@@ -3,3 +3,4 @@
 import os
 
 os.environ.setdefault('SPIKE_DELAY', '0')
+os.environ.setdefault('SPIKE_PLAN_REFRESH', '0.2')
