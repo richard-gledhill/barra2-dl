@@ -10,6 +10,7 @@ Style and gates: [conventions.md](../conventions.md), [constraints.md](../constr
 - Slice 2 (node lookup, chosen nodes) has its addendum, "Slice 2 addendum" at the end, approved by the owner on 2026-10-31, and shipped in #150.
 - Slice 2b (polygon boundary) has its addendum, "Slice 2b addendum", approved by the owner on 2026-10-31, and shipped in #152.
 - Slice 3 (toolkit spikes and ADR-005) has its addendum, "Slice 3 addendum" at the end, approved on 2026-10-31. Three spikes were built and the owner chose the notebook (ipywidgets and ipyleaflet, no Voila) on 2026-11-02: see [ADR-005](../adr/ADR-005-gui-toolkit.md) and the [research note](../research/gui-toolkit-spikes.md). Panel, Dash, Flet and tkinter were not built.
+- Slice 4 (the notebook GUI) has its addendum, "Slice 4 addendum" at the end, proposed for the owner's review; nothing is built until it is approved.
 
 ## Scope
 
@@ -1041,3 +1042,118 @@ except E and F, which the owner replaced as described.
 4. **Console output:** the spikes only gather evidence; the owner decides at slice 4.
 5. **Checkpoint:** the owner looks at Streamlit and NiceGUI before the other four are built.
 6. **Map and draw libraries:** the spike author picks them within the time box.
+
+## Slice 4 addendum: the notebook GUI (`feat/gui-skeleton`)
+
+Written 2026-11-02, after [ADR-005](../adr/ADR-005-gui-toolkit.md) chose a Jupyter notebook of ipywidgets and ipyleaflet (no Voila).
+**Status: proposed, for the owner's review. Nothing is built until it is approved.** It does not reopen RFC-005 section 8, the section 9
+answers, ADR-004, ADR-005, or the slice 1b, 2, 2b and 3 decisions.
+
+**Scope.** Turn the throwaway spike (tag `rfc005-spikes`, `spikes/notebook/app.py`, 893 lines) into the package's interface: a `gui`
+extra, the `barra2-dl-gui` entry point, the notebook as package data, the interface code as tested modules under
+`src/barra2_dl/gui/`, and the three pieces of library logic the spike had to write itself. The spike already has the form, the map
+with nodes, polygon drawing, project and polygon import, the background run and the run summary, so this slice ports all of it. That
+overlaps slice 5 (below), which shrinks. Out of scope: a command-line tool, a Windows executable (decision 4), Voila, a hosted
+deployment, and user docs (slice 6).
+
+### Decisions already made (not reopened)
+
+| Question | Decision |
+|---|---|
+| Toolkit | ipywidgets for the form, ipyleaflet with the Geoman draw control for the map, run in JupyterLab (ADR-005) |
+| Layering | `barra2_dl/gui/` beside the library; the library never imports it; it imports only `__all__` names and `globals` constants (ADR-004) |
+| Threading | A run is a plain `threading.Thread` that sets widget values from the progress callback, with a `threading.Event` for cancel; a second thread refreshes the cache line (ADR-005) |
+| Packaging | Optional `gui` extra and `barra2-dl-gui = "barra2_dl.gui:main"` (RFC 5.3); no executable in v1 |
+| Fallback | NiceGUI, if the notebook proves too hard for analysts or ipyleaflet is abandoned (ADR-005) |
+
+### Proposed decisions (for the owner)
+
+| # | Question | Proposal |
+|---|---|---|
+| A | Structure of the interface code | `gui/app.py` holds `build_app() -> GuiApp`, a dataclass of the widgets and state, with the handlers as functions over it. The notebook cells are about five lines: import, build, show. This replaces the spike's 893 lines of module-level state in a script, which cannot be imported or tested without `runpy`. A `GuiApp` is a state holder, not an orchestrator (conventions: no class-based orchestrator) |
+| B | What `barra2-dl-gui` does | `barra2-dl-gui [folder]` copies the notebook (`barra2_dl_gui.ipynb`) into the folder, default `./barra2-dl-gui`, and starts JupyterLab on it. It never overwrites an existing copy, so the analyst's edits survive; `--reset` replaces it. `--no-launch` copies and stops, for tests. The cache, output folder and `last_session.json` default to that folder |
+| C | Notebook source | The `.ipynb` is the shipped file. Its source is a jupytext `.py` in the repo, and a test fails if the two differ, so they cannot drift (the `scripts/` pairs work the same way) |
+| D | Polygon node preview | `mapping.polygon_nodes(polygon, domain) -> list[tuple[GridNode, float]]` (node, share of the cell inside the polygon). One NCSS box request over the polygon's bounding box for the fixed fields, instead of the spike's lattice of `nearest_nodes` lookups, which cost many requests. This is the engine gap the slice 3 addendum named for slice 5 |
+| E | Which nodes a selection downloads | `mapping.planned_nodes(point, nodes, selection)`, a pure function using `bracket_index`, the same function `average4` merges with, so the preview and the run cannot disagree. The spike re-implemented it |
+| F | The last-session file | The engine gains `project_to_dict(project) -> dict`, the inverse of `project_from_dict`, round-trip tested. The GUI writes that dict as JSON to `last_session.json`, with the active site added, and Load last session reads it back. No TOML writer and no new runtime dependency. An "Export project.toml" button would need `tomli-w`; not proposed |
+| G | Console output (yours, section 9 answer 3) | Keep the dual pattern. Evidence from the spikes: prints appear under the cell that started the app, and the progress callback alone drives the bar. Changing the convention would touch every module for no GUI gain |
+| H | Dependencies | The `gui` extra: `ipywidgets>=8.1.9`, `ipyleaflet>=0.20.0`, `jupyterlab>=4.6` (ranges checked at build time against the lock). The dev group adds `nbclient` and `jupytext` for the notebook tests. The core `dependencies` list does not change |
+| I | Typing | `disallow_any_unimported = true` is set. If ipywidgets or ipyleaflet ship no type information, mypy needs a per-module `ignore_missing_imports` override under `[tool.mypy]`. That is a change to a checked setting, so it is yours to approve (`constraints.md`); the alternative is a small typed wrapper |
+| J | CI | The `quality` and `tests-and-type-check` jobs install the extra (`uv sync --all-extras`). The matrix stays 3.12 to 3.14. The spike's pins were proved on 3.12 only; the 3.13 and 3.14 installs are tested here for the first time |
+| K | The spike's fake server | A reduced port goes to `tests/` (the `tests/data` fixtures served for node lookups, polygon boxes and the files of a run), because `spikes/` is not on `main`. About 100 lines, without the delay and the `SPIKE_*` switches |
+| L | Overlap with slice 5 | Slice 4 ports everything the spike does. Slice 5 then holds only what the spike lacks: mast-list CSV import, the optional node layer over a site or area, and a node table for a plain box `area`. If you agree, the plan's slice 5 line is rewritten after this is approved |
+| M | Notebook wording | The owner asked for minor text-cell updates. I draft the markdown cells (what the app is, the steps, where files go, how to restart) and you edit the wording in the PR |
+| N | Install size | Measured here (the gap in ADR-005, checklist item 22) for the `gui` extra on 3.12, and written into the research note |
+
+### `gui` package layout
+
+```
+src/barra2_dl/gui/
+    __init__.py            main(argv=None) -> int; __all__ = ['main']
+    app.py                 build_app, GuiApp and the handlers
+    barra2_dl_gui.ipynb    the shipped notebook (package data)
+    barra2_dl_gui.py       its jupytext source
+```
+
+`import barra2_dl.gui` must not import ipywidgets or ipyleaflet; `app.py` does, and `main` imports it only when it needs it, so a
+missing extra gives "install `barra2-dl[gui]`" rather than a traceback. The package `__init__.py` still does not import `gui`
+(RFC 5.7). `app.py` stays under about 600 lines: node lookups, planning and validation are already library calls, and D and E remove
+the two helpers the spike wrote.
+
+### Library changes (D, E, F)
+
+- `mapping.py`: `polygon_nodes` and `planned_nodes`, both in `__all__`, with Google-style docstrings (doctests where they can run
+  offline) and tests that fake `requests.get` as the existing `mapping` tests do.
+- `project.py`: `project_to_dict`, in `__all__`, with a round trip for every field of `Settings` and `Site`: point, nodes, polygon,
+  `node_mean`, overrides.
+- A polygon in the dict is a GeoJSON feature, so the session file does not depend on a polygon file still existing.
+- No change to `download`, `merge` or `convert`.
+
+### Behaviour kept from the spike
+
+All of it, listed so nothing is lost in the port: several draggable masts; at most one editable area, grey when idle and labelled;
+Find nodes for a mast or the area; planned-node rings; click to choose nodes; the weighted-mean option; the cache line refreshed every
+3 s; Run all and Run selected; progress and Cancel; the summary table and used nodes; import of a project, a GeoJSON or a KML
+polygon by path or upload; Load last session; the preset note read from `globals`; the validation list with a red border.
+
+### Tests
+
+- `tests/test_mapping.py`, `tests/test_project.py`: regions for `polygon_nodes`, `planned_nodes` (nearest, average4, chosen, area; a
+  point on a cell edge) and `project_to_dict` round trips.
+- `tests/test_gui.py` mirrors `gui/app.py`: the spike's 13 behaviours as tests of `build_app()` with the fake from K, no display.
+  `pytest.importorskip('ipywidgets')` guards the file so a core-only environment skips it.
+- `tests/test_gui_notebook.py`: the `.ipynb` matches its jupytext source; `nbclient` executes every cell offline (the cells make no
+  request until a button is pressed) and finds no error; `main(['--no-launch', folder])` copies the notebook and does not overwrite
+  an edited copy.
+- `tests/test_package.py`: the toolkit list becomes `ipywidgets`, `ipyleaflet`, `jupyterlab` and `IPython`; the two boundary tests
+  now cover real files in `gui/`. A new check that `import barra2_dl.gui` loads no toolkit.
+- Live (`BARRA2_LIVE=1`): `polygon_nodes` against the real server for one small polygon.
+
+### Examples and docs
+
+README and `docs/modules.md` gain a short `gui` entry (install line and command); `CONTEXT.md` gains "GUI notebook" and "session".
+The user guide and `how-to-use.md` are slice 6 (ADR-005).
+
+### Not in scope, noted for later slices
+
+- Slice 5, reduced (L): mast-list CSV import, the optional node layer, a node table for a plain `area`.
+- Slice 6: the GUI guide, project-file reference, the AUS-11 note, "raised by atl3b" credit.
+- A CLI, an executable, Voila, a hosted deployment, a project.toml export button.
+- Tile provider: ipyleaflet's default basemap is OpenStreetMap, fetched by the browser. Heavy or commercial use needs a provider
+  that allows it; noted for the user guide.
+
+### Acceptance
+
+- `pip install barra2-dl[gui]` then `barra2-dl-gui` opens JupyterLab on the notebook; `pip install barra2-dl` alone is unchanged and
+  `import barra2_dl` loads no toolkit.
+- The wheel contains the `.ipynb` (checked by listing the wheel built by `make build`).
+- Every behaviour in "Behaviour kept from the spike" has a test.
+- The library changes have tests and docstrings; `__all__` lists the new names.
+- `make check`, `make test` (with the extra) and `make docs-test` pass with no suppression added, apart from the per-module override
+  in I if you approve it.
+- The CI matrix passes on 3.12, 3.13 and 3.14.
+- The research note's checklist item 22 is filled in with the measured size.
+
+### Decisions
+
+Pending the owner's answers to A to N.
