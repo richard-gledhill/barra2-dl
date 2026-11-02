@@ -44,6 +44,8 @@ from spike_common import (
     summary,
 )
 
+from barra2_dl import globals as barra2_globals
+from barra2_dl.download import preset_variables
 from barra2_dl.mapping import Polygon, polygon_from_geojson, polygon_from_kml
 from barra2_dl.project import Project, load_project, project_from_dict, run_site
 
@@ -129,6 +131,7 @@ shared_fields: dict[str, w.Widget] = {
 fields = site_fields | shared_fields
 mean_box = w.Checkbox(description='Also write the weighted mean of the nodes', indent=False)
 selection_note = w.HTML(layout=w.Layout(margin='0 0 6px 6px'))
+preset_note = w.HTML(layout=w.Layout(margin='0 0 6px 6px'))
 find_button = w.Button(description='Find nodes', icon='search')
 run_button = w.Button(description='Run all sites', button_style='primary', icon='play')
 run_selected_button = w.Button(description='Run selected site', icon='play')
@@ -285,6 +288,19 @@ def draw_nodes() -> None:
         fmap.add(layer)
 
 
+def describe_preset() -> str:
+    """The chosen preset's variables from barra2_dl.globals (read each time), and whether the domain has them."""
+    name, domain, freq = (shared_fields[key].value for key in ('preset', 'domain', 'freq'))
+    variables = barra2_globals.BARRA2_PRESETS[name]
+    fixed = ', '.join(barra2_globals.BARRA2_FIXED_VARS_AUTO)
+    text = f'<i>{name}: {len(variables)} variables: {", ".join(variables)}. {fixed} is added to every download.</i>'
+    try:
+        preset_variables(name, domain, freq)
+    except ValueError as error:  # the preset needs variables this domain and frequency do not have
+        text += f'<br><span style="color:#dc2626">{error}</span>'
+    return text
+
+
 def describe_selection(site: dict[str, Any]) -> str:
     """What a run of the active site downloads, in words, since the node choice only applies to a mast."""
     if site['polygon']:
@@ -319,6 +335,7 @@ def load_site() -> None:
     mean_box.value = site['mean'] and uses_nodes
     shared_fields['node_selection'].disabled = uses_nodes
     selection_note.value = describe_selection(site)
+    preset_note.value = describe_preset()
     loading['on'] = False
 
 
@@ -753,17 +770,14 @@ draw.on_click(on_area_click)
 # ## The app
 
 # %%
+notes = {'preset': (preset_note,), 'node_selection': (selection_note,)}  # shown under the field they explain
 form = w.VBox(
     [
         w.HBox([site_select, add_button], layout=w.Layout(width='440px')),
         *site_fields.values(),
         w.HBox([find_button, remove_button]),
         mean_box,
-        *(
-            item
-            for key, widget in shared_fields.items()
-            for item in ((widget, selection_note) if key == 'node_selection' else (widget,))
-        ),
+        *(item for key, widget in shared_fields.items() for item in (widget, *notes.get(key, ()))),
         import_box,
     ],
     layout=w.Layout(width='440px'),

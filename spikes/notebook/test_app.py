@@ -1,5 +1,6 @@
 """Display-free smoke test of the notebook spike: run the script's cells in a plain interpreter, drive the widgets."""
 
+import csv
 import json
 import runpy
 import shutil
@@ -8,6 +9,10 @@ from pathlib import Path
 from typing import Any
 
 import spike_common
+import xarray as xr
+
+from barra2_dl import globals as barra2_globals
+from barra2_dl.download import preset_variables
 
 APP = Path(__file__).with_name('app.py')
 DATA = Path(__file__).resolve().parents[2] / 'tests' / 'data'
@@ -267,3 +272,77 @@ def test_notebook_uploads_a_project_with_its_polygon_file(tmp_path: Path) -> Non
         'Cannot read' in ns['import_info'].value and 'together' in ns['import_info'].value,
         'a missing polygon is explained',
     )
+
+
+def _output_columns(path: Path) -> list[str]:
+    """The data columns of an output file: variable names of a netCDF, the header row of a csv."""
+    if path.suffix == '.nc':
+        with xr.open_dataset(path) as data:
+            return sorted(data.data_vars)
+    with open(path, encoding='utf-8', newline='') as file:
+        return next(row for row in csv.reader(file) if row and row[0] == 'time')
+
+
+def test_notebook_downloads_every_variable_of_a_preset() -> None:
+    """Every variable of the wind and wind+density presets is downloaded and reaches the netCDF and the csv."""
+    for preset, count in (('wind', 12), ('wind+density', 20)):
+        wanted = barra2_globals.BARRA2_PRESETS[preset]
+        _check(len(wanted) == count, f'{preset} has {count} variables')
+        for fmt in ('netcdf', 'csv'):
+            shutil.rmtree(spike_common.SCRATCH / 'out', ignore_errors=True)  # one output file to look at
+            ns = _fresh()
+            ns['shared_fields']['preset'].value = preset
+            ns['shared_fields']['format'].value = fmt
+            ns['start']([0])
+            _wait(ns)
+            _check('mast-1: ok' in ns['result_box'].value, f'{preset} {fmt} ran ok')
+            cache = {
+                f.name.split('_1hr_')[1].split('_2023')[0] for f in (spike_common.SCRATCH / 'cache').glob('*_1hr_*')
+            }
+            _check(set(wanted) <= cache, f'{preset} {fmt}: every variable downloaded, missing {set(wanted) - cache}')
+            (output,) = (f for f in (spike_common.SCRATCH / 'out').glob('mast-1_*') if f.suffix in ('.nc', '.csv'))
+            columns = _output_columns(output)
+            winds = [v for v in wanted if v[0] in 'uv' and v not in ('uas', 'vas')]
+            if fmt == 'csv':
+                shown = [f'{v[:2]}10m' if v in ('uas', 'vas') else v for v in wanted]
+                header = ' '.join(columns)
+                _check(all(v in header for v in shown), f'{preset} csv: every variable in the file')
+            else:
+                with xr.open_dataset(output) as data:
+                    heights = data['ua'].height.values.tolist()
+                _check(heights == [10.0, 50.0, 100.0, 150.0, 200.0, 250.0], f'{preset} netcdf: six wind heights')
+                others = [v for v in wanted if v not in ('uas', 'vas', *winds)]
+                _check(all(v in columns for v in others), f'{preset} netcdf: every other variable in the file')
+
+
+def test_notebook_preset_note_lists_the_variables_from_globals() -> None:
+    """The note under Preset names the variables the engine's own preset table holds, and follows a change of preset."""
+    ns = _fresh()
+    note = ns['preset_note']
+    for preset, variables in barra2_globals.BARRA2_PRESETS.items():
+        ns['shared_fields']['preset'].value = preset
+        _check(f'{preset}: {len(variables)} variables' in note.value, f'{preset} named with its count')
+        _check(all(v in note.value for v in variables), f'{preset} lists its variables')
+    ns['shared_fields']['preset'].value = 'wind'
+    original = barra2_globals.BARRA2_PRESETS['wind']
+    barra2_globals.BARRA2_PRESETS['wind'] = ['uas', 'vas']
+    try:
+        ns['shared_fields']['preset'].value = 'extremes'
+        ns['shared_fields']['preset'].value = 'wind'
+        _check('wind: 2 variables: uas, vas' in note.value, 'the note reads the table, nothing is copied')
+    finally:
+        barra2_globals.BARRA2_PRESETS['wind'] = original
+    ns['shared_fields']['domain'].value = 'AUST-04'
+    ns['shared_fields']['freq'].value = '20min'
+    ns['shared_fields']['preset'].value = 'wind+density'
+    _check(
+        ('not available' in note.value) == (not _preset_works('wind+density', 'AUST-04', '20min')), 'availability shown'
+    )
+
+
+def _preset_works(preset: str, domain: str, freq: str) -> bool:
+    try:
+        preset_variables(preset, domain, freq)
+    except ValueError:
+        return False
+    return True

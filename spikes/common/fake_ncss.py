@@ -26,8 +26,7 @@ import barra2_dl.project
 from barra2_dl.globals import BARRA2_GRID_SPACING
 
 DATA = Path(__file__).resolve().parents[2] / 'tests' / 'data'
-FIXTURE_VARS = ['ua50m', 'va50m', 'tas']
-VERSIONS = {'ua50m': 'v20240516', 'va50m': 'v20240516', 'tas': 'v20231001', 'orog': 'v20231001'}
+VERSION = 'v20240516'
 LOOKUP = {
     ('AUS-11', 'orog'): 'ncss_box_superset.nc',
     ('AUS-11', 'sftlf'): 'ncss_box_superset_sftlf.nc',
@@ -99,7 +98,39 @@ def _lookup(url: str, query: dict[str, str]) -> _Response:
     return _Response(200, cut.to_netcdf(engine='h5netcdf'))
 
 
-def _box_data(query: dict[str, str], template: Path) -> _Response:
+def _template(var: str, grid: bool, fixed: bool, extension: str) -> tuple[Path, str]:
+    """The fixture file to serve for a variable and the variable it holds, which is var when a fixture has it.
+
+    The fixtures hold a few variables only. Any other is served from the nearest kind: an eastward wind from ua50m, a
+    northward wind from va50m, a fixed field from orog, and anything else from tas.
+    """
+    if fixed:
+        base = 'orog'
+    elif (DATA / _fixture_name(var, grid, fixed, extension)).exists():
+        base = var
+    else:
+        base = 'va50m' if var.startswith('v') else 'ua50m' if var.startswith('u') else 'tas'
+    return DATA / _fixture_name(base, grid, fixed, extension), base
+
+
+def _fixture_name(var: str, grid: bool, fixed: bool, extension: str) -> str:
+    prefix, tag = ('grid', 'average4_') if grid else ('fixture', '')
+    if fixed:
+        return f'{prefix}_AUS-11_fx_{tag}{var}.{extension}'
+    return f'{prefix}_AUS-11_1hr_{tag}{var}_20230101_20230103.{extension}'
+
+
+def _renamed(path: Path, base: str, var: str) -> bytes:
+    """A point file with its variable called var instead of base."""
+    if base == var:
+        return path.read_bytes()
+    if path.suffix == '.csv':
+        return path.read_text(encoding='utf-8').replace(f'{base}[unit', f'{var}[unit', 1).encode('utf-8')
+    with xr.open_dataset(path) as source:
+        return source.load().rename({base: var}).to_netcdf(engine='h5netcdf')
+
+
+def _box_data(query: dict[str, str], template: Path, base: str) -> _Response:
     """A grid file for the requested box: the fixture's 3 x 3 grid repeated onto the real nodes the box overlaps."""
     grown = _extended('AUS-11', 'orog')
     spacing = BARRA2_GRID_SPACING['AUS-11']
@@ -109,8 +140,10 @@ def _box_data(query: dict[str, str], template: Path) -> _Response:
         return _Response(400, b'outside the grid')
     lats, lons = grown['lat'].to_numpy()[lat_ok], grown['lon'].to_numpy()[lon_ok]
     with xr.open_dataset(template) as source:
-        base = source.load()
-    tiled = base.isel(lat=np.arange(len(lats)) % base.sizes['lat'], lon=np.arange(len(lons)) % base.sizes['lon'])
+        grid = source.load()
+    if base != query['var']:
+        grid = grid.rename({base: query['var']})
+    tiled = grid.isel(lat=np.arange(len(lats)) % grid.sizes['lat'], lon=np.arange(len(lons)) % grid.sizes['lon'])
     return _Response(200, tiled.assign_coords(lat=lats, lon=lons).to_netcdf(engine='h5netcdf'))
 
 
@@ -132,16 +165,10 @@ def _make_get(delay: float, fail: str):
         grid = 'north' in query
         fixed = '/fx/' in url
         extension = 'csv' if query['accept'] == 'csv_file' else 'nc'
-        prefix = 'grid' if grid else 'fixture'
-        tag = 'average4_' if grid else ''
-        name = (
-            f'{prefix}_AUS-11_fx_{tag}{query["var"]}.{extension}'
-            if fixed
-            else f'{prefix}_AUS-11_1hr_{tag}{query["var"]}_20230101_20230103.{extension}'
-        )
+        path, base = _template(query['var'], grid, fixed, extension)
         if grid:
-            return _box_data(query, DATA / name)
-        return _Response(200, (DATA / name).read_bytes())
+            return _box_data(query, path, base)
+        return _Response(200, _renamed(path, base, query['var']))
 
     return get
 
@@ -151,12 +178,5 @@ def install() -> bool:
     if os.environ.get('SPIKE_LIVE'):
         return False
     requests.get = _make_get(float(os.environ.get('SPIKE_DELAY', '0.4')), os.environ.get('SPIKE_FAIL', ''))
-    real_preset_variables = barra2_dl.project.preset_variables
-
-    def fixture_variables(preset: str, domain: str = 'AUS-11', freq: str = '1hr') -> list[str]:
-        real_preset_variables(preset, domain, freq)
-        return FIXTURE_VARS
-
-    barra2_dl.project.preset_variables = fixture_variables
-    barra2_dl.project.resolve_variable_versions = lambda *_args: VERSIONS
+    barra2_dl.project.resolve_variable_versions = lambda variables, *_args: dict.fromkeys([*variables, 'orog'], VERSION)
     return True
