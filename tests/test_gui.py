@@ -335,6 +335,22 @@ def test_gui_imports_a_project_and_a_polygon(app: Any, tmp_path: Path) -> None:
     assert len(app.sites) == 2
 
 
+def test_gui_import_centres_the_map_when_fit_bounds_has_no_event_loop(
+    app: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Outside a kernel, Python 3.14 refuses fit_bounds; the map is centred on the polygon instead."""
+
+    def refuse(_bounds: Any) -> None:
+        raise RuntimeError('There is no current event loop')
+
+    monkeypatch.setattr(app.fmap, 'fit_bounds', refuse)
+
+    gui.import_from_upload(app, [_upload('farm.geojson', (DATA / 'boundary_two_cells.geojson').read_bytes())])
+
+    assert [site.name for site in app.sites] == ['mast-1', 'farm']
+    assert tuple(app.fmap.center) == pytest.approx((-23.54, 133.41), abs=0.2)
+
+
 def test_gui_imports_a_kml_polygon_as_the_area(app: Any) -> None:
     """A .kml polygon is read as a .geojson one is, and named after its file."""
     gui.import_from_upload(app, [_upload('farm.kml', (DATA / 'boundary_two_cells.kml').read_bytes())])
