@@ -214,7 +214,9 @@ For the DataFrame, csv and netCDF outputs and the timestamp convention, see the 
 
 ## License
 
-[CC-BY-4.0](https://github.com/richard-gledhill/barra2-dl/blob/main/LICENSE)
+The code is released under the [MIT licence](https://github.com/richard-gledhill/barra2-dl/blob/main/LICENSE). Releases up to and including v0.4.0 were published under CC-BY-4.0 and remain available under that licence.
+
+The BARRA2 data is not covered by the MIT licence. It is provided by the Bureau of Meteorology under [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/), so attribute the Bureau of Meteorology when you use or share it. The variable inventory shipped in the package (`src/barra2_dl/data/barra2_variables.csv`) is compiled from the Bureau of Meteorology and NCI metadata for that data.
 
 
 ## Roadmap
