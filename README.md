@@ -6,6 +6,8 @@
 
 A tool for downloading BARRA version 2 (BARRA2) atmospheric reanalysis data.
 
+![The barra2-dl notebook GUI: a form on the left and a map of BARRA2 grid nodes on the right](https://raw.githubusercontent.com/richard-gledhill/barra2-dl/main/docs/img/gui-form-and-map.png)
+
 ## Background
 
 barra2-dl is a Python package to bulk download data from
