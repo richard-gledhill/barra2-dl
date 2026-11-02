@@ -1,7 +1,7 @@
 # SPEC: GUI for wind resource assessment (RFC-005), starting with the engine
 
-Requirement: [RFC-005](../requirements/gui-prd.md); its decisions are in section 8 and are not reopened here.
-Style and gates: [conventions.md](../conventions.md), [constraints.md](../constraints.md).
+Requirement: [RFC-005](../../../requirements/gui-prd.md); its decisions are in section 8 and are not reopened here.
+Style and gates: [conventions.md](../../../conventions.md), [constraints.md](../../../constraints.md).
 
 ## Slice status
 
@@ -9,7 +9,7 @@ Style and gates: [conventions.md](../conventions.md), [constraints.md](../constr
 - Slice 1b (research) is done and reviewed: see "Slice 1b addendum" for the owner's decisions.
 - Slice 2 (node lookup, chosen nodes) has its addendum, "Slice 2 addendum" at the end, approved by the owner on 2026-10-31, and shipped in #150.
 - Slice 2b (polygon boundary) has its addendum, "Slice 2b addendum", approved by the owner on 2026-10-31, and shipped in #152.
-- Slice 3 (toolkit spikes and ADR-005) has its addendum, "Slice 3 addendum" at the end, approved on 2026-10-31. Three spikes were built and the owner chose the notebook (ipywidgets and ipyleaflet, no Voila) on 2026-11-02: see [ADR-005](../adr/ADR-005-gui-toolkit.md) and the [research note](../research/gui-toolkit-spikes.md). Panel, Dash, Flet and tkinter were not built.
+- Slice 3 (toolkit spikes and ADR-005) has its addendum, "Slice 3 addendum" at the end, approved on 2026-10-31. Three spikes were built and the owner chose the notebook (ipywidgets and ipyleaflet, no Voila) on 2026-11-02: see [ADR-005](../../../adr/ADR-005-gui-toolkit.md) and the [research note](../../../research/gui-toolkit-spikes.md). Panel, Dash, Flet and tkinter were not built.
 - Slice 4 (the notebook GUI) has its addendum, "Slice 4 addendum" at the end, approved by the owner on 2026-11-02.
 - Slice 6 (GUI user docs and credit) has its addendum, "Slice 6 addendum" at the end, proposed 2026-11-02 and awaiting the owner. Slice 5 was retired (PR #161).
 - Slice 4 (the notebook GUI) has its addendum, "Slice 4 addendum" at the end, approved by the owner on 2026-11-02, and shipped in #160.
@@ -17,7 +17,7 @@ Style and gates: [conventions.md](../conventions.md), [constraints.md](../constr
 
 ## Scope
 
-Resumed 2026-10-31 after [RFC-007](../requirements/cache-validation-csv-metadata-prd.md) shipped (#143). RFC-007 already
+Resumed 2026-10-31 after [RFC-007](../../../requirements/cache-validation-csv-metadata-prd.md) shipped (#143). RFC-007 already
 did the cache check (`_check_cache`, `CacheMismatchError`), the atomic `.part` write and the empty-response failure in
 `download.py`, and the csv metadata header (`merge.write_csv`). Slice 1 builds on them and adds the RFC-005 5.7 engine
 additions, which the owner approved on 2026-10-31 with the answers to RFC section 9 (see "Decisions").
@@ -203,7 +203,7 @@ Decided by the owner on 2026-10-31, and checked against the live server the same
 - **Node lookup uses the server only.** `nearest_nodes` and the node layer take their nodes from a small
   bounding-box request to NCSS (the `orog` fixed field, cached), never from a stored file, in line with RFC-005 5.1.
 - **No node data files in `src/`.** The AUS-11 node list, `BOM_BARRA2_AUS11_latlon.csv`, was moved to
-  [`docs/development/references/`](../references/README.md) as reference material. It is not packaged in wheels or
+  [`docs/development/references/`](../../../references/README.md) as reference material. It is not packaged in wheels or
   tagged releases, and neither the package nor the tests read it.
 - **Both grids are rectilinear** (checked 2026-10-31 from the fixed `orog` file of each domain, over OPeNDAP):
 
@@ -1048,7 +1048,7 @@ except E and F, which the owner replaced as described.
 
 ## Slice 4 addendum: the notebook GUI (`feat/gui-skeleton`)
 
-Written 2026-11-02, after [ADR-005](../adr/ADR-005-gui-toolkit.md) chose a Jupyter notebook of ipywidgets and ipyleaflet (no Voila).
+Written 2026-11-02, after [ADR-005](../../../adr/ADR-005-gui-toolkit.md) chose a Jupyter notebook of ipywidgets and ipyleaflet (no Voila).
 **Status: proposed, for the owner's review. Nothing is built until it is approved.** It does not reopen RFC-005 section 8, the section 9
 answers, ADR-004, ADR-005, or the slice 1b, 2, 2b and 3 decisions.
 

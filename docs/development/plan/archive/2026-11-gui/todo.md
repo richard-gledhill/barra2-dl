@@ -13,7 +13,7 @@ Resumed 2026-10-31 after RFC-007 shipped. The owner answered RFC section 9 on 20
 - [x] `scripts/example_project.toml`; example cell in the netCDF example (`.py` and `.ipynb`)
 - [x] Docs: how-to-use, `CONTEXT.md`, README, modules page; ADR-004
 - [x] Live tests; `make check`, `make test`, `make docs-test`; end-to-end run in a scratch folder
-- [ ] PR
+- [x] PR (#163)
 
 ## Slice 1b: research (`docs/reanalysis-site-data-research`)
 - [x] Seven research tasks (SPEC); note in `docs/development/research/`
@@ -63,7 +63,8 @@ Resumed 2026-10-31 after RFC-007 shipped. The owner answered RFC section 9 on 20
 ## Slice 6: `docs/gui-user-guide`
 - [x] SPEC addendum (#162, approved)
 - [x] User docs: GUI guide, project-file reference with `tests/test_docs.py`, `how-to-use.md`, AUS-11 note (CSIRO cited without a link, owner decision), atl3b credit in README, docs and release notes text
-- [ ] PR
+- [x] PR (#163)
 
 ## Finish
-- [ ] Archive plan; RFC-005 Done; roadmap; README
+- [x] Archived. RFC-005 status and the roadmap are for the owner to set (they are existing requirements docs)
+- [x] README roadmap row
