@@ -11,6 +11,7 @@ Style and gates: [conventions.md](../conventions.md), [constraints.md](../constr
 - Slice 2b (polygon boundary) has its addendum, "Slice 2b addendum", approved by the owner on 2026-10-31, and shipped in #152.
 - Slice 3 (toolkit spikes and ADR-005) has its addendum, "Slice 3 addendum" at the end, approved on 2026-10-31. Three spikes were built and the owner chose the notebook (ipywidgets and ipyleaflet, no Voila) on 2026-11-02: see [ADR-005](../adr/ADR-005-gui-toolkit.md) and the [research note](../research/gui-toolkit-spikes.md). Panel, Dash, Flet and tkinter were not built.
 - Slice 4 (the notebook GUI) has its addendum, "Slice 4 addendum" at the end, approved by the owner on 2026-11-02.
+- Slice 6 (GUI user docs and credit) has its addendum, "Slice 6 addendum" at the end, proposed 2026-11-02 and awaiting the owner. Slice 5 was retired (PR #161).
 
 ## Scope
 
@@ -1173,3 +1174,45 @@ Owner's answers of 2026-11-02 to proposals A to N. All are accepted as written, 
 8. **M:** I draft the notebook's markdown cells, and the owner reviews and edits them before the commit that adds the notebook, not
    after the PR is open.
 9. **N:** accepted. The `gui` extra's install size is measured on Python 3.12 and recorded in the research note (item 22).
+
+## Slice 6 addendum: GUI user docs and credit (`docs/gui-user-guide`)
+
+Written 2026-11-02, after slices 1 to 4 merged and slice 5 was retired (PR #161: slice 4 covers the map, nodes, polygon drawing and
+imports). **Status: proposed, for the owner's review. No user doc is written until it is approved.** It does not reopen RFC-005
+section 8, ADR-005, or the decisions of slices 1b to 4.
+
+**Scope.** The last build slice, docs only: (1) a GUI user guide and a `docs/how-to-use.md` section for the notebook GUI, (2) a
+project-file reference, (3) a note on why AUS-11 is the default, (4) the "raised by atl3b" credit in the README, the docs and the
+release notes text. No code changes. Out of scope: a mast-list CSV import and an optional node layer (both are in the backlog, so the
+guide does not mention them as features), a CLI, an executable, and any change to `conventions.md`, `constraints.md` or an existing
+requirements doc.
+
+### Proposed decisions (for the owner)
+
+| # | Question | Proposal |
+|---|---|---|
+| A | Page structure | Two new MkDocs pages, `docs/gui.md` (user guide) and `docs/project-file.md` (reference), both added to `nav:` after "How to use". `docs/how-to-use.md` gains a short "Notebook GUI" section (install `barra2-dl[gui]`, `barra2-dl-gui`, then a link to the guide) rather than repeating the guide, in the same style as its CSV and netCDF sections |
+| B | Guide contents | Written from `gui/app.py` and the shipped notebook, so it describes what exists: install and launch (the folder, never overwritten, `--reset`); the form; the map (masts, the one area, Find nodes, rings, choosing nodes); the weighted-mean option; Run all and Run selected, progress and Cancel; the cache line; the summary table and used nodes; importing a project, a GeoJSON or a KML polygon; Load last session; where files go; the tile-provider note from slice 4 (OpenStreetMap fetched by the browser; heavy or commercial use needs a provider that allows it). No screenshots in v1 (they go stale and add repo weight); the text names each control as the widget labels it |
+| C | Project-file reference | One table per section: every `Settings` key and every `Site` key, with type, default, allowed values and the check that rejects a bad one. Then `nodes`, the polygon boundary (a file path or a GeoJSON feature), `node_mean`, and a worked example. States that unknown keys are errors, with the message the loader gives. Keys are read from `project.py`, and a test (below) keeps the reference from drifting |
+| D | Keeping C honest | `tests/test_docs.py` (new, offline): parses the key names out of `docs/project-file.md` and asserts they equal the field names of `Settings` and `Site`, so adding a key without documenting it fails. Without this the reference rots. It is the only code in the slice |
+| E | AUS-11 default note | A "Why AUS-11 is the default" section on `docs/gui.md`: BARRA-R2 covers a wider area than BARRA-C2 and ranked first, ahead of MERRA-2 and ERA5, in the CSIRO validation against 54 Australian wind farms (Palmer and colleagues, ES24028). When to choose AUST-04 instead (its `20min` data, its smaller area). The original link `publish.csiro.au/ES/fulltext/ES24028` returned 404 for `curl` on 2026-11-02, though a web search lists it. I will recheck in a browser before linking. If it still fails I link the article's DOI or journal page if I can find one, and otherwise cite the paper by title and authors with no link and say so in the PR. I will not link a URL I could not open |
+| F | atl3b credit wording | One sentence, the same in each place: "The GUI was raised by [atl3b](https://github.com/atl3b) in [issue #59](https://github.com/richard-gledhill/barra2-dl/issues/59)." Places: README (near the GUI entry), `docs/index.md` and `docs/gui.md`. The GUI is a fresh build, not a port of the fork (RFC-005 decision 1), so the wording says "raised by", not "built by" or "based on". Fork link is optional; I propose to leave it out unless you want it |
+| G | Release notes text | `docs/changelog.md` includes the generated `CHANGELOG.md`, so a hand-written credit there would be overwritten. I propose a draft in `docs/development/release-notes-gui.md` (the GUI paragraph with the credit, ready to paste into the GitHub release body), and no edit to the generated file. If you would rather the credit lived in the repo's release workflow, say so; that touches CI and is not proposed |
+| H | Terms | CONTEXT.md terms throughout: BARRA2, AUS-11, AUST-04, `ua`/`va`, `phi_met`, node, site, mast, GUI notebook, session. Any term the guide needs that CONTEXT.md lacks is added there |
+| I | Slice 5 | The guide and the reference do not describe mast-list CSV import or an optional node layer. The `Finish` step in the todo (archive, RFC-005 Done, roadmap) stays a separate PR after this one |
+
+### Files
+
+- New: `docs/gui.md`, `docs/project-file.md`, `docs/development/release-notes-gui.md`, `tests/test_docs.py`.
+- Edited: `docs/how-to-use.md`, `docs/index.md`, `README.md`, `mkdocs.yml` (nav only), `CONTEXT.md` if a term is missing,
+  `docs/development/plan/todo.md` (tick slice 6 steps), this file (slice status line).
+- Not edited: `conventions.md`, `constraints.md`, any existing requirements doc, `docs/changelog.md`.
+
+### Acceptance
+
+- Every statement in the guide matches `gui/app.py` and the notebook at the time of writing; a reviewer can follow it from a clean
+  `pip install barra2-dl[gui]` to a finished run.
+- `docs/project-file.md` lists every `Settings` and `Site` key, and `tests/test_docs.py` fails if one is missing or extra.
+- The AUS-11 note's external link was opened successfully, or is absent with the reason given in the PR.
+- The atl3b sentence appears in the README, `docs/index.md`, `docs/gui.md` and the release notes draft.
+- Both pages are in `nav:`; `make docs-test`, `make check` and `make test` pass with no suppression added.
