@@ -32,8 +32,10 @@ from barra2_dl.mapping import (
     distance_km,
     inverse_distance_weights,
     nearest_nodes,
+    planned_nodes,
     polygon_from_geojson,
     polygon_from_kml,
+    polygon_nodes,
     read_polygon,
 )
 
@@ -620,6 +622,167 @@ def test_nearest_nodes_live_returns_nodes_of_the_full_domain_grid(domain: str, l
     assert nodes
     assert all(np.isclose(lats, node.lat, atol=1e-6, rtol=0).any() for node in nodes)
     assert all(np.isclose(lons, node.lon, atol=1e-6, rtol=0).any() for node in nodes)
+
+
+# endregion
+
+
+# region polygon_nodes
+BOX_POLYGON = Polygon(((-23.57, 133.33), (-23.57, 133.50), (-23.51, 133.50), (-23.51, 133.33)))  # two cells wide
+
+
+def test_polygon_nodes_returns_each_overlapped_node_with_its_share(ncss: list[str]) -> None:
+    """The polygon covers 0.06 of the 0.11 cell height and 0.085 of the width of the two cells it straddles."""
+    found = polygon_nodes(BOX_POLYGON, 'AUS-11')
+
+    assert [node.lon for node, _share in found] == pytest.approx([133.36, 133.47])
+    assert {node.lat for node, _share in found} == {-23.54}
+    assert [share for _node, share in found] == pytest.approx([0.06 * 0.085 / 0.11**2] * 2)
+    centre = BOX_POLYGON.centroid()
+    assert found[0][0].distance_km == pytest.approx(float(distance_km(centre.lat, centre.lon, -23.54, 133.36)))
+    with xr.open_dataset(DATA / FIXTURES[('AUS-11', 'orog')]) as orog:
+        expected = float(orog['orog'].sel(lat=-23.54, lon=133.36, method='nearest'))
+    assert found[0][0].orog == pytest.approx(expected)
+
+
+def test_polygon_nodes_makes_one_box_request_for_each_fixed_field(ncss: list[str]) -> None:
+    """The box is the polygon's bounding box less one percent of a spacing either side, and it is one box."""
+    polygon_nodes(BOX_POLYGON, 'AUS-11')
+
+    assert len(ncss) == 2
+    queries = [parse_qs(urlsplit(url).query) for url in ncss]
+    assert sorted(query['var'][0] for query in queries) == ['orog', 'sftlf']
+    assert {query['north'][0] for query in queries} == {'-23.5089'}
+    assert {query['west'][0] for query in queries} == {'133.3289'}
+
+
+def test_polygon_nodes_leaves_out_a_cell_the_polygon_only_touches(ncss: list[str]) -> None:
+    """A polygon ending on a cell edge gives no node for the next cell."""
+    touching = Polygon(((-23.57, 133.305), (-23.57, 133.415), (-23.51, 133.415), (-23.51, 133.305)))
+
+    found = polygon_nodes(touching, 'AUS-11')
+
+    assert [node.lon for node, _share in found] == pytest.approx([133.36])
+    assert found[0][1] == pytest.approx(0.06 / 0.11)
+
+
+def test_polygon_nodes_rejects_an_unknown_domain(ncss: list[str]) -> None:
+    """An unknown domain is a ValueError."""
+    with pytest.raises(ValueError, match='Unknown domain'):
+        polygon_nodes(BOX_POLYGON, 'AUS-99')
+
+
+def test_polygon_nodes_outside_the_domain_raises_with_the_status(ncss: list[str]) -> None:
+    """A polygon outside the grid is a NodeLookupError naming the polygon."""
+    far = Polygon(((10.0, 10.0), (10.0, 10.1), (10.1, 10.1), (10.1, 10.0)))
+
+    with pytest.raises(NodeLookupError, match='for the polygon in AUS-11'):
+        polygon_nodes(far, 'AUS-11')
+
+
+def test_polygon_nodes_with_a_cache_keeps_the_files_and_reuses_them(ncss: list[str], cache: Path) -> None:
+    """A repeat lookup of the same polygon makes no request."""
+    first = polygon_nodes(BOX_POLYGON, 'AUS-11', cache=cache)
+    requests_made = len(ncss)
+    second = polygon_nodes(BOX_POLYGON, 'AUS-11', cache=cache)
+
+    assert second == first
+    assert len(ncss) == requests_made == 2
+    assert len(list((cache / 'nodes').glob('*.nc'))) == 2
+
+
+@live_network
+def test_polygon_nodes_live_finds_the_nodes_of_a_small_polygon() -> None:
+    """Against the real server: a polygon of about two cells returns a few nodes whose shares are in (0, 1]."""
+    found = polygon_nodes(BOX_POLYGON, 'AUS-11')
+
+    assert 2 <= len(found) <= 9
+    assert all(0 < share <= 1 for _node, share in found)
+
+
+# endregion
+
+
+# region planned_nodes
+def _block() -> list[GridNode]:
+    """A 3 x 3 block of nodes one degree apart, centred on (0, 0), nearest-first order not implied."""
+    return [GridNode(lat, lon, 0.0, 0.0, 100.0) for lat in (-1.0, 0.0, 1.0) for lon in (-1.0, 0.0, 1.0)]
+
+
+def _places(nodes: list[GridNode]) -> set[tuple[float, float]]:
+    """The (lat, lon) of each node."""
+    return {(node.lat, node.lon) for node in nodes}
+
+
+def test_planned_nodes_nearest_is_the_one_nearest_node() -> None:
+    """Nearest gives the one node nearest the point."""
+    assert _places(planned_nodes(LatLonPoint(0.2, 0.9), _block(), 'nearest')) == {(0.0, 1.0)}
+
+
+def test_planned_nodes_average4_is_the_four_nodes_that_surround_the_point() -> None:
+    """The nodes around the point, which the merge's bracket_index finds, not simply the four nearest."""
+    assert _places(planned_nodes(LatLonPoint(0.2, 0.9), _block(), 'average4')) == {
+        (0.0, 0.0),
+        (0.0, 1.0),
+        (1.0, 0.0),
+        (1.0, 1.0),
+    }
+
+
+def test_planned_nodes_average4_agrees_with_the_bracket_the_merge_uses() -> None:
+    """The four are the pair on each axis that bracket_index gives."""
+    lats, lons = np.array([-1.0, 0.0, 1.0]), np.array([-1.0, 0.0, 1.0])
+    point = LatLonPoint(-0.3, 0.4)
+    south, west = bracket_index(lats, -0.3), bracket_index(lons, 0.4)
+
+    got = _places(planned_nodes(point, _block(), 'average4'))
+
+    assert got == {(lats[i], lons[j]) for i in (south, south + 1) for j in (west, west + 1)}
+
+
+def test_planned_nodes_average4_for_a_point_on_a_node_takes_that_node_first_of_the_pair() -> None:
+    """On a node, the node and the next one up and east, as bracket_index puts it."""
+    assert _places(planned_nodes(LatLonPoint(0.0, 0.0), _block(), 'average4')) == {
+        (0.0, 0.0),
+        (0.0, 1.0),
+        (1.0, 0.0),
+        (1.0, 1.0),
+    }
+
+
+def test_planned_nodes_average4_with_too_few_nodes_gives_the_four_nearest() -> None:
+    """A point outside the offered nodes, or a gap in them, falls back to the four nearest."""
+    nodes = _block()[:2] + _block()[3:5]
+    assert len(planned_nodes(LatLonPoint(5.0, 5.0), nodes, 'average4')) == 4
+    assert len(planned_nodes(LatLonPoint(-0.5, 0.5), _block()[:1] + _block()[4:], 'average4')) == 4
+
+
+@pytest.mark.parametrize('selection', ['nodes', 'area'])
+def test_planned_nodes_chosen_and_area_give_all_the_nodes_as_given(selection: str) -> None:
+    """Chosen nodes and an area use every node offered, in order."""
+    nodes = _block()[::2]
+
+    assert planned_nodes(LatLonPoint(0.0, 0.0), nodes, selection) == nodes
+
+
+@pytest.mark.parametrize('selection', ['nearest', 'average4', 'nodes', 'area'])
+def test_planned_nodes_with_no_nodes_gives_none(selection: str) -> None:
+    """No offered nodes means no planned nodes."""
+    assert planned_nodes(LatLonPoint(0.0, 0.0), [], selection) == []
+
+
+def test_planned_nodes_rejects_an_unknown_selection() -> None:
+    """An unknown selection is a ValueError."""
+    with pytest.raises(ValueError, match='Unknown selection'):
+        planned_nodes(LatLonPoint(0.0, 0.0), _block(), 'median')
+
+
+def test_planned_nodes_agree_with_nearest_nodes_for_a_real_lookup(ncss: list[str]) -> None:
+    """With a lookup from the server, nearest is nearest_nodes' first node."""
+    point = LatLonPoint(-23.55, 133.40)
+    offered = nearest_nodes(point, 'AUS-11', 9)
+
+    assert planned_nodes(point, offered, 'nearest') == offered[:1]
 
 
 # endregion

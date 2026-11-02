@@ -46,7 +46,15 @@ from barra2_dl.globals import (
     OutputFormat,
     SiteStatus,
 )
-from barra2_dl.mapping import BoundaryFileError, LatLonBBox, LatLonPoint, Polygon, distance_km, read_polygon
+from barra2_dl.mapping import (
+    BoundaryFileError,
+    LatLonBBox,
+    LatLonPoint,
+    Polygon,
+    distance_km,
+    polygon_from_geojson,
+    read_polygon,
+)
 from barra2_dl.merge import (
     merge_csvs_to_df,
     merge_netcdf_to_dataset,
@@ -71,6 +79,7 @@ __all__ = [
     'load_project',
     'plan_site',
     'project_from_dict',
+    'project_to_dict',
     'run_site',
     'site_from_dict',
     'site_result_to_dict',
@@ -280,7 +289,8 @@ def project_from_dict(data: Mapping[str, Any], base_dir: str | Path = '.') -> Pr
     list of tables. A site has a name and either lat and lon or north, south, east and west, and may override domain,
     freq, preset, node_selection, format, download, start and end. A point site may also give nodes, a list of
     [lat, lon] pairs (exact values from mapping.nearest_nodes), and node_mean. A site may give polygon, the path of a
-    GeoJSON or KML boundary relative to base_dir, instead of a point or box. Unknown keys are errors.
+    GeoJSON or KML boundary relative to base_dir or a GeoJSON
+    feature, instead of a point or box. Unknown keys are errors.
 
     Args:
         data (Mapping[str, Any]): The parsed project.
@@ -323,6 +333,39 @@ def project_from_dict(data: Mapping[str, Any], base_dir: str | Path = '.') -> Pr
     if problems:
         raise ProjectError(problems)
     return Project(settings, sites)
+
+
+def project_to_dict(project: Project) -> dict[str, Any]:
+    """Return a Project as plain data, the inverse of project_from_dict (json.dumps can write it).
+
+    Dates are ISO strings and folders are strings, as they were given (a relative folder stays relative to the
+    base_dir it is read with). A polygon is a GeoJSON feature whose properties hold its source, so the data does not
+    depend on a boundary file still existing. project.path is not part of the data.
+
+    Args:
+        project (Project): The settings and sites.
+
+    Returns:
+        dict[str, Any]: A 'settings' table and a 'site' list, ready for project_from_dict.
+
+    Examples:
+        >>> settings = Settings(date(2023, 1, 1), date(2023, 1, 31))
+        >>> data = project_to_dict(Project(settings, [Site('a', LatLonPoint(-23.5, 133.4))]))
+        >>> data['settings']['start'], data['site'][0]
+        ('2023-01-01', {'name': 'a', 'lat': -23.5, 'lon': 133.4})
+    """
+    settings = project.settings
+    return {
+        'settings': {
+            **{key: getattr(settings, key) for key in _TEXT_SETTINGS},
+            'start': settings.start.isoformat(),
+            'end': settings.end.isoformat(),
+            'cache': str(settings.cache),
+            'out': str(settings.out),
+            'workers': settings.workers,
+        },
+        'site': [_site_to_dict(site) for site in project.sites],
+    }
 
 
 def site_from_dict(data: Mapping[str, Any], settings: Settings, base_dir: str | Path = '.') -> Site:
@@ -889,10 +932,45 @@ def _widened(box: LatLonBBox, spacing: float) -> LatLonBBox:
     )
 
 
+def _site_to_dict(site: Site) -> dict[str, Any]:
+    """Return a Site as the keys of a [[site]] table; keys at their default are left out."""
+    data: dict[str, Any] = {'name': site.name}
+    if site.point is not None:
+        data |= {'lat': float(site.point.lat), 'lon': float(site.point.lon)}
+    if site.bbox is not None:
+        data |= {key: float(getattr(site.bbox, key)) for key in _BOX_KEYS}
+    data |= {key: value.isoformat() if isinstance(value, date) else value for key, value in site.overrides.items()}
+    if site.nodes is not None:
+        data['nodes'] = [[float(node.lat), float(node.lon)] for node in site.nodes]
+    if site.node_mean:
+        data['node_mean'] = True
+    if site.polygon is not None:
+        data['polygon'] = _polygon_feature(site.polygon)
+    return data
+
+
+def _polygon_feature(polygon: Polygon) -> dict[str, Any]:
+    """Return a Polygon as a GeoJSON feature (longitude then latitude, closed rings) that records its source."""
+    rings = [[[lon, lat] for lat, lon in ring] for ring in (polygon.exterior, *polygon.holes)]
+    return {
+        'type': 'Feature',
+        'properties': {'source': polygon.source},
+        'geometry': {'type': 'Polygon', 'coordinates': [[*ring, ring[0]] for ring in rings]},
+    }
+
+
 def _polygon_from_data(value: object, base_dir: Path, name: str, problems: list[Problem]) -> Polygon | None:
     """Return the boundary of a site from a Polygon or the path of a file, or None with a problem added."""
     if isinstance(value, Polygon):
         return value
+    if isinstance(value, Mapping):
+        properties = value.get('properties')
+        source = properties.get('source', '') if isinstance(properties, Mapping) else ''
+        try:
+            return polygon_from_geojson(json.dumps(value), str(source))
+        except (TypeError, BoundaryFileError) as error:
+            problems.append(Problem(name, 'polygon', f'Cannot read the GeoJSON polygon: {error}'))
+            return None
     if not isinstance(value, str):
         problems.append(Problem(name, 'polygon', 'Give the path of a GeoJSON or KML file, in quotes.'))
         return None

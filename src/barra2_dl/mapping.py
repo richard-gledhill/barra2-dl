@@ -9,6 +9,7 @@ import logging
 import math
 import re
 import tempfile
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Self
@@ -40,8 +41,10 @@ __all__ = [
     'distance_km',
     'inverse_distance_weights',
     'nearest_nodes',
+    'planned_nodes',
     'polygon_from_geojson',
     'polygon_from_kml',
+    'polygon_nodes',
     'read_polygon',
 ]
 
@@ -301,28 +304,108 @@ def nearest_nodes(
         raise ValueError(f'Unknown domain <{domain}>. Domains: {", ".join(BARRA2_DOMAINS)}.')
     if not 1 <= n <= 9:
         raise ValueError(f'n must be from 1 to 9, because a box returns at most a 3 x 3 block; got {n}.')
-    # download imports this module, so it can only be imported here, not at the top
-    from barra2_dl.download import download_serial
-
     box = _lookup_box(point, BARRA2_GRID_SPACING[domain])
-    pairs = [_lookup_pair(domain, var, box) for var in ('orog', 'sftlf')]
-    with tempfile.TemporaryDirectory() as scratch:
-        if cache is None:
-            folder = Path(scratch)
-        else:
-            if not Path(cache).is_dir():
-                raise FileNotFoundError(f'The cache folder <{cache}> does not exist.')
-            folder = Path(cache) / 'nodes'
-            folder.mkdir(exist_ok=True)
-        results = download_serial(pairs, folder)
-        failed = [result for result in results if result.status not in ('downloaded', 'skipped')]
-        if failed:
-            reason = '; '.join(f'{result.filename}: {result.error}' for result in failed)
-            raise NodeLookupError(
-                f'Could not get the nodes around {float(point.lat):.4f}, {float(point.lon):.4f} in {domain}: {reason}'
-            )
-        orog, sftlf = (_read_field(folder / name) for _, name in pairs)
+    where = f'around {float(point.lat):.4f}, {float(point.lon):.4f} in {domain}'
+    orog, sftlf = _fixed_fields(domain, box, cache, where)
     return _rank_nodes(point, orog, sftlf, n)
+
+
+def polygon_nodes(
+    polygon: Polygon, domain: str = 'AUS-11', *, cache: str | Path | None = None
+) -> list[tuple[GridNode, float]]:
+    """Return the nodes whose grid cell the polygon overlaps, each with the share of its cell inside the polygon.
+
+    This previews the nodes an area run downloads. One NCSS bounding-box request per fixed field (orog and sftlf) over
+    the polygon's bounding box, widened by 1% of a grid spacing, returns every node whose cell overlaps the box;
+    Polygon.cell_overlap then keeps those the polygon really overlaps. The distance of each node is from the polygon's
+    centroid.
+
+    With cache, the two files are kept in <cache>/nodes and a repeat lookup of the same polygon makes no request.
+    Without cache nothing is written.
+
+    Args:
+        polygon (Polygon): The boundary.
+        domain (str): BARRA2 domain, a key of BARRA2_DOMAINS. Default 'AUS-11'.
+        cache (str | Path | None): An existing folder to keep the lookup files in. Default None.
+
+    Returns:
+        list[tuple[GridNode, float]]: (node, overlap) pairs, overlap above 0 and at most 1, south to north then west to
+            east.
+
+    Raises:
+        ValueError: If the domain is unknown.
+        FileNotFoundError: If cache is given and does not exist.
+        NodeLookupError: If the server could not give the nodes, e.g. the polygon is outside the domain.
+        download.CacheMismatchError: If a cached lookup file does not cover the box or can't be read.
+    """
+    if domain not in BARRA2_GRID_SPACING:
+        raise ValueError(f'Unknown domain <{domain}>. Domains: {", ".join(BARRA2_DOMAINS)}.')
+    spacing = BARRA2_GRID_SPACING[domain]
+    margin, bbox, centre = spacing / 100, polygon.bbox(), polygon.centroid()
+    box = {
+        'north': round(min(90.0, float(bbox.north) + margin), 6),
+        'south': round(max(-90.0, float(bbox.south) - margin), 6),
+        'east': round(min(180.0, float(bbox.east) + margin), 6),
+        'west': round(max(-180.0, float(bbox.west) - margin), 6),
+    }
+    orog, sftlf = _fixed_fields(domain, box, cache, f'for the polygon in {domain}')
+    if not (np.array_equal(orog['lat'], sftlf['lat']) and np.array_equal(orog['lon'], sftlf['lon'])):
+        raise NodeLookupError('The orog and sftlf grids have different nodes.')
+    lats, lons = orog['lat'].to_numpy(), orog['lon'].to_numpy()
+    overlap = polygon.cell_overlap(lats, lons, spacing)
+    orogs, land = orog.to_numpy(), sftlf.to_numpy()
+    found = []
+    for i, lat in enumerate(lats):
+        for j, lon in enumerate(lons):
+            if overlap[i, j] > _USED:
+                km = float(distance_km(float(centre.lat), float(centre.lon), lat, lon))
+                node = GridNode(float(lat), float(lon), km, float(orogs[i, j]), float(land[i, j]))
+                found.append((node, float(overlap[i, j])))
+    return found
+
+
+def planned_nodes(point: LatLonPoint, nodes: Sequence[GridNode], selection: str) -> list[GridNode]:
+    """Return the nodes a run would download, out of the nodes a lookup offered; no request is made.
+
+    'nearest' gives the one node nearest the point; 'average4' the four nodes that surround it, found with
+    bracket_index as the four-node average finds them, or the four nearest where the offered nodes are too few to hold
+    them; 'nodes' (chosen nodes) and 'area' (a polygon's nodes) give all of them, as given.
+
+    Args:
+        point (LatLonPoint): The site.
+        nodes (Sequence[GridNode]): The nodes offered, e.g. from nearest_nodes with n = 9 or from polygon_nodes.
+        selection (str): 'nearest', 'average4', 'nodes' or 'area'.
+
+    Returns:
+        list[GridNode]: The nodes, nearest first for 'nearest' and 'average4'; empty if none were offered.
+
+    Raises:
+        ValueError: If the selection is not one of those four.
+
+    Examples:
+        >>> grid = [GridNode(lat, lon, 0.0, 0.0, 100.0) for lat in (0.0, 1.0) for lon in (0.0, 1.0)]
+        >>> [(node.lat, node.lon) for node in planned_nodes(LatLonPoint(0.2, 0.9), grid, 'nearest')]
+        [(0.0, 1.0)]
+        >>> len(planned_nodes(LatLonPoint(0.2, 0.9), grid, 'average4'))
+        4
+    """
+    if selection not in ('nearest', 'average4', 'nodes', 'area'):
+        raise ValueError(f'Unknown selection <{selection}>. Selections: nearest, average4, nodes, area.')
+    if selection in ('nodes', 'area') or not nodes:
+        return list(nodes)
+    lat, lon = float(point.lat), float(point.lon)
+    by_distance = sorted(nodes, key=lambda node: (float(distance_km(lat, lon, node.lat, node.lon)), node.lat, node.lon))
+    if selection == 'nearest':
+        return by_distance[:1]
+    lats = np.array(sorted({node.lat for node in nodes}))
+    lons = np.array(sorted({node.lon for node in nodes}))
+    try:
+        south, west = bracket_index(lats, lat), bracket_index(lons, lon)
+    except ValueError:
+        return by_distance[:4]
+    rows, columns = {lats[south], lats[south + 1]}, {lons[west], lons[west + 1]}
+    around = [node for node in by_distance if node.lat in rows and node.lon in columns]
+    return around if len(around) == 4 else by_distance[:4]
 
 
 def read_polygon(path: str | Path) -> Polygon:
@@ -520,6 +603,31 @@ def _lookup_pair(domain: str, var: str, box: dict[str, float]) -> tuple[str, str
     url = BARRA2_URL_FX_BBOX.format(domain=domain, model=BARRA2_DOMAINS[domain], var=var, fileout_type='netcdf4', **box)
     tag = f'n{box["north"]:.4f}_s{box["south"]:.4f}_e{box["east"]:.4f}_w{box["west"]:.4f}'
     return url, f'{domain}_fx_{var}_{tag}.nc'
+
+
+def _fixed_fields(
+    domain: str, box: dict[str, float], cache: str | Path | None, where: str
+) -> tuple[xr.DataArray, xr.DataArray]:
+    """Return the orog and sftlf fields of a box, from the server or from the lookup files kept in cache."""
+    # download imports this module, so it can only be imported here, not at the top
+    from barra2_dl.download import download_serial
+
+    pairs = [_lookup_pair(domain, var, box) for var in ('orog', 'sftlf')]
+    with tempfile.TemporaryDirectory() as scratch:
+        if cache is None:
+            folder = Path(scratch)
+        else:
+            if not Path(cache).is_dir():
+                raise FileNotFoundError(f'The cache folder <{cache}> does not exist.')
+            folder = Path(cache) / 'nodes'
+            folder.mkdir(exist_ok=True)
+        results = download_serial(pairs, folder)
+        failed = [result for result in results if result.status not in ('downloaded', 'skipped')]
+        if failed:
+            reason = '; '.join(f'{result.filename}: {result.error}' for result in failed)
+            raise NodeLookupError(f'Could not get the nodes {where}: {reason}')
+        orog, sftlf = (_read_field(folder / name) for _, name in pairs)
+    return orog, sftlf
 
 
 def _read_field(path: Path) -> xr.DataArray:

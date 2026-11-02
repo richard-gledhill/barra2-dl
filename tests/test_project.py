@@ -20,12 +20,14 @@ from barra2_dl.mapping import LatLonBBox, LatLonPoint, Polygon, nearest_nodes, r
 from barra2_dl.merge import read_csv
 from barra2_dl.project import (
     Problem,
+    Project,
     ProjectError,
     Settings,
     Site,
     load_project,
     plan_site,
     project_from_dict,
+    project_to_dict,
     run_site,
     site_from_dict,
     site_result_to_dict,
@@ -335,6 +337,65 @@ def test_project_from_dict_box_site_rules(site: dict, expected: str, tmp_path: P
         project_from_dict(data, tmp_path)
 
     assert ('a', expected) in _problems(error.value)
+
+
+# endregion
+
+
+# region project_to_dict
+def test_project_to_dict_round_trips_every_field_of_settings_and_site(tmp_path: Path) -> None:
+    """Settings, a point with overrides, chosen nodes with the mean, a box and a polygon all survive JSON."""
+    settings = _settings(tmp_path, domain='AUS-11', freq='1hr', format='netcdf', workers=3)
+    project = Project(
+        settings,
+        [
+            Site(
+                'mast', LatLonPoint(-23.55, 133.40), overrides={'node_selection': 'average4', 'end': date(2023, 1, 15)}
+            ),
+            Site('picked', LatLonPoint(-23.55, 133.40), nodes=NODES, node_mean=True),
+            Site('box', bbox=BOX),
+            Site('farm', polygon=TWO_CELLS, node_mean=True),
+        ],
+    )
+
+    data = json.loads(json.dumps(project_to_dict(project)))
+
+    assert project_from_dict(data) == project
+
+
+def test_project_to_dict_keeps_a_polygon_without_its_file(tmp_path: Path) -> None:
+    """The polygon is a GeoJSON feature, with its source and holes, so no boundary file is read back."""
+    holed = Polygon(((0, 0), (0, 4), (4, 4), (4, 0)), (((1, 1), (3, 1), (3, 3), (1, 3)),), source='farm.geojson')
+    project = Project(_settings(tmp_path, format='netcdf'), [Site('farm', polygon=holed)])
+
+    data = project_to_dict(project)
+
+    assert data['site'][0]['polygon']['geometry']['type'] == 'Polygon'
+    assert data['site'][0]['polygon']['properties'] == {'source': 'farm.geojson'}
+    assert project_from_dict(data).sites[0].polygon == holed
+
+
+def test_project_to_dict_writes_dates_as_iso_text_and_leaves_out_defaults(tmp_path: Path) -> None:
+    """Dates are ISO text and a plain point site is just name, lat and lon."""
+    data = project_to_dict(Project(_settings(tmp_path), [Site('mast', POINT)]))
+
+    assert (data['settings']['start'], data['settings']['end']) == ('2023-01-01', '2023-01-31')
+    assert data['site'] == [{'name': 'mast', 'lat': -23.55, 'lon': 133.4}]
+
+
+def test_project_from_dict_reports_a_faulty_geojson_polygon() -> None:
+    """A polygon feature that is not a polygon is reported against its site."""
+    data = {
+        'settings': {'start': '2023-01-01', 'end': '2023-01-31'},
+        'site': [
+            {'name': 'farm', 'polygon': {'type': 'Feature', 'geometry': {'type': 'Point', 'coordinates': [0, 0]}}}
+        ],
+    }
+
+    with pytest.raises(ProjectError) as error:
+        project_from_dict(data)
+
+    assert ('farm', 'polygon') in _problems(error.value)
 
 
 # endregion
