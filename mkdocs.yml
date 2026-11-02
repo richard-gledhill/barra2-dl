@@ -14,6 +14,8 @@ exclude_docs: |
 nav:
   - Home: index.md
   - How to use: how-to-use.md
+  - Notebook GUI: gui.md
+  - Project-file reference: project-file.md
   - Modules: modules.md
   - Changelog: changelog.md
   - Contributing: contributing.md
