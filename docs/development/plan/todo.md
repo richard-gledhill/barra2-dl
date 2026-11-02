@@ -49,8 +49,9 @@ Resumed 2026-10-31 after RFC-007 shipped. The owner answered RFC section 9 on 20
 - [x] tkinter on paper: dropped, not written up
 
 ## Slice 4: `feat/gui-skeleton`
-- [x] SPEC addendum written (PR `docs: slice 4 SPEC addendum (notebook GUI)`); awaiting the owner's answers A to N
-- [ ] Owner answers recorded under "Decisions" in the addendum
+- [x] SPEC addendum written (PR `docs: slice 4 SPEC addendum (notebook GUI)`); approved 2026-11-02 with answers A to N
+- [x] Owner answers recorded under "Decisions" in the addendum
+- [ ] Owner reviews the notebook's markdown cells before the commit that adds the notebook
 - [ ] Library: `mapping.polygon_nodes`, `mapping.planned_nodes`, `project.project_to_dict`; tests
 - [ ] `gui` extra, entry point, `gui/app.py` (`build_app`), notebook and its jupytext source, port of the spike's behaviours; tests
 - [ ] Reduced fake server in `tests/`; `test_gui.py`, `test_gui_notebook.py`, `test_package.py` updates

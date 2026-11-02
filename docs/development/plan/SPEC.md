@@ -10,7 +10,7 @@ Style and gates: [conventions.md](../conventions.md), [constraints.md](../constr
 - Slice 2 (node lookup, chosen nodes) has its addendum, "Slice 2 addendum" at the end, approved by the owner on 2026-10-31, and shipped in #150.
 - Slice 2b (polygon boundary) has its addendum, "Slice 2b addendum", approved by the owner on 2026-10-31, and shipped in #152.
 - Slice 3 (toolkit spikes and ADR-005) has its addendum, "Slice 3 addendum" at the end, approved on 2026-10-31. Three spikes were built and the owner chose the notebook (ipywidgets and ipyleaflet, no Voila) on 2026-11-02: see [ADR-005](../adr/ADR-005-gui-toolkit.md) and the [research note](../research/gui-toolkit-spikes.md). Panel, Dash, Flet and tkinter were not built.
-- Slice 4 (the notebook GUI) has its addendum, "Slice 4 addendum" at the end, proposed for the owner's review; nothing is built until it is approved.
+- Slice 4 (the notebook GUI) has its addendum, "Slice 4 addendum" at the end, approved by the owner on 2026-11-02.
 
 ## Scope
 
@@ -1156,4 +1156,20 @@ The user guide and `how-to-use.md` are slice 6 (ADR-005).
 
 ### Decisions
 
-Pending the owner's answers to A to N.
+Owner's answers of 2026-11-02 to proposals A to N. All are accepted as written, with one note on M.
+
+1. **A, B, C:** accepted. `gui/app.py` with `build_app()` and a `GuiApp` state holder; `barra2-dl-gui [folder]` copies the notebook
+   and starts JupyterLab without overwriting an edited copy; the `.ipynb` ships, with a jupytext `.py` source and a test that they match.
+2. **D, E, F:** accepted. `mapping.polygon_nodes` (one box request), `mapping.planned_nodes`, and `project.project_to_dict` with the
+   session written as JSON. No TOML writer and no `tomli-w`.
+3. **G:** keep the dual log-and-print pattern.
+4. **H, J:** accepted. The `gui` extra holds `ipywidgets`, `ipyleaflet` and `jupyterlab`; the dev group adds `nbclient` and `jupytext`;
+   CI installs the extra and runs the 3.12 to 3.14 matrix.
+5. **I:** a per-module `ignore_missing_imports` override under `[tool.mypy]` is approved, for the toolkit modules and only if they
+   ship no type information. This is the one approved change to a checked setting; it names modules, and nothing else is loosened.
+6. **K:** accepted. A reduced fake NCSS server goes into `tests/`.
+7. **L:** accepted. Slice 5 shrinks to mast-list CSV import, the optional node layer and a node table for a plain box `area`; the plan's
+   slice 5 line is rewritten with this decision.
+8. **M:** I draft the notebook's markdown cells, and the owner reviews and edits them before the commit that adds the notebook, not
+   after the PR is open.
+9. **N:** accepted. The `gui` extra's install size is measured on Python 3.12 and recorded in the research note (item 22).
