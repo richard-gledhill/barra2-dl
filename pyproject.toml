@@ -5,7 +5,7 @@ description = "A tool for downloading BARRA version 2 (BARRA2) atmospheric reana
 authors = [{ name = "akarich73", email = "rich_gledhill@hotmail.com" }]
 requires-python = ">=3.12,<4"
 readme = "README.md"
-license = "CC-BY-4.0"
+license = "MIT"
 keywords = [
     "downloader",
     "barra2",

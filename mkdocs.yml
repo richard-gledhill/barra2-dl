@@ -5,7 +5,7 @@ site_description: A tool for downloading BARRA version 2 (BARRA2) atmospheric re
 site_author: akarich73
 edit_uri: edit/main/docs/
 repo_name: richard-gledhill/barra2-dl
-copyright: Maintained by akarich73.
+copyright: Copyright (c) 2024 Richard Gledhill, MIT licence.
 
 # docs/development/ holds internal docs
 exclude_docs: |
