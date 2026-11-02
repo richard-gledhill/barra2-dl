@@ -88,7 +88,7 @@ them and answered the rest. A gate item marked No would remove the toolkit; none
 | 19 | Reload or second tab during a run | Yes | |
 | 20 | Failed and cancelled runs shown properly | Yes | |
 | 21 | Modest threading code | Yes | One worker thread and one timer thread, each about 20 lines, writing widget values directly |
-| 22 | Install size and package count | **Not measured** | Measure at slice 4. The pin run listed 94 packages with Voila, fewer without it |
+| 22 | Install size and package count | **Measured at slice 4** | The `gui` extra (ipywidgets 8, ipyleaflet 0.20, JupyterLab 4.6) on Python 3.12.10, Windows, `uv pip install .[gui]` into an empty venv: site-packages grew from 100 MB (3,743 files, 14 packages: the library alone) to 243 MB (14,388 files, 104 packages), so +143 MB, +10,645 files and +90 packages. JupyterLab is most of it. Streamlit measured +173 MB and NiceGUI +55 MB in the spikes |
 | 23 | No unwanted outbound calls at start-up | **Not measured** | |
 | 24 | Fits a `gui` extra and entry point | Yes | Copy the notebook, start JupyterLab; slice 4 settles the layout |
 | 25 | Display-free smoke test | Yes | 13 tests call the app's functions after `runpy.run_path`; no display or browser |

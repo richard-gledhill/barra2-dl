@@ -41,8 +41,8 @@ override any default paths in skills or commands:
 Dependency management is via uv.
 
 ```bash
-uv sync                  # install deps, dev and docs groups (run with `uv run <cmd>`)
-make install              # uv sync; uv run pre-commit install
+uv sync --all-extras      # install deps, dev and docs groups and the gui extra (run with `uv run <cmd>`)
+make install              # uv sync --all-extras; uv run pre-commit install
 make lint                 # pre-commit run -a (incl. ruff check + ruff format); mypy src/barra2_dl tests; deptry src
 make check                 # lockfile check; lint; uv pip check (what CI's `quality` job runs)
 make test                 # uv run python -m pytest --doctest-modules --cov --cov-report=term-missing
@@ -121,6 +121,13 @@ There is no class-based orchestrator — callers (see `scripts/example_barra2_dl
    always come from the server, never from arithmetic on a grid origin), and is the
    one place `mapping` reaches `download`, through a function-level import because
    `download` imports `mapping`.
+
+6. **`gui/`** — the notebook GUI, installed with the `gui` extra (ipywidgets, ipyleaflet, JupyterLab). `gui/__init__.py` is
+   `main` (the `barra2-dl-gui` command: copy the notebook, start JupyterLab) and imports no toolkit; `gui/app.py` is
+   `build_app() -> GuiApp`, the widgets and state, with the handlers as functions over it; `barra2_dl_gui.py` is the
+   jupytext source of the shipped `barra2_dl_gui.ipynb`, and a test fails if the two differ. The library never imports
+   `gui`, and `gui` imports only `__all__` names and `globals` constants. Its tests (`tests/test_gui.py`) use the fake
+   NCSS server in `tests/fake_ncss.py` and need the extra (`uv sync --all-extras`).
 
 End-to-end usage lives in `scripts/example_barra2_dl_csv.py` and `scripts/example_barra2_dl_netcdf.py` (each also as a
 Jupyter notebook of the same name, via jupytext `#%%` cell markers; keep each pair in step):
