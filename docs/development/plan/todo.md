@@ -51,11 +51,11 @@ Resumed 2026-10-31 after RFC-007 shipped. The owner answered RFC section 9 on 20
 ## Slice 4: `feat/gui-skeleton`
 - [x] SPEC addendum written (PR `docs: slice 4 SPEC addendum (notebook GUI)`); approved 2026-11-02 with answers A to N
 - [x] Owner answers recorded under "Decisions" in the addendum
-- [ ] Owner reviews the notebook's markdown cells before the commit that adds the notebook
-- [ ] Library: `mapping.polygon_nodes`, `mapping.planned_nodes`, `project.project_to_dict`; tests
-- [ ] `gui` extra, entry point, `gui/app.py` (`build_app`), notebook and its jupytext source, port of the spike's behaviours; tests
-- [ ] Reduced fake server in `tests/`; `test_gui.py`, `test_gui_notebook.py`, `test_package.py` updates
-- [ ] CI installs the extra; `make check`, `make test`, `make docs-test`; install size into the research note; PR
+- [x] Owner reviews the notebook's markdown cells before the commit that adds the notebook
+- [x] Library: `mapping.polygon_nodes`, `mapping.planned_nodes`, `project.project_to_dict`; tests
+- [x] `gui` extra, entry point, `gui/app.py` (`build_app`), notebook and its jupytext source, port of the spike's behaviours; tests
+- [x] Reduced fake server in `tests/`; `test_gui.py`, `test_gui_notebook.py`, `test_package.py` updates
+- [x] CI installs the extra; `make check`, `make test`, `make docs-test`; install size into the research note; PR
 
 ## Slice 5: `feat/gui-map-import`
 - [ ] SPEC addendum; map preview, nodes selected or used drawn on the map (owner requirement), optional node layer (site or area plus margin), mast-list, project and boundary-file import, polygon drawing, summary view; PR
