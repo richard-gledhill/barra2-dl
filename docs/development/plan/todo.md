@@ -45,11 +45,16 @@ Resumed 2026-10-31 after RFC-007 shipped. The owner answered RFC section 9 on 20
 - [x] Notebook chosen by the owner 2026-11-02; checklist completed in the research note
 - [x] Research note `docs/development/research/gui-toolkit-spikes.md`, with the register of spikes run and not run
 - [x] ADR-005 and `adr/README.md` row; spike branch tagged `rfc005-spikes` (`1a62287`)
-- [ ] `make check`, `make docs-test`; PR `docs: ADR-005 GUI toolkit (slice 3)` (no spike code on `main`)
-- [ ] tkinter on paper: dropped, not written up
+- [x] `make check`, `make docs-test`; PR `docs: ADR-005 GUI toolkit (slice 3)` merged as #157 (no spike code on `main`)
+- [x] tkinter on paper: dropped, not written up
 
 ## Slice 4: `feat/gui-skeleton`
-- [ ] SPEC addendum; `gui` extra, entry point (copies the notebook and starts JupyterLab), notebook text cells, move `find_polygon_nodes` and `planned_nodes` into the library, decide `last_session.json`, measure install size, smoke test; PR
+- [x] SPEC addendum written (PR `docs: slice 4 SPEC addendum (notebook GUI)`); awaiting the owner's answers A to N
+- [ ] Owner answers recorded under "Decisions" in the addendum
+- [ ] Library: `mapping.polygon_nodes`, `mapping.planned_nodes`, `project.project_to_dict`; tests
+- [ ] `gui` extra, entry point, `gui/app.py` (`build_app`), notebook and its jupytext source, port of the spike's behaviours; tests
+- [ ] Reduced fake server in `tests/`; `test_gui.py`, `test_gui_notebook.py`, `test_package.py` updates
+- [ ] CI installs the extra; `make check`, `make test`, `make docs-test`; install size into the research note; PR
 
 ## Slice 5: `feat/gui-map-import`
 - [ ] SPEC addendum; map preview, nodes selected or used drawn on the map (owner requirement), optional node layer (site or area plus margin), mast-list, project and boundary-file import, polygon drawing, summary view; PR
