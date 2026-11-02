@@ -1,4 +1,4 @@
-Status: Accepted
+Status: Done
 
 # RFC-005: GUI for wind resource assessment
 

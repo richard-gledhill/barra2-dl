@@ -1,7 +1,7 @@
 # Reanalysis site data: research note for slices 2 to 5 of RFC-005
 
 Status: Reviewed by the owner on 2026-10-31; four decisions recorded under "Owner decisions". Researched 2026-10-31 for
-[slice 1b](../plan/SPEC.md); the recommendations are mine and nothing here changes a requirements doc.
+[slice 1b](../plan/archive/2026-11-gui/SPEC.md); the recommendations are mine and nothing here changes a requirements doc.
 
 **Method.** Web searches (standard mode) and reads of the pages named under Sources, plus live tests of the NCSS server
 for question 4. The searches were short: they found little on the exact questions, and where a claim comes from a search
