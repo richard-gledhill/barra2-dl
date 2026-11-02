@@ -66,5 +66,5 @@ Resumed 2026-10-31 after RFC-007 shipped. The owner answered RFC section 9 on 20
 - [x] PR (#163)
 
 ## Finish
-- [x] Archived. RFC-005 status and the roadmap are for the owner to set (they are existing requirements docs)
+- [x] Archived. RFC-005 set to Done and the roadmap updated, with the owner's OK
 - [x] README roadmap row
