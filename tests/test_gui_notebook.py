@@ -5,6 +5,8 @@ pressed. A core-only environment, without the gui extra, skips the executing tes
 """
 
 import importlib.util
+import sys
+import types
 from pathlib import Path
 from typing import Any
 
@@ -110,6 +112,24 @@ def test_main_launches_jupyterlab_on_the_copy(tmp_path: Path, monkeypatch: pytes
     assert main([str(tmp_path)]) == 0
 
     assert started == [tmp_path / NOTEBOOK]
+
+
+def test_launch_passes_an_absolute_path_that_survives_the_chdir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A relative folder is made absolute before JupyterLab is started in it, so the path is not applied twice."""
+    seen: list[list[str]] = []
+    labapp: Any = types.ModuleType('jupyterlab.labapp')
+    labapp.LabApp = types.SimpleNamespace(launch_instance=lambda argv: seen.append(argv))
+    monkeypatch.setitem(sys.modules, 'jupyterlab', types.ModuleType('jupyterlab'))
+    monkeypatch.setitem(sys.modules, 'jupyterlab.labapp', labapp)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(importlib.util, 'find_spec', lambda _name: object())
+
+    main(['gui'])
+
+    assert Path(seen[0][0]).is_absolute()
+    assert Path(seen[0][0]).exists()
 
 
 def test_main_without_the_extra_says_how_to_install_it(
