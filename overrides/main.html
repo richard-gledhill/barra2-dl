@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{#- Open Graph and Twitter tags, so a link to the site previews with a title, description and image (LinkedIn, Slack, X). -#}
+{% block extrahead %}
+  {% set title = config.site_name if (not page or page.is_homepage) else page.title ~ " - " ~ config.site_name %}
+  {% set description = (page.meta.description if page and page.meta else none) or config.site_description %}
+  {% set image = config.site_url.rstrip("/") ~ "/img/gui-form-and-map.png" %}
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="{{ config.site_name }}">
+  <meta property="og:title" content="{{ title }}">
+  <meta property="og:description" content="{{ description }}">
+  <meta property="og:url" content="{{ page.canonical_url if page else config.site_url }}">
+  <meta property="og:image" content="{{ image }}">
+  <meta property="og:image:alt" content="The barra2-dl notebook GUI: a form on the left and a map of BARRA2 grid nodes on the right">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ title }}">
+  <meta name="twitter:description" content="{{ description }}">
+  <meta name="twitter:image" content="{{ image }}">
+{% endblock %}
