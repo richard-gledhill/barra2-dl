@@ -34,6 +34,17 @@ dependencies = [
     "h5py>=3.16.0",
 ]
 
+[project.optional-dependencies]
+# The notebook GUI (ADR-005). The core library does not import any of these.
+gui = [
+    "ipywidgets>=8.1.9",
+    "ipyleaflet>=0.20.0",
+    "jupyterlab>=4.6",
+]
+
+[project.scripts]
+barra2-dl-gui = "barra2_dl.gui:main"
+
 [project.urls]
 Repository = "https://github.com/richard-gledhill/barra2-dl"
 
@@ -42,7 +53,10 @@ dev = [
     "deptry>=0.23,<1",
     # ipykernel runs scripts/example_barra2_dl_*.ipynb; pandas-stubs is consumed by mypy only.
     "ipykernel>=7.3.0,<8",
+    # nbclient executes the shipped GUI notebook in the tests; jupytext checks it against its .py source.
+    "jupytext>=1.16",
     "mypy>=1.8,<3.0",
+    "nbclient>=0.10",
     "pandas-stubs>=3.1.0,<3.2.0",
     "pre-commit>=4.5,<5",
     "pytest>=8,<10",
@@ -73,6 +87,11 @@ check_untyped_defs = true
 warn_return_any = true
 warn_unused_ignores = true
 show_error_codes = true
+
+# The GUI toolkit ships no type information. Approved by the owner (slice 4, decision I); nothing else is ignored.
+[[tool.mypy.overrides]]
+module = ["ipywidgets", "ipyleaflet", "jupyterlab.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
