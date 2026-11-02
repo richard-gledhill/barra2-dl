@@ -15,6 +15,11 @@ inputs:
     required: false
     default: ""
 
+  extras:
+    description: "Set to true to install every optional extra (the GUI toolkit)"
+    required: false
+    default: "false"
+
 runs:
   using: "composite"
   steps:
@@ -41,5 +46,5 @@ runs:
       shell: bash
 
     - name: Install Python dependencies
-      run: uv sync --frozen
+      run: uv sync --frozen ${{ inputs.extras == 'true' && '--all-extras' || '' }}
       shell: bash

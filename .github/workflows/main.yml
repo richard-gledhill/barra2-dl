@@ -68,6 +68,7 @@ jobs:
         uses: ./.github/actions/setup-python-env
         with:
           no-group: docs
+          extras: 'true'
 
       - name: Run checks
         run: make check
@@ -91,6 +92,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           no-group: docs
+          extras: 'true'
 
       - name: Run tests
         run: uv run pytest

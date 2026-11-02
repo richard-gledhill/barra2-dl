@@ -2,6 +2,7 @@
 
 import ast
 import importlib
+import importlib.util
 import multiprocessing
 import sys
 from concurrent.futures import ProcessPoolExecutor
@@ -15,7 +16,7 @@ SRC = Path(barra2_dl.__file__).parent
 INTERFACES = [*SRC.glob('gui/**/*.py'), *SRC.glob('cli.py')]
 # the interface layers, and the toolkits the optional gui extra may bring
 INTERFACE_MODULES = ('barra2_dl.gui', 'barra2_dl.cli')
-TOOLKITS = ('streamlit', 'nicegui', 'panel', 'dash', 'flet', 'tkinter')
+TOOLKITS = ('ipywidgets', 'ipyleaflet', 'jupyterlab', 'IPython')
 MODULES = ['convert', 'download', 'globals', 'mapping', 'merge', 'project']
 
 
@@ -79,6 +80,19 @@ def _loaded_interfaces() -> list[str]:
     return [m for m in sys.modules if m.split('.')[0] in TOOLKITS or m in INTERFACE_MODULES]
 
 
+def _loaded_toolkits_after_importing_gui() -> list[str]:
+    """Run in a fresh interpreter: the toolkit modules loaded once barra2_dl.gui is imported."""
+    importlib.import_module('barra2_dl.gui')
+
+    return [m for m in sys.modules if m.split('.')[0] in TOOLKITS]
+
+
+def test_importing_the_gui_package_loads_no_toolkit() -> None:
+    """Importing barra2_dl.gui, which main needs to tell a missing extra from a present one, loads no toolkit."""
+    with ProcessPoolExecutor(max_workers=1, mp_context=multiprocessing.get_context('spawn')) as pool:
+        assert pool.submit(_loaded_toolkits_after_importing_gui).result() == []
+
+
 def test_importing_the_package_loads_no_interface_or_toolkit() -> None:
     """Import barra2_dl works without the gui extra: in a fresh interpreter it loads no gui, cli or toolkit module."""
     with ProcessPoolExecutor(max_workers=1, mp_context=multiprocessing.get_context('spawn')) as pool:
@@ -103,6 +117,8 @@ def test_library_modules_do_not_import_an_interface_or_toolkit(path: Path) -> No
 @pytest.mark.parametrize('path', INTERFACES, ids=lambda path: str(path.relative_to(SRC)))
 def test_interfaces_import_only_declared_names(path: Path) -> None:
     """An interface imports only names a module lists in __all__, plus constants from globals."""
+    if path.name in ('app.py', 'barra2_dl_gui.py') and importlib.util.find_spec('ipywidgets') is None:
+        pytest.skip('the gui extra is not installed')
     assert _undeclared_imports(path) == []
 
 

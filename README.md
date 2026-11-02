@@ -97,12 +97,26 @@ barra2-dl is not published on PyPI yet (a release is planned after the GUI, see 
 pip install git+https://github.com/richard-gledhill/barra2-dl.git
 ```
 
+### Notebook GUI
+
+To choose sites on a map instead of writing code, install the `gui` extra and start the notebook (it adds JupyterLab, about 140 MB):
+
+```bash
+pip install "barra2-dl[gui] @ git+https://github.com/richard-gledhill/barra2-dl.git"
+barra2-dl-gui
+```
+
+`barra2-dl-gui [folder]` copies the notebook into `./barra2-dl-gui` (or the folder you name), never overwriting your copy
+(`--reset` replaces it), and opens JupyterLab on it. The cache, the output and `last_session.json` go in that folder.
+
+### Development
+
 Or clone the repository for development (uses [uv](https://docs.astral.sh/uv/)):
 
 ```bash
 git clone https://github.com/richard-gledhill/barra2-dl.git
 cd barra2-dl
-uv sync
+uv sync --all-extras
 ```
 
 ## Example

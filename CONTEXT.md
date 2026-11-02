@@ -148,6 +148,17 @@ One place to get data for, named (the name is the filename prefix) with a point 
 A point is a nearest-node or four-node-average download; a box is an area download.
 _Avoid_: Mast (a mast is one kind of site)
 
+**GUI notebook** (`barra2_dl.gui`, `barra2-dl-gui`):
+The interface: a Jupyter notebook, `barra2_dl_gui.ipynb`, that shows an ipywidgets form and an ipyleaflet map and
+runs the project engine on them. `barra2-dl-gui` copies it into a folder and starts JupyterLab there. Installed with the
+`gui` extra; the library never imports it.
+_Avoid_: The app, the web app (it runs in JupyterLab on the analyst's machine; there is no server of ours)
+
+**Session**:
+The settings and sites in the GUI notebook, saved to `last_session.json` in the notebook's folder at every run, in the
+form `project.project_to_dict` writes, and restored by Load last session.
+_Avoid_: Project file (that is TOML, written by hand; a session is JSON, written by the notebook)
+
 **Run summary**:
 `<name>_run_summary.json`, written by `project.run_site` for every outcome: the inputs, versions, the result of every
 file, the missing months, the outputs and the requested and actual node(s). `project.site_result_to_dict` is its one
