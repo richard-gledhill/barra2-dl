@@ -5,6 +5,8 @@ draw an area, see the
 BARRA2 grid nodes, run the downloads and read a summary of each run, without writing code. It runs the same engine as
 a [project file](project-file.md).
 
+![The barra2-dl notebook GUI in JupyterLab: the form on the left and the map of BARRA2 grid nodes on the right](img/gui-notebook.webp)
+
 ## Install and start
 
 barra2-dl is not published on PyPI yet, so install the `gui` extra from GitHub (Python 3.12 or later; the extra adds
