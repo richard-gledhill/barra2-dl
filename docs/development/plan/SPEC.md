@@ -9,7 +9,7 @@ Style and gates: [conventions.md](../conventions.md), [constraints.md](../constr
 - Slice 1b (research) is done and reviewed: see "Slice 1b addendum" for the owner's decisions.
 - Slice 2 (node lookup, chosen nodes) has its addendum, "Slice 2 addendum" at the end, approved by the owner on 2026-10-31, and shipped in #150.
 - Slice 2b (polygon boundary) has its addendum, "Slice 2b addendum", approved by the owner on 2026-10-31, and shipped in #152.
-- Slice 3 (toolkit spikes and ADR-005) has its addendum, "Slice 3 addendum" at the end, proposed for the owner's review; nothing is built until it is approved.
+- Slice 3 (toolkit spikes and ADR-005) has its addendum, "Slice 3 addendum" at the end, approved on 2026-10-31. Three spikes were built and the owner chose the notebook (ipywidgets and ipyleaflet, no Voila) on 2026-11-02: see [ADR-005](../adr/ADR-005-gui-toolkit.md) and the [research note](../research/gui-toolkit-spikes.md). Panel, Dash, Flet and tkinter were not built.
 
 ## Scope
 

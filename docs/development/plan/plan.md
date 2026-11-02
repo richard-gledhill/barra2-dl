@@ -47,8 +47,7 @@ by pattern); the jupytext sync of the notebook must not reformat unrelated cells
    (4 hours each) Streamlit, NiceGUI, Panel, Dash (Plotly), Flet and notebook-with-Voila (added 2026-10-31) builds of the same thin slice (RFC 5.2); tkinter is
    judged on paper. A yes/no checklist the owner completes for each toolkit, with a comment box; polygon drawing on the map and the
    nodes drawn on the map are criteria. The result is a research note with the evidence and ADR-005. No spike code,
-   dependency or `gui` extra reaches `main`. Detailed in the SPEC "Slice 3 addendum" (proposed, awaiting the owner's
-   review). The owner added Dash and Flet to the RFC's list on 2026-10-30; Flet also shows what freezing a desktop-native
+   dependency or `gui` extra reaches `main`. Detailed in the SPEC "Slice 3 addendum" (approved). Outcome: three spikes built and the notebook chosen, ADR-005. The owner added Dash and Flet to the RFC's list on 2026-10-30; Flet also shows what freezing a desktop-native
    build would cost. The RFC text is unchanged until the owner approves an edit.
 4. **GUI skeleton** (`feat/gui-skeleton`): `gui` extra, `barra2-dl-gui` entry point, form to `Settings`/`Site`, background
    `run_site` with progress and cancel, display-free smoke test.
