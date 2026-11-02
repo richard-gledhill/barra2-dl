@@ -117,7 +117,7 @@ def test_library_modules_do_not_import_an_interface_or_toolkit(path: Path) -> No
 @pytest.mark.parametrize('path', INTERFACES, ids=lambda path: str(path.relative_to(SRC)))
 def test_interfaces_import_only_declared_names(path: Path) -> None:
     """An interface imports only names a module lists in __all__, plus constants from globals."""
-    if path.name == 'app.py' and importlib.util.find_spec('ipywidgets') is None:
+    if path.name in ('app.py', 'barra2_dl_gui.py') and importlib.util.find_spec('ipywidgets') is None:
         pytest.skip('the gui extra is not installed')
     assert _undeclared_imports(path) == []
 

@@ -45,12 +45,6 @@ runs:
       run: echo "UV_NO_GROUP=${{ inputs.no-group }}" >> "$GITHUB_ENV"
       shell: bash
 
-    # Set as an env var, not a sync flag, so later `uv run` calls keep the extras.
-    - name: Install the optional extras
-      if: inputs.extras == 'true'
-      run: echo "UV_ALL_EXTRAS=1" >> "$GITHUB_ENV"
-      shell: bash
-
     - name: Install Python dependencies
-      run: uv sync --frozen
+      run: uv sync --frozen ${{ inputs.extras == 'true' && '--all-extras' || '' }}
       shell: bash
