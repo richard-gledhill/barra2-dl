@@ -39,22 +39,23 @@ Resumed 2026-10-31 after RFC-007 shipped. The owner answered RFC section 9 on 20
 - [x] Example boundary, docs, live tests; `make check`, `make test`, `make docs-test`; PR
 
 ## Slice 3: toolkit spikes and ADR
-- [x] SPEC addendum written (PR `docs: slice 3 SPEC addendum (toolkit spikes)`); awaiting the owner's review and answers
-- [ ] Owner answers recorded under "Decisions" in the addendum; spikes start only when the owner says
-- [ ] Set up: spike branch `chore/gui-toolkit-spikes`, `spikes/common` (fake NCSS server), scratch environments, pin and wheel dry run
-- [ ] Spikes: Streamlit, NiceGUI (optional owner checkpoint), Panel, Dash, Flet (with the freeze attempt), notebook with Voila; 4 h each
-- [ ] tkinter on paper; console-output findings
-- [ ] Research note `docs/development/research/gui-toolkit-spikes.md` with screenshots; owner's walkthrough and checklists
-- [ ] ADR-005 and `adr/README.md` row; tag `rfc005-spikes`; `make check`, `make docs-test`; PR (no spike code on `main`)
+- [x] SPEC addendum written (PR `docs: slice 3 SPEC addendum (toolkit spikes)`) and approved 2026-10-31
+- [x] Set up: spike branch `chore/gui-toolkit-spikes`, `spikes/common` (fake NCSS server), pin dry run for all six
+- [x] Spikes built: Streamlit, NiceGUI, notebook (ipywidgets and ipyleaflet, no Voila). Not built: Panel, Dash, Flet
+- [x] Notebook chosen by the owner 2026-11-02; checklist completed in the research note
+- [x] Research note `docs/development/research/gui-toolkit-spikes.md`, with the register of spikes run and not run
+- [x] ADR-005 and `adr/README.md` row; spike branch tagged `rfc005-spikes` (`1a62287`)
+- [ ] `make check`, `make docs-test`; PR `docs: ADR-005 GUI toolkit (slice 3)` (no spike code on `main`)
+- [ ] tkinter on paper: dropped, not written up
 
 ## Slice 4: `feat/gui-skeleton`
-- [ ] SPEC addendum; `gui` extra, entry point, form, background run, carry selected/used nodes through, smoke test; PR
+- [ ] SPEC addendum; `gui` extra, entry point (copies the notebook and starts JupyterLab), notebook text cells, move `find_polygon_nodes` and `planned_nodes` into the library, decide `last_session.json`, measure install size, smoke test; PR
 
 ## Slice 5: `feat/gui-map-import`
 - [ ] SPEC addendum; map preview, nodes selected or used drawn on the map (owner requirement), optional node layer (site or area plus margin), mast-list, project and boundary-file import, polygon drawing, summary view; PR
 
 ## Slice 6: `docs/gui-user-guide`
-- [ ] User docs, CSIRO link check, atl3b credit; PR
+- [ ] User docs (including `docs/how-to-use.md` for the notebook GUI), CSIRO link check, atl3b credit; PR
 
 ## Finish
 - [ ] Archive plan; RFC-005 Done; roadmap; README
