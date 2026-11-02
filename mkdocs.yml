@@ -29,6 +29,7 @@ plugins:
 
 theme:
   name: material
+  custom_dir: overrides
   feature:
     tabs: true
   palette:
