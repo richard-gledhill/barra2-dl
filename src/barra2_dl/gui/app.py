@@ -948,7 +948,10 @@ def _show_area(app: GuiApp, feature: dict[str, Any]) -> None:
     app.draw.data = [feature]
     ring = feature['geometry']['coordinates'][0]
     lons, lats = [p[0] for p in ring], [p[1] for p in ring]
-    app.fmap.fit_bounds([[min(lats), min(lons)], [max(lats), max(lons)]])
+    try:
+        app.fmap.fit_bounds([[min(lats), min(lons)], [max(lats), max(lons)]])
+    except RuntimeError:  # fit_bounds needs an event loop, which a kernel has and a plain interpreter (3.14) may not
+        app.fmap.center = (sum(lats) / len(lats), sum(lons) / len(lons))
 
 
 def _apply_polygon(app: GuiApp, polygon: Polygon, name: str) -> None:
